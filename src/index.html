@@ -1,0 +1,22 @@
+<a id="download" href="#" download="export.rbxmx" style="display:none;">Download</a>
+<button id="convselect">Convert Selection</button>
+<button id="closeplugin">Close Plugin</button>
+<script>
+    document.getElementById("closeplugin").onclick = () => {
+        parent.postMessage({ pluginMessage: { type: 'close-plugin' } }, '*')
+    }
+    document.getElementById("convselect").onclick = () => {
+        parent.postMessage({ pluginMessage: { type: 'exec' } }, '*')
+    }
+    
+    onmessage = (event) => {
+        const { type, data } = event.data.pluginMessage;
+        
+        if (type === "Download") {
+            const DownloadLink = document.getElementById("download");
+
+            DownloadLink.href = "data:text/xml;charset=utf-8," + encodeURIComponent(data);
+            DownloadLink.click();
+        }
+    }
+</script>
