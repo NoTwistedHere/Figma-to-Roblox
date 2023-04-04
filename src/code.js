@@ -43,10 +43,6 @@
     
     Known Issues:
 
-    Changelog:
-        === [UNTRACKED] ===
-
-
 */
 
 var HandledError = false;
@@ -260,7 +256,7 @@ const PropertyTypes = {
                     }),
                     Transparency: Filler.gradientStops.map((Stop) => {
                         return {
-                            Transparency: 1 - Stop.color.a, // Bastards for using RGBA
+                            Transparency: 1 - Stop.color.a, // Bastards for using RGBA (still love you though)
                             TimePosition: Stop.position
                         }
                     }),
@@ -318,9 +314,6 @@ const PropertyTypes = {
 
             return true;
         }
-
-        //const Font = Fonts[Properties.Font.Style] || Fonts["Regular"];
-        //ExtendXML(`<Font name="FontFace"><Family><url>rbxasset://fonts/families/${Properties.Font.Family}.json</url></Family><Weight>${Font.Weight}</Weight><Style>${Font.Style}</Style></Font>`);
 
         function Check(Font) {
             const RblxFont = (Font.fontName && Fonts[Font.fontName.style]) || Fonts["Regular"];
@@ -480,9 +473,11 @@ const ElementTypes = {
         }
 
         if (Parent !== undefined) {
-            Properties.Position.X -= Parent._OriginalPosition.X;
-            Properties.Position.Y -= Parent._OriginalPosition.Y;
-            Properties.GroupOpacity = Parent.GroupOpacity * Properties.GroupOpacity; // maths :)
+            if (Parent.GroupOpacity !== undefined) Properties.GroupOpacity = Parent.GroupOpacity * Properties.GroupOpacity; // maths :)
+            if (Parent._OriginalPosition !== undefined) {
+                Properties.Position.X -= Parent._OriginalPosition.X;
+                Properties.Position.Y -= Parent._OriginalPosition.Y;
+            }
         }
 
         for (const Property in Element) {
@@ -491,6 +486,46 @@ const ElementTypes = {
             }
         }
 
+        return Properties;
+    },
+    ["FRAME"]: (Element, Parent) => {
+        var Properties = {
+            Class: "Frame",
+            Type: Element.type,
+            Name: Element.name,
+            BackgroundTransparency: Element.opacity,
+            BorderSizePixel: 0,
+            GroupOpacity: Element.opacity,
+            Visible: Element.visible,
+            Position: {
+                X: Element.x,
+                Y: Element.y
+            },
+            Size: {
+                X: Element.width,
+                Y: Element.height
+            },
+            Rotation: -Element.rotation,
+            Children: [],
+            Parent: Parent,
+        }
+
+        if (Parent !== undefined) {
+            if (Parent.GroupOpacity !== undefined) Properties.GroupOpacity = Parent.GroupOpacity * Properties.GroupOpacity; // maths :)
+            if (Parent._OriginalPosition !== undefined) {
+                Properties.Position.X -= Parent._OriginalPosition.X;
+                Properties.Position.Y -= Parent._OriginalPosition.Y;
+            }
+
+            Properties.BackgroundTransparency = Properties.GroupOpacity // simple fix
+        }
+    
+        for (const Property in Element) {
+            if (Property in PropertyTypes) {
+                if (PropertyTypes[Property](Element, Properties) === false) return false;
+            }
+        }
+    
         return Properties;
     },
     ["RECTANGLE"]: (Element, Parent) => {
@@ -515,9 +550,11 @@ const ElementTypes = {
         }
 
         if (Parent !== undefined) {
-            Properties.Position.X -= Parent._OriginalPosition.X;
-            Properties.Position.Y -= Parent._OriginalPosition.Y;
-            Properties.BackgroundTransparency = Parent.GroupOpacity * Properties.BackgroundTransparency; // maths :)
+            if (Parent.GroupOpacity !== undefined) Properties.BackgroundTransparency = Parent.GroupOpacity * Properties.BackgroundTransparency; // maths :)
+            if (Parent._OriginalPosition !== undefined) {
+                Properties.Position.X -= Parent._OriginalPosition.X;
+                Properties.Position.Y -= Parent._OriginalPosition.Y;
+            }
         }
     
         for (const Property in Element) {
@@ -550,9 +587,11 @@ const ElementTypes = {
         }
 
         if (Parent !== undefined) {
-            Properties.Position.X -= Parent._OriginalPosition.X;
-            Properties.Position.Y -= Parent._OriginalPosition.Y;
-            //Properties.BackgroundTransparency = Parent.GroupOpacity * Properties.BackgroundTransparency; // maths :)
+            //if (Parent.GroupOpacity !== undefined) Properties.BackgroundTransparency = Parent.GroupOpacity * Properties.BackgroundTransparency; // maths :)
+            if (Parent._OriginalPosition !== undefined) {
+                Properties.Position.X -= Parent._OriginalPosition.X;
+                Properties.Position.Y -= Parent._OriginalPosition.Y;
+            }
         }
     
         for (const Property in Element) {
@@ -594,9 +633,11 @@ const ElementTypes = {
         }
 
         if (Parent !== undefined) {
-            Properties.Position.X -= Parent._OriginalPosition.X;
-            Properties.Position.Y -= Parent._OriginalPosition.Y;
-            Properties.BackgroundTransparency = Parent.GroupOpacity * Properties.BackgroundTransparency; // maths :)
+            if (Parent.GroupOpacity !== undefined) Properties.BackgroundTransparency = Parent.GroupOpacity * Properties.BackgroundTransparency; // maths :)
+            if (Parent._OriginalPosition !== undefined) {
+                Properties.Position.X -= Parent._OriginalPosition.X;
+                Properties.Position.Y -= Parent._OriginalPosition.Y;
+            }
         }
     
         for (const Property in Element) {
@@ -646,9 +687,11 @@ const ElementTypes = {
         }
 
         if (Parent !== undefined) {
-            Properties.Position.X -= Parent._OriginalPosition.X;
-            Properties.Position.Y -= Parent._OriginalPosition.Y;
-            Properties.TextTransparency = Parent.GroupOpacity * Properties.TextTransparency; // maths :)
+            if (Parent.GroupOpacity !== undefined) Properties.TextTransparency = Parent.GroupOpacity * Properties.TextTransparency; // maths :)
+            if (Parent._OriginalPosition !== undefined) {
+                Properties.Position.X -= Parent._OriginalPosition.X;
+                Properties.Position.Y -= Parent._OriginalPosition.Y;
+            }
         }
     
         for (const Property in Element) {
