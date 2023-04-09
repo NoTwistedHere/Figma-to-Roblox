@@ -1,22 +1,83 @@
 <a id="download" href="#" download="export.rbxmx" style="display:none;">Download</a>
 <button id="convselect">Convert Selection</button>
 <button id="closeplugin">Close Plugin</button>
+<input type="text" id="apikey" placeholder="Cloud API Key (optional)" />
+<input type="text" id="userid" placeholder="User ID (the uploader, required with open cloud)" />
 <script>
+    var CloudApiKey = ""
+    var UserId = ""
+
     document.getElementById("closeplugin").onclick = () => {
         parent.postMessage({ pluginMessage: { type: 'close-plugin' } }, '*')
     }
     document.getElementById("convselect").onclick = () => {
         parent.postMessage({ pluginMessage: { type: 'exec' } }, '*')
     }
+    document.getElementById("apikey").onchange = () => {
+        CloudApiKey = document.getElementById("apikey").value
+    }
+    document.getElementById("userid").onchange = () => {
+        UserId = document.getElementById("userid").value
+    }
     
     onmessage = (event) => {
         const { type, data } = event.data.pluginMessage;
         
-        if (type === "Download") {
-            const DownloadLink = document.getElementById("download");
+        switch (type) {
+            case "Download":
+                const DownloadLink = document.getElementById("download");
 
-            DownloadLink.href = "data:text/xml;charset=utf-8," + encodeURIComponent(data);
-            DownloadLink.click();
+                DownloadLink.href = "data:text/xml;charset=utf-8," + encodeURIComponent(data);
+                DownloadLink.click();
+                break;
+            case "UploadImage":
+                const Form = new FormData();
+
+                Form.append("request", JSON.stringify({
+                    assetType: "Image",
+                    displayName: "Exported Image",
+                    description: "Exported from Figma",
+                    creationContext: {
+                        creator: {
+                            userId: UserId
+                        }
+                    }
+                }));
+                Form.append("fileContent", File([data.ImageData], "export.jpeg", { type: "image/jpeg" }));
+
+                fetch("https://apis.roblox.com/assets/v1/assets", { // This is a fucking mess, but it works
+                    method: "POST",
+                    headers: {
+                        "X-API-KEY": CloudApiKey
+                    },
+                    body: Form
+                }).then((Response) => {
+                    console.log(Response)
+                    if (Response.status == 200) {
+                        Response.json().then((Json) => {
+                            console.log(Json)
+                            fetch(`https://apis.roblox.com/assets/v1/${Json.path}`).then((Response) => {
+                                console.log(Response)
+                                if (Response.status == 200) {
+                                    Response.json().then((Json) => {
+                                        console.log(Json)
+                                        Json.UploadId = data.UploadId
+                                        parent.postMessage({ pluginMessage: { type: 'image-upload-success', data: Json } }, '*')
+                                    })
+                                } else {
+                                    parent.postMessage({ pluginMessage: { type: 'error', data: Response.statusText } }, '*')
+                                }
+                            }).catch((Error) => {
+                                parent.postMessage({ pluginMessage: { type: 'error', data: Error } }, '*')
+                            });
+                        })
+                    } else {
+                        parent.postMessage({ pluginMessage: { type: 'error', data: Response.statusText } }, '*')
+                    }
+                }).catch((Error) => {
+                    parent.postMessage({ pluginMessage: { type: 'error', data: Error } }, '*')
+                });
+                break;
         }
     }
 </script>

@@ -268,6 +268,7 @@ const PropertyTypes = {
             case "IMAGE":
                 if (Properties.Class == "Frame") {
                     console.warn("Images are not supported, however an ImageLabel has been created.");
+                    ConvertToPNG(Element);
                     Properties.Image = "rbxasset://textures/StudioConvertToPackagePlugin/placeholder.png"
                     Properties.BackgroundColor3 = Properties.BackgroundColor3 || {R: 1, G: 0, B: 1};
                     Properties.Class = "ImageLabel";
@@ -942,11 +943,43 @@ function RunPlugin() {
     Notify("Successfully converted!");
 }
 
+var ImageUploads = {}
+
+async function ConvertToPNG(Asset) {
+    const ExportSettings = {
+        format: "PNG",
+        constraint: {
+            type: "SCALE",
+            value: 1
+        }
+    }
+
+    const ImageByteArray = await figma.exportImage(Asset, ExportSettings); // isn't a function AHHHHHHHHHHHHHHHH
+    const Base64Image = Buffer.from(ImageByteArray).toString("base64");
+    const UploadId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+
+    console.log(Base64Image, UploadId)
+
+    ImageUploads[UploadId] = {
+        success: (url) => {
+            console.log(url)
+            Asset.Image = url;
+            delete ImageUploads[UploadId];
+        }
+    }
+
+    figma.ui.postMessage({
+        type: "UploadImage",
+        data: {
+            ImageData: Base64Image,
+            UploadId: UploadId
+        }
+    });
+}
+
 figma.showUI(__html__);
 
 figma.ui.onmessage = msg => {
-    console.log(msg);
-
     switch (msg.type) {
         case "exec":
             try {
@@ -962,6 +995,12 @@ figma.ui.onmessage = msg => {
         case "close-plugin":
             figma.closePlugin();
             break;
-        
+        case "error":
+            figma.notify(msg.data);
+            break;
+        case "image-upload-success":
+            console.log("yes", msg.data)
+            ImageUploads[msg.data.UploadId].success(msg.data.response.assetId);
+            break;
     }
 }
