@@ -1,11 +1,26 @@
 <a id="download" href="#" download="export.rbxmx" style="display:none;">Download</a>
 <button id="convselect">Convert Selection</button>
 <button id="closeplugin">Close Plugin</button>
-<input type="text" id="apikey" placeholder="Cloud API Key (optional)" />
-<input type="text" id="userid" placeholder="User ID (the uploader, required with open cloud)" />
+<div></div>
+<label for="apikey">Cloud API Key (optional)</label>
+<input type="text" id="apikey" placeholder="Cloud API Key" />
+<div></div>
+<label for="userid">User ID</label>
+<input type="text" id="userid" placeholder="User ID" />
+<div></div>
+<label for="uploadImages">Upload Images</label>
+<input type="checkbox" id="uploadImages" name="Upload Images" />
+<div></div>
+<label for="exportImages">Export Images</label>
+<input type="checkbox" id="exportImages" name="Export Images" />
+<!-- get things :) -->
+<script src="https://unpkg.com/axios/dist/axios.min.js" integrity="sha384-HgqeTqxlDfYJ+48J3jWmByxNjxqDn3KbyCO2gyp5GiOy8PVD/ypLThHaPowaw2ep" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/jszip@3.7.1/dist/jszip.js" integrity="sha384-Lqk2um7o0W+Ke7IGh8Mk9EE7g2IrhepxXvttF/iw5hFqpMjFGKP4jcKYhNLAi/ZD" crossorigin="anonymous"></script>
 <script>
     var CloudApiKey = ""
     var UserId = ""
+    var ExportImages = false
+    var UploadImages = false
 
     document.getElementById("closeplugin").onclick = () => {
         parent.postMessage({ pluginMessage: { type: 'close-plugin' } }, '*')
@@ -15,68 +30,119 @@
     }
     document.getElementById("apikey").onchange = () => {
         CloudApiKey = document.getElementById("apikey").value
+        parent.postMessage({ pluginMessage: { type: 'SetAsync', key: "CloudApiKey", value: CloudApiKey } }, '*')
     }
     document.getElementById("userid").onchange = () => {
         UserId = document.getElementById("userid").value
+        parent.postMessage({ pluginMessage: { type: 'SetAsync', key: "UserId", value: UserId } }, '*')
     }
+    document.getElementById("uploadImages").onchange = () => {
+        UploadImages = document.getElementById("uploadImages").checked
+        parent.postMessage({ pluginMessage: { type: 'SetAsync', key: "UploadImages", value: UploadImages } }, '*')
+    }
+    document.getElementById("exportImages").onchange = () => {
+        ExportImages = document.getElementById("exportImages").checked
+        parent.postMessage({ pluginMessage: { type: 'SetAsync', key: "ExportImages", value: ExportImages } }, '*')
+    }
+
+    parent.postMessage({ pluginMessage: { type: 'FetchAsync' } }, '*')
     
-    onmessage = (event) => {
+    const DownloadLink = document.getElementById("download");
+    var Images = [];
+
+    function DownloadImages() {
+        let Zip = new JSZip();
+
+        for (let i = 0; i < Images.length; i++) {
+            var Image = Images[i];
+            Zip.file(`image-${Image.ImageName}(${i}).png`, new Blob([Image.ImageData.buffer], { type: "image/png" }));
+        }
+
+        Zip.generateAsync({ type: "blob" }).then((Content) => {
+            DownloadLink.href = URL.createObjectURL(Content);
+            DownloadLink.download = "images.zip";
+            DownloadLink.click();
+        });
+
+        Images = [];
+    }
+
+    onmessage = async (event) => {
         const { type, data } = event.data.pluginMessage;
         
         switch (type) {
             case "Download":
-                const DownloadLink = document.getElementById("download");
-
                 DownloadLink.href = "data:text/xml;charset=utf-8," + encodeURIComponent(data);
+                DownloadLink.download = "export.rbxmx";
                 DownloadLink.click();
+
+                DownloadImages();
                 break;
             case "UploadImage":
                 const Form = new FormData();
+                const blob = new Blob([data.ImageData.buffer], { type: "image/png" });
+
+                if (ExportImages) {
+                    Images.push(data);
+                }
+
+                if (CloudApiKey == "" || UserId == "" || !UploadImages) {
+                    parent.postMessage({ pluginMessage: { type: 'image-upload-fail', data: "Cloud API Key is not set" } }, '*')
+                    return;
+                }
 
                 Form.append("request", JSON.stringify({
                     assetType: "Image",
                     displayName: "Exported Image",
-                    description: "Exported from Figma",
+                    description: "Exported from Figma using Figma to Roblox",
                     creationContext: {
                         creator: {
-                            userId: UserId
+                            userId: parseFloat(UserId)
                         }
                     }
                 }));
-                Form.append("fileContent", File([data.ImageData], "export.jpeg", { type: "image/jpeg" }));
+                Form.append("fileContent", blob, "export.png");
 
-                fetch("https://apis.roblox.com/assets/v1/assets", { // This is a fucking mess, but it works
+                fetch("https://silenteye.thisstuff.xyz/FigmaToRobloxProxy", {
                     method: "POST",
                     headers: {
-                        "X-API-KEY": CloudApiKey
+                        "x-api-key": CloudApiKey,
                     },
                     body: Form
-                }).then((Response) => {
-                    console.log(Response)
-                    if (Response.status == 200) {
-                        Response.json().then((Json) => {
-                            console.log(Json)
-                            fetch(`https://apis.roblox.com/assets/v1/${Json.path}`).then((Response) => {
-                                console.log(Response)
-                                if (Response.status == 200) {
-                                    Response.json().then((Json) => {
-                                        console.log(Json)
-                                        Json.UploadId = data.UploadId
-                                        parent.postMessage({ pluginMessage: { type: 'image-upload-success', data: Json } }, '*')
-                                    })
-                                } else {
-                                    parent.postMessage({ pluginMessage: { type: 'error', data: Response.statusText } }, '*')
-                                }
-                            }).catch((Error) => {
-                                parent.postMessage({ pluginMessage: { type: 'error', data: Error } }, '*')
-                            });
-                        })
+                }).then(Response => {
+                    return Response.json();
+                })
+                .then(Response => {
+                    if (Response.error) {
+                        parent.postMessage({ pluginMessage: { type: 'image-upload-fail', data: Response.error.message } }, '*')
                     } else {
-                        parent.postMessage({ pluginMessage: { type: 'error', data: Response.statusText } }, '*')
+                        Response.UploadId = data.UploadId
+                        parent.postMessage({ pluginMessage: { type: 'image-upload-success', data: Response } }, '*')
                     }
-                }).catch((Error) => {
-                    parent.postMessage({ pluginMessage: { type: 'error', data: Error } }, '*')
+                })
+                .catch((Error) => {
+                    console.warn(Error);
                 });
+                break;
+            case "GetAsync":
+                switch (data.key) {
+                    case "CloudApiKey":
+                        document.getElementById("apikey").value = data.value
+                        CloudApiKey = data.value
+                        break;
+                    case "UserId":
+                        document.getElementById("userid").value = data.value
+                        UserId = data.value
+                        break;
+                    case "ExportImages":
+                        document.getElementById("exportImages").checked = data.value
+                        ExportImages = data.value
+                        break;
+                    case "UploadImages":
+                        document.getElementById("uploadImages").checked = data.value
+                        UploadImages = data.value
+                        break;
+                }
                 break;
         }
     }
