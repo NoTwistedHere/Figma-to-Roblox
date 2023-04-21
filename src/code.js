@@ -28,7 +28,7 @@
     @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@gggggg@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-    Version 0.1.15
+    Version 0.1.16
     By NoTwistedHere
 
     This plugin is free to use, report any bugs to me on Discord (NoTwistedHere#0001)
@@ -47,6 +47,8 @@
 
 var HandledError = false;
 var CurrentNotif;
+var ImageExports = {};
+var QueuedImages = 0;
 
 function QuickClose(Message) {
     if (CurrentNotif !== undefined) CurrentNotif.cancel();
@@ -168,6 +170,42 @@ const TextYAlignments = [
     "BOTTOM",
 ]
 
+function Random() {
+    return ((Math.random() * Math.random()) * 9e15) ^ Math.random(); // It's good enough
+}
+
+function ExportImage(Element, Properties) {
+    QueuedImages++;
+
+    Element.exportAsync({ format: "PNG", contentsOnly: true, constraint: { type: "SCALE", value: 2 } }).then(Bytes => {
+        var UploadId = Random();
+
+        while (ImageExports[UploadId] !== undefined) UploadId = Random();
+
+        for (var i = 0; i < ImageExports.length; i++) {
+            if (ImageExports[i].Bytes == Bytes) {
+                UploadId = ImageExports[i].UploadId;
+            }
+        }
+
+        Properties.UploadId = UploadId;
+
+        ImageExports[UploadId] = {
+            Bytes: Bytes, // Uint8Array
+            UploadId: UploadId,
+        };
+
+        figma.ui.postMessage({
+            type: "UploadImage",
+            data: {
+                ImageData: Bytes,
+                UploadId: UploadId,
+                ImageName: Element.name,
+            },
+        });
+    });
+}
+
 const PropertyTypes = {
     ["children"]: (Element, Properties) => {
         for (var i = 0; i < Element.children.length; i++) {
@@ -267,11 +305,16 @@ const PropertyTypes = {
                 break;
             case "IMAGE":
                 if (Properties.Class == "Frame") {
-                    console.warn("Images are not supported, however an ImageLabel has been created.");
-                    Properties.Image = "rbxasset://textures/StudioConvertToPackagePlugin/placeholder.png"
-                    Properties.BackgroundColor3 = Properties.BackgroundColor3 || {R: 1, G: 0, B: 1};
+                    //console.warn("Images are not supported, however an ImageLabel has been created.");
+                    //Properties.Image = "rbxasset://textures/StudioConvertToPackagePlugin/placeholder.png"
+                    //Properties.BackgroundColor3 = Properties.BackgroundColor3 || {R: 1, G: 0, B: 1};
                     Properties.Class = "ImageLabel";
+                    Properties.BackgroundTransparency = 0;
+                    Properties.ImageTransparency = Filler.opacity;
                 }
+
+                ExportImage(Element, Properties);
+
                 break;
             default:
                 return QuickClose(`Unsupported fill type '${Filler.type}' for: ${Element.name}`);
@@ -565,7 +608,7 @@ const ElementTypes = {
     
         return Properties;
     },
-    ["LINE"]: (Element, Parent) => {
+    /*["LINE"]: (Element, Parent) => { // Lines are a bit of a pain, so I'm going to leave them out as we have image support now
         var Properties = {
             Class: "Frame",
             Type: Element.type,
@@ -601,7 +644,7 @@ const ElementTypes = {
         }
     
         return Properties;
-    },
+    },*/
     ["ELLIPSE"]: (Element, Parent) => {
         var Properties = {
             Class: "Frame",
@@ -701,6 +744,41 @@ const ElementTypes = {
         }
     
         return Properties;
+    },
+    ["OTHER"]: (Element, Parent) => {
+        var Properties = {
+            Class: "ImageLabel",
+            Type: Element.type,
+            Name: Element.name,
+            BackgroundTransparency: 0,
+            ImageTransparency: Element.opacity,
+            Visible: Element.visible,
+            Position: {
+                X: Element.x,
+                Y: Element.y
+            },
+            Size: {
+                X: Element.width,
+                Y: Element.height
+            },
+            Rotation: Element.rotation,
+            Children: [],
+            Parent: Parent,
+        }
+
+        if (Parent !== undefined) {
+            if (Parent.GroupOpacity !== undefined) Properties.ImageTransparency = Parent.GroupOpacity * Properties.ImageTransparency; // maths :)
+            if (Parent._OriginalPosition !== undefined) {
+                Properties.Position.X -= Parent._OriginalPosition.X;
+                Properties.Position.Y -= Parent._OriginalPosition.Y;
+            }
+        }
+
+        if (Element["children"]) PropertyTypes["children"](Element, Properties);
+
+        ExportImage(Element, Properties);
+    
+        return Properties;
     }
 }
 
@@ -763,6 +841,7 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
                     ColourVal[Property] = LimitDecimals(ColourVal[Property], 6);
                 }
 
+                if (i === 0 && ColourStop.TimePosition !== 0) ColourSeq += `0 ${ColourVal.R} ${ColourVal.G} ${ColourVal.B} 0 `; // Add the first keyframe (if it doesn't exist
 
                 Previous = ColourStop;
                 ColourSeq += `${ColourStop.TimePosition} ${ColourVal.R} ${ColourVal.G} ${ColourVal.B} 0 `;
@@ -784,6 +863,8 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
 
             for (var i = 0; i < Transparency.length; i++) {
                 var TransparencyStop = Transparency[i];
+
+                if (i === 0 && TransparencyStop.TimePosition !== 0) NumberSequence += `0 ${LimitDecimals(TransparencyStop.Transparency, 3)} 0 `; // Add the first keyframe (if it doesn't exist
 
                 Previous = TransparencyStop;
                 NumberSequence += `${TransparencyStop.TimePosition} ${LimitDecimals(TransparencyStop.Transparency, 3)} 0 `;
@@ -865,7 +946,9 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
         ExtendXML(`<Font name="FontFace"><Family><url>rbxasset://fonts/families/${Properties.Font.Family}.json</url></Family><Weight>${Font.Weight}</Weight><Style>${Font.Style}</Style></Font>`);
     }
     if (Properties.RichText !== undefined) ExtendXML(`<bool name="RichText">${Properties.RichText}</bool>`);
-    if (Properties.Image !== undefined) ExtendXML(`<string name="Image">${Properties.Image}</string>`);
+    if (Properties.UploadId !== undefined && ImageExports[Properties.UploadId] !== undefined) ExtendXML(`<string name="Image"><url>${ImageExports[Properties.UploadId].ImageId}</url></string>`); // Image is exported
+    else if (Properties.Image !== undefined) ExtendXML(`<string name="Image">${Properties.Image}</string>`); // Image is not exported
+    if (Properties.ImageTransparency !== undefined) ExtendXML(`<float name="ImageTransparency">${1 - LimitDecimals(Properties.ImageTransparency, 3)}</float>`);
     //if (Properties.Position !== undefined) ExtendXML(`<UDim2 name="Position"><XS>0</XS><XO>${LimitDecimals(Properties.Position.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Properties.Position.Y, 0)}</YO></UDim2>`);
     //if (Properties.Size !== undefined) ExtendXML(`<UDim2 name="Size"><XS>0</XS><XO>${LimitDecimals(Properties.Size.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Properties.Size.Y, 0)}</YO></UDim2>`);
     //if (Properties.Rotation !== undefined) ExtendXML(`<float name="Rotation">${LimitDecimals(Properties.Rotation, 3)}</float>`);
@@ -900,12 +983,12 @@ function ConvertToRoblox(Objects) { // Converts the code into roblox xml format
 function GetMainProperties(Object, Parent) {
     if (ElementTypes[Object.type] !== undefined) {
         return ElementTypes[Object.type](Object, Parent);
-    }
+    } else return ElementTypes["OTHER"](Object, Parent);
 
-    return QuickClose(`Unsupported element type '${Object.type}' for: ${Object.name}`);
+    //return QuickClose(`Unsupported element type '${Object.type}' for: ${Object.name}`);
 }
 
-function RunPlugin() {
+async function RunPlugin() {
     // Get selected elements
 
     var SelectedElements = figma.currentPage.selection;
@@ -924,6 +1007,10 @@ function RunPlugin() {
         Objects.push(GetMainProperties(SelectedElements[i]));
     }
 
+    Notify("Uploading Images...")
+
+    while (QueuedImages > 0) await new Promise(resolve => setTimeout(resolve, 250));
+
     Notify("Formatting...");
 
     var XML = ConvertToRoblox(Objects);
@@ -937,16 +1024,15 @@ function RunPlugin() {
     figma.ui.postMessage({
         type: "Download",
         data: XML
-    })
+    });
     XML = null;
+
     Notify("Successfully converted!");
 }
 
 figma.showUI(__html__);
 
 figma.ui.onmessage = msg => {
-    console.log(msg);
-
     switch (msg.type) {
         case "exec":
             try {
@@ -962,6 +1048,32 @@ figma.ui.onmessage = msg => {
         case "close-plugin":
             figma.closePlugin();
             break;
-        
+        case "SetAsync": 
+            figma.clientStorage.setAsync(msg.key, msg.value);
+            break;
+        case "FetchAsync":
+            figma.clientStorage.keysAsync().then(keys => {
+                for (var i = 0; i < keys.length; i++) {
+                    const Key = keys[i];
+                    figma.clientStorage.getAsync(Key).then(value => {
+                        figma.ui.postMessage({
+                            type: "GetAsync",
+                            data: {
+                                key: Key,
+                                value: value
+                            }
+                        });
+                    });
+                }
+            });
+            break;
+        case "image-upload-success":
+            ImageExports[msg.data.UploadId].ImageId = "rbxassetid://" + msg.data.response.assetId;
+            QueuedImages--;
+            break;
+        case "image-upload-fail":
+            QueuedImages--;
+            console.warn(`Failed to upload image`);
+            break;
     }
 }
