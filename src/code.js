@@ -74,6 +74,9 @@ function getGradientRotation(gradientTransform) {
 }
 
 function LimitDecimals(Number, Decimals) { // Limit decimals to x places and round up/down
+    if (isNaN(Number)) return 0;
+    if (Decimals !== undefined && isNaN(Decimals)) Decimals = null;
+
     return parseFloat(Number.toFixed(Decimals));
 }
 
@@ -720,7 +723,7 @@ const ElementTypes = {
                 X: Element.width,
                 Y: Element.height
             },
-            TextSize: Element.fontSize,
+            TextSize: Element.fontSize == figma.mixed ? 0 : Element.fontSize,
             TextXAlignment: Element.textAlignHorizontal,
             TextYAlignment: Element.textAlignVertical,
             Text: Element.characters,

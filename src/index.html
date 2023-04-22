@@ -8,6 +8,9 @@
 <label for="userid">User ID</label>
 <input type="text" id="userid" placeholder="User ID" />
 <div></div>
+<label for="userid">Custom Proxy</label>
+<input type="text" id="prox" placeholder="Proxy URL" />
+<div></div>
 <label for="uploadImages">Upload Images</label>
 <input type="checkbox" id="uploadImages" name="Upload Images" />
 <div></div>
@@ -19,6 +22,7 @@
 <script>
     var CloudApiKey = ""
     var UserId = ""
+    var Proxy = ""
     var ExportImages = false
     var UploadImages = false
 
@@ -35,6 +39,10 @@
     document.getElementById("userid").onchange = () => {
         UserId = document.getElementById("userid").value
         parent.postMessage({ pluginMessage: { type: 'SetAsync', key: "UserId", value: UserId } }, '*')
+    }
+    document.getElementById("prox").onchange = () => {
+        Proxy = document.getElementById("prox").value
+        parent.postMessage({ pluginMessage: { type: 'SetAsync', key: "Proxy", value: Proxy } }, '*')
     }
     document.getElementById("uploadImages").onchange = () => {
         UploadImages = document.getElementById("uploadImages").checked
@@ -103,26 +111,36 @@
                 }));
                 Form.append("fileContent", blob, "export.png");
 
-                fetch("https://silenteye.thisstuff.xyz/FigmaToRobloxProxy", {
-                    method: "POST",
-                    headers: {
-                        "x-api-key": CloudApiKey,
-                    },
-                    body: Form
-                }).then(Response => {
-                    return Response.json();
-                })
-                .then(Response => {
-                    if (Response.error) {
-                        parent.postMessage({ pluginMessage: { type: 'image-upload-fail', data: Response.error.message } }, '*')
-                    } else {
-                        Response.UploadId = data.UploadId
-                        parent.postMessage({ pluginMessage: { type: 'image-upload-success', data: Response } }, '*')
-                    }
-                })
-                .catch((Error) => {
+                try {
+                    fetch(Proxy.match(/http:\/\/((localhost:[0-9]+)|([a-z]+[\.]*[a-z]*\.[a-z]+))\/.*/) ? Proxy : "https://silenteye.thisstuff.xyz/FigmaToRobloxProxy", {
+                        method: "POST",
+                        headers: {
+                            "x-api-key": CloudApiKey,
+                        },
+                        body: Form
+                    }).then(Response => {
+                        if (Response.status !== 200) {
+                            parent.postMessage({ pluginMessage: { type: 'image-upload-fail', data: "Cloud API Key is not valid" } }, '*')
+                            return;
+                        }
+
+                        return Response.json();
+                    })
+                    .then(Response => {
+                        if (Response.error) {
+                            parent.postMessage({ pluginMessage: { type: 'image-upload-fail', data: Response.error.message } }, '*')
+                        } else {
+                            Response.UploadId = data.UploadId
+                            parent.postMessage({ pluginMessage: { type: 'image-upload-success', data: Response } }, '*')
+                        }
+                    })
+                    .catch((Error) => {
+                        console.warn(Error);
+                    });
+                } catch (Error) {
+                    parent.postMessage({ pluginMessage: { type: 'image-upload-fail', data: "An unexpected error occured, is the proxy url correct?" } }, '*')
                     console.warn(Error);
-                });
+                }
                 break;
             case "GetAsync":
                 switch (data.key) {
@@ -141,6 +159,10 @@
                     case "UploadImages":
                         document.getElementById("uploadImages").checked = data.value
                         UploadImages = data.value
+                        break;
+                    case "Proxy":
+                        document.getElementById("prox").value = data.value
+                        Proxy = data.value
                         break;
                 }
                 break;
