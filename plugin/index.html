@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Figma to Roblox</title>
+  </head>
+  <body>
+    <a id="download" href="#" download="export.rbxmx" style="display: none"
+      >Download</a
+    >
+    <button id="convselect">Convert Selection</button>
+    <button id="closeplugin">Close Plugin</button>
+    <div></div>
+    <label for="apikey">Cloud API Key (optional)</label>
+    <input type="text" id="apikey" placeholder="Cloud API Key" />
+    <div></div>
+    <label for="userid">User ID</label>
+    <input type="text" id="userid" placeholder="User ID" />
+    <div></div>
+    <label for="userid">Custom Proxy</label>
+    <input type="text" id="prox" placeholder="Proxy URL" />
+    <div></div>
+    <label for="uploadImages">Upload Images</label>
+    <input type="checkbox" id="uploadImages" name="Upload Images" />
+    <div></div>
+    <label for="exportImages">Export Images</label>
+    <input type="checkbox" id="exportImages" name="Export Images" />
+    <script src="/src/ui.js" type="module">
+    </script>
+  </body>
+</html>
