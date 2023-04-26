@@ -2,11 +2,11 @@
     "name": "Figma To Roblox (BETA)",
     "id": "1221497650571322872",
     "api": "1.0.0",
-    "main": "src/code.js",
+    "main": "dist/code.js",
     "capabilities": [],
     "enableProposedApi": false,
     "editorType": [
         "figma"
     ],
-    "ui": "src/index.html"
+    "ui": "dist/index.html"
 }
