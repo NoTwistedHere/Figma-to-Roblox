@@ -13,9 +13,17 @@
     "author": "NoTwistedHere",
     "dependencies": {
         "jszip": "^3.10.1",
-        "vite-plugin-singlefile": "^0.13.5"
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "vite-plugin-singlefile": "^0.13.5",
+        "zod": "^3.21.4"
     },
     "devDependencies": {
+        "@figma/plugin-typings": "^1.62.0",
+        "@types/node": "^18.15.11",
+        "@types/react": "^18.0.28",
+        "@types/react-dom": "^18.0.11",
+        "@vitejs/plugin-react": "^3.1.0",
         "typescript": "^5.0.4",
         "vite": "^4.3.2"
     }

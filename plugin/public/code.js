@@ -1036,6 +1036,7 @@ async function RunPlugin() {
 figma.showUI(__html__);
 
 figma.ui.onmessage = msg => {
+    console.log(msg)
     switch (msg.type) {
         case "exec":
             try {
@@ -1055,7 +1056,9 @@ figma.ui.onmessage = msg => {
             figma.clientStorage.setAsync(msg.key, msg.value);
             break;
         case "FetchAsync":
+            console.log("hello?")
             figma.clientStorage.keysAsync().then(keys => {
+                console.log(keys)
                 for (var i = 0; i < keys.length; i++) {
                     const Key = keys[i];
                     figma.clientStorage.getAsync(Key).then(value => {
