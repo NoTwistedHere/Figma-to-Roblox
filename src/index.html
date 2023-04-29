@@ -17,7 +17,7 @@
 <label for="exportImages">Export Images</label>
 <input type="checkbox" id="exportImages" name="Export Images" />
 <!-- get things :) -->
-<script src="https://unpkg.com/axios/dist/axios.min.js" integrity="sha384-HgqeTqxlDfYJ+48J3jWmByxNjxqDn3KbyCO2gyp5GiOy8PVD/ypLThHaPowaw2ep" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/axios@1.4.0/dist/axios.min.js" integrity="sha384-I4Qw/vWb/sK/7VwepTtkaq636YLYClbEgEwKp3ueUCvjiLFrcoKUFAY5mOl40Fj3" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/jszip@3.7.1/dist/jszip.js" integrity="sha384-Lqk2um7o0W+Ke7IGh8Mk9EE7g2IrhepxXvttF/iw5hFqpMjFGKP4jcKYhNLAi/ZD" crossorigin="anonymous"></script>
 <script>
     var CloudApiKey = ""
@@ -88,7 +88,7 @@
                 break;
             case "UploadImage":
                 const Form = new FormData();
-                const blob = new Blob([data.ImageData.buffer], { type: "image/png" });
+                const blob = new Blob([data.ImageData.buffer], { type: "image/" + data.ImageFormat.toLowerCase() });
 
                 if (ExportImages) {
                     Images.push(data);
@@ -119,6 +119,7 @@
                         },
                         body: Form
                     }).then(Response => {
+                        console.log(Response);
                         if (Response.status !== 200) {
                             parent.postMessage({ pluginMessage: { type: 'image-upload-fail', data: "Cloud API Key is not valid" } }, '*')
                             return;

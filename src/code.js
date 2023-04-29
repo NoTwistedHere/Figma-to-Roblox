@@ -177,10 +177,12 @@ function Random() {
     return ((Math.random() * Math.random()) * 9e15) ^ Math.random(); // It's good enough
 }
 
-function ExportImage(Element, Properties) {
+function ExportImage(Element, Properties, CustomExport) {
     QueuedImages++;
 
-    Element.exportAsync({ format: "PNG", contentsOnly: true, constraint: { type: "SCALE", value: 2 } }).then(Bytes => {
+    const Name = CustomExport ? CustomExport.suffix : Element.name;
+
+    Element.exportAsync(CustomExport || { format: "PNG", contentsOnly: true, constraint: { type: "SCALE", value: 2 } }).then(Bytes => {
         var UploadId = Random();
 
         while (ImageExports[UploadId] !== undefined) UploadId = Random();
@@ -203,7 +205,8 @@ function ExportImage(Element, Properties) {
             data: {
                 ImageData: Bytes,
                 UploadId: UploadId,
-                ImageName: Element.name,
+                ImageName: Name.replace(/EI[-]?/, ""),
+                ImageFormat: CustomExport ? CustomExport.format : "PNG",
             },
         });
     });
@@ -243,6 +246,22 @@ const PropertyTypes = {
 
             Properties.Children.push(MaskProperties);
         }*/
+    },
+    ["exportSettings"]: (Element, Properties) => {
+        const ExportSettings = Element.exportSettings[0];
+        if (ExportSettings && Properties.Class !== "ImageLabel" && ExportSettings.suffix.match(/EI/)) {
+            Properties.Class = "ImageLabel";
+            Properties.ImageTransparency = Properties.BackgroundTransparency;
+            Properties.BackgroundTransparency = 0;
+
+            if (ExportSettings.format !== "PNG" && ExportSettings.format !== "JPG") {
+                return QuickClose("Unsupported image format: " + ExportSettings.format + ", on element: " + Element.name);
+            }
+
+            console.log(ExportSettings);
+
+            ExportImage(Element, Properties, ExportSettings);
+        }
     },
     ["fills"]: (Element, Properties) => {
         if (Element.fills.length > 1) {
@@ -307,16 +326,13 @@ const PropertyTypes = {
 
                 break;
             case "IMAGE":
-                if (Properties.Class == "Frame") {
-                    //console.warn("Images are not supported, however an ImageLabel has been created.");
-                    //Properties.Image = "rbxasset://textures/StudioConvertToPackagePlugin/placeholder.png"
-                    //Properties.BackgroundColor3 = Properties.BackgroundColor3 || {R: 1, G: 0, B: 1};
+                if (Properties.Class !== "ImageLabel") {
                     Properties.Class = "ImageLabel";
                     Properties.BackgroundTransparency = 0;
                     Properties.ImageTransparency = Filler.opacity;
-                }
 
-                ExportImage(Element, Properties);
+                    ExportImage(Element, Properties);
+                }
 
                 break;
             default:
@@ -526,9 +542,11 @@ const ElementTypes = {
             }
         }
 
-        for (const Property in Element) {
-            if (Property in PropertyTypes) {
-                if (PropertyTypes[Property](Element, Properties) === false) return false;
+        if (PropertyTypes["exportSettings"](Element, Properties) === false) {
+            for (const Property in Element) {
+                if (Property in PropertyTypes) {
+                    if (PropertyTypes[Property](Element, Properties) === false) return false;
+                }
             }
         }
 
@@ -566,9 +584,11 @@ const ElementTypes = {
             Properties.BackgroundTransparency = Properties.GroupOpacity // simple fix
         }
     
-        for (const Property in Element) {
-            if (Property in PropertyTypes) {
-                if (PropertyTypes[Property](Element, Properties) === false) return false;
+        if (PropertyTypes["exportSettings"](Element, Properties) === false) {
+            for (const Property in Element) {
+                if (Property in PropertyTypes) {
+                    if (PropertyTypes[Property](Element, Properties) === false) return false;
+                }
             }
         }
     
@@ -603,9 +623,11 @@ const ElementTypes = {
             }
         }
     
-        for (const Property in Element) {
-            if (Property in PropertyTypes) {
-                if (PropertyTypes[Property](Element, Properties) === false) return false;
+        if (PropertyTypes["exportSettings"](Element, Properties) === false) {
+            for (const Property in Element) {
+                if (Property in PropertyTypes) {
+                    if (PropertyTypes[Property](Element, Properties) === false) return false;
+                }
             }
         }
     
@@ -640,9 +662,11 @@ const ElementTypes = {
             }
         }
     
-        for (const Property in Element) {
-            if (Property in PropertyTypes) {
-                if (PropertyTypes[Property](Element, Properties) === false) return false;
+        if (PropertyTypes["exportSettings"](Element, Properties) === false) {
+            for (const Property in Element) {
+                if (Property in PropertyTypes) {
+                    if (PropertyTypes[Property](Element, Properties) === false) return false;
+                }
             }
         }
     
@@ -686,9 +710,11 @@ const ElementTypes = {
             }
         }
     
-        for (const Property in Element) {
-            if (Property in PropertyTypes) {
-                if (PropertyTypes[Property](Element, Properties) === false) return false;
+        if (PropertyTypes["exportSettings"](Element, Properties) === false) {
+            for (const Property in Element) {
+                if (Property in PropertyTypes) {
+                    if (PropertyTypes[Property](Element, Properties) === false) return false;
+                }
             }
         }
     
@@ -739,10 +765,12 @@ const ElementTypes = {
                 Properties.Position.Y -= Parent._OriginalPosition.Y;
             }
         }
-    
-        for (const Property in Element) {
-            if (Property in PropertyTypes) {
-                if (PropertyTypes[Property](Element, Properties) === false) return false;
+
+        if (PropertyTypes["exportSettings"](Element, Properties) === false) {
+            for (const Property in Element) {
+                if (Property in PropertyTypes) {
+                    if (PropertyTypes[Property](Element, Properties) === false) return false;
+                }
             }
         }
     
