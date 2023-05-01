@@ -547,6 +547,7 @@ const ElementTypes = {
         if (PropertyTypes["exportSettings"](Element, Properties) === false) {
             for (const Property in Element) {
                 if (Property in PropertyTypes) {
+                    if (Property === "exportSettings") continue; // Already done
                     if (PropertyTypes[Property](Element, Properties) === false) return false;
                 }
             }
@@ -589,6 +590,7 @@ const ElementTypes = {
         if (PropertyTypes["exportSettings"](Element, Properties) === false) {
             for (const Property in Element) {
                 if (Property in PropertyTypes) {
+                    if (Property === "exportSettings") continue; // Already done
                     if (PropertyTypes[Property](Element, Properties) === false) return false;
                 }
             }
@@ -628,6 +630,7 @@ const ElementTypes = {
         if (PropertyTypes["exportSettings"](Element, Properties) === false) {
             for (const Property in Element) {
                 if (Property in PropertyTypes) {
+                    if (Property === "exportSettings") continue; // Already done
                     if (PropertyTypes[Property](Element, Properties) === false) return false;
                 }
             }
@@ -667,6 +670,7 @@ const ElementTypes = {
         if (PropertyTypes["exportSettings"](Element, Properties) === false) {
             for (const Property in Element) {
                 if (Property in PropertyTypes) {
+                    if (Property === "exportSettings") continue; // Already done
                     if (PropertyTypes[Property](Element, Properties) === false) return false;
                 }
             }
@@ -715,6 +719,7 @@ const ElementTypes = {
         if (PropertyTypes["exportSettings"](Element, Properties) === false) {
             for (const Property in Element) {
                 if (Property in PropertyTypes) {
+                    if (Property === "exportSettings") continue; // Already done
                     if (PropertyTypes[Property](Element, Properties) === false) return false;
                 }
             }
@@ -771,6 +776,7 @@ const ElementTypes = {
         if (PropertyTypes["exportSettings"](Element, Properties) === false) {
             for (const Property in Element) {
                 if (Property in PropertyTypes) {
+                    if (Property === "exportSettings") continue; // Already done
                     if (PropertyTypes[Property](Element, Properties) === false) return false;
                 }
             }
@@ -831,7 +837,7 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
 
     // Add properties
 
-    ExtendXML(`<string name="Name">${(Properties.Name || Properties.Class).replace("\n", "")}</string>`);
+    ExtendXML(`<string name="Name">${(Properties.Name || Properties.Class || "Unknown").replace("\n", "")}</string>`);
 
     if (Properties.BackgroundColor3 !== undefined) {
         var Colour = Properties.BackgroundColor3;
