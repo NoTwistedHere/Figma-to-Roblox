@@ -258,10 +258,12 @@ const PropertyTypes = {
                 return QuickClose("Unsupported image format: " + ExportSettings.format + ", on element: " + Element.name);
             }
 
-            console.log(ExportSettings);
-
             ExportImage(Element, Properties, ExportSettings);
+
+            return true;
         }
+
+        return false;
     },
     ["fills"]: (Element, Properties) => {
         if (Element.fills.length > 1) {
