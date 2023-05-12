@@ -59,6 +59,10 @@
     var Images = [];
 
     function DownloadImages() {
+        if (!ExportImages || Images.length == 0) {
+            return;
+        }
+
         let Zip = new JSZip();
 
         for (let i = 0; i < Images.length; i++) {
