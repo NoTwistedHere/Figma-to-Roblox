@@ -24,7 +24,7 @@
 * Changed ImageLabel default properties as Images are now supported
 * Removed Line support
 
-[opencould]: https://create.roblox.com/docs/reference/cloud
+[opencloud]: https://create.roblox.com/docs/reference/cloud
 
 ## [0.2.1] - 4/04/2023
 * Added support for frames
