@@ -74,14 +74,11 @@ function getGradientRotation(gradientTransform) {
 }
 
 function LimitDecimals(Number, Decimals) { // Limit decimals to x places and round up/down
-    if(typeof Number === 'number'){
-        if (isNaN(Number)) return 0;
-        if (Decimals !== undefined && isNaN(Decimals)) Decimals = null;
-    
-        return parseFloat(Number.toFixed(Decimals));
-    } else {
-        return 0;
-    }
+    if (typeof Number !== "number") return 0;
+    if (isNaN(Number)) return 0;
+    if (Decimals !== undefined && isNaN(Decimals)) Decimals = null;
+
+    return parseFloat(Number.toFixed(Decimals));
 }
 
 const Fonts = {
@@ -538,6 +535,7 @@ const ElementTypes = {
             },
             Children: [],
             Parent: Parent,
+            Element: Element,
         }
 
         if (Parent !== undefined) {
@@ -579,6 +577,7 @@ const ElementTypes = {
             Rotation: -Element.rotation,
             Children: [],
             Parent: Parent,
+            Element: Element,
         }
 
         if (Parent !== undefined) {
@@ -621,6 +620,7 @@ const ElementTypes = {
             Rotation: -Element.rotation,
             Children: [],
             Parent: Parent,
+            Element: Element,
         }
 
         if (Parent !== undefined) {
@@ -710,6 +710,7 @@ const ElementTypes = {
                 }
             ],
             Parent: Parent,
+            Element: Element,
         }
 
         if (Parent !== undefined) {
@@ -767,6 +768,7 @@ const ElementTypes = {
             Rotation: Element.rotation,
             Children: [],
             Parent: Parent,
+            Element: Element,
         }
 
         if (Parent !== undefined) {
@@ -807,6 +809,7 @@ const ElementTypes = {
             Rotation: Element.rotation,
             Children: [],
             Parent: Parent,
+            Element: Element,
         }
 
         if (Parent !== undefined) {
@@ -952,21 +955,28 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
         ExtendXML(`<UDim2 name="Size"><XS>0</XS><XO>${LimitDecimals(Size.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Size.Y, 0)}</YO></UDim2>`);
         ExtendXML(`<float name="Rotation">${LimitDecimals(-Properties.Rotation, 3)}</float>`);
     } else {*/
-    if (Properties.Position !== undefined) {
-        var Position = Properties.Position;
-        ExtendXML(`<UDim2 name="Position"><XS>0</XS><XO>${LimitDecimals(Position.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Position.Y, 0)}</YO></UDim2>`);
-    }
-
     if (Properties.Size !== undefined) {
         var Size = Properties.Size;
         ExtendXML(`<UDim2 name="Size"><XS>0</XS><XO>${LimitDecimals(Size.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Size.Y, 0)}</YO></UDim2>`);
     }
 
-    if (Properties.Rotation !== undefined) {
-        if (Properties.Class !== "UIGradient") {
-            console.warn("WARNING: Rotation support has been temporarily removed as it will result in unexpected behaviour. You will need to manually rotate the object in Roblox Studio.");
+    if (Properties.Rotation !== undefined && Properties.Rotation !== 0) {
+        ExtendXML(`<float name="Rotation">${LimitDecimals(Properties.Rotation, 3)}</float>`);
+
+        if (Properties.Position !== undefined && Properties.Size !== undefined) {
+            var Size = Properties.Size;
+            var BoundingBox = Properties.Element.absoluteBoundingBox;
+
+            Properties.Position = {
+                X: BoundingBox.x + ((BoundingBox.width - Size.X) / 2),
+                Y: BoundingBox.y + ((BoundingBox.height - Size.Y) / 2)
+            }
         }
-        else ExtendXML(`<float name="Rotation">${LimitDecimals(Properties.Rotation, 3)}</float>`); // Rotation is supported for UIGradient
+    }
+
+    if (Properties.Position !== undefined) {
+        var Position = Properties.Position;
+        ExtendXML(`<UDim2 name="Position"><XS>0</XS><XO>${LimitDecimals(Position.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Position.Y, 0)}</YO></UDim2>`);
     }
 
     if (Properties.BackgroundTransparency !== undefined) ExtendXML(`<float name="BackgroundTransparency">${1 - LimitDecimals(Properties.BackgroundTransparency, 3)}</float>`);

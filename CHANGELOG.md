@@ -1,7 +1,12 @@
 # Figma to Roblox Changelog
 
 ## Unreleased Changes
+* Unreleated changes will appear here
+
+## [0.5] - 18/05/2023
 * Will no longer prompt to download images when the checkbox is unchecked
+* Symbols no longer break the LimitDecimals function (contrib by @crunchbone)
+* Rotation is now supported
 
 ## [0.4.1a] - 01/05/2023
 * Fixed a mistake with the previous fix
