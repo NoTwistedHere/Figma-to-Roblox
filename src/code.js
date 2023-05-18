@@ -74,10 +74,14 @@ function getGradientRotation(gradientTransform) {
 }
 
 function LimitDecimals(Number, Decimals) { // Limit decimals to x places and round up/down
-    if (isNaN(Number)) return 0;
-    if (Decimals !== undefined && isNaN(Decimals)) Decimals = null;
-
-    return parseFloat(Number.toFixed(Decimals));
+    if(typeof Number === 'number'){
+        if (isNaN(Number)) return 0;
+        if (Decimals !== undefined && isNaN(Decimals)) Decimals = null;
+    
+        return parseFloat(Number.toFixed(Decimals));
+    } else {
+        return 0;
+    }
 }
 
 const Fonts = {
