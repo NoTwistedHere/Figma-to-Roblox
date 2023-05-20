@@ -1,6 +1,4 @@
 /*
-    BETA VERSION
-
     @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@bbbbbbbb@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     @@@@@FFFFFFFFFFFFFFFFFFFFFF@@iiii@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@tttt@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@RRRRRRRRRRRRRRRRR@@@@@@@@@@@@@@@@@@@b::::::b@@@@@@@@@@@@lllllll@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -39,8 +37,7 @@
         Only one fill colour per layer
         Effects are not supported (e.g. drop shadows, inner shadows, etc. May be added in the future)
         Vectors are not supported, only Rectangles, Ellipses, and Text (lines are partially supported)
-        Rotation is not currently supported due to complications, so to save yourself some time, don't rotate your layers before running the plugin (rotate after once imported into your project)
-    
+
     Known Issues:
 
 */
@@ -70,6 +67,7 @@ function getGradientRotation(gradientTransform) {
     const a = gradientTransform[0][0];
     const b = gradientTransform[0][1];
     const angle = Math.atan2(b, a) * 180 / Math.PI;
+
     return angle >= 0 ? angle : angle + 360;
 }
 
@@ -215,6 +213,8 @@ function ExportImage(Element, Properties, CustomExport) {
 
 const PropertyTypes = {
     ["children"]: (Element, Properties) => {
+        if (Properties.NoChildren || Properties.Children == undefined || Properties.Class == "ImageLabel") return;
+        
         for (var i = 0; i < Element.children.length; i++) {
             Properties.Children.push(GetMainProperties(Element.children[i], Properties));
         }
@@ -254,6 +254,8 @@ const PropertyTypes = {
             Properties.Class = "ImageLabel";
             Properties.ImageTransparency = Properties.BackgroundTransparency;
             Properties.BackgroundTransparency = 0;
+            Properties.NoChildren = true;
+            Properties.Children = undefined;
 
             if (ExportSettings.format !== "PNG" && ExportSettings.format !== "JPG") {
                 return QuickClose("Unsupported image format: " + ExportSettings.format + ", on element: " + Element.name);
@@ -642,46 +644,6 @@ const ElementTypes = {
     
         return Properties;
     },
-    /*["LINE"]: (Element, Parent) => { // Lines are a bit of a pain, so I'm going to leave them out as we have image support now
-        var Properties = {
-            Class: "Frame",
-            Type: Element.type,
-            Name: Element.name,
-            BackgroundTransparency: Element.opacity,
-            BorderSizePixel: 0,
-            Visible: Element.visible,
-            Position: {
-                X: Element.x,
-                Y: Element.y
-            },
-            Size: {
-                X: Element.width,
-                Y: 0
-            },
-            Rotation: -Element.rotation,
-            Children: [],
-            Parent: Parent,
-        }
-
-        if (Parent !== undefined) {
-            //if (Parent.GroupOpacity !== undefined) Properties.BackgroundTransparency = Parent.GroupOpacity * Properties.BackgroundTransparency; // maths :)
-            if (Parent._OriginalPosition !== undefined) {
-                Properties.Position.X -= Parent._OriginalPosition.X;
-                Properties.Position.Y -= Parent._OriginalPosition.Y;
-            }
-        }
-    
-        if (PropertyTypes["exportSettings"](Element, Properties) === false) {
-            for (const Property in Element) {
-                if (Property in PropertyTypes) {
-                    if (Property === "exportSettings") continue; // Already done
-                    if (PropertyTypes[Property](Element, Properties) === false) return false;
-                }
-            }
-        }
-    
-        return Properties;
-    },*/
     ["ELLIPSE"]: (Element, Parent) => {
         var Properties = {
             Class: "Frame",
@@ -832,10 +794,8 @@ const ElementTypes = {
 
 function CreateRobloxElement(Properties) { // Creates the roblox xml for the element
     var XML = "";
-    //var Count = 0;
 
     function ExtendXML(String) {
-        //Count += 1;
         XML += String;
     }
 
@@ -922,39 +882,6 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
         }
     }
 
-    /*if (Properties.Position !== undefined && Properties.Size !== undefined && Properties.Rotation !== undefined && Properties.Rotation !== 0) {
-        var Position = Properties.Position;
-        var Size = Properties.Size;
-
-        var Center = {
-            X: Position.X + Size.X / 2,
-            Y: Position.Y + Size.Y / 2
-        }
-
-        var Radians = Properties.Rotation * Math.PI / 180;
-        var RotatedCenter;
-
-        if (Properties.Rotation < 0) {
-            RotatedCenter = {
-                X: Center.X * Math.cos(Radians) + Center.Y * Math.sin(Radians),
-                Y: Center.X * Math.sin(Radians) - Center.Y * Math.cos(Radians) + Size.Y
-            }
-        } else {
-            RotatedCenter = {
-                X: Center.X * Math.cos(Radians) + Center.Y * Math.sin(Radians),
-                Y: -Center.X * Math.sin(Radians) + Center.Y * Math.cos(Radians)
-            }
-        }
-        
-        var RotatedPosition = {
-            X: LimitDecimals(RotatedCenter.X - Size.X / 2, 0),
-            Y: LimitDecimals(-RotatedCenter.Y - Size.Y / 2, 0)
-        }
-        
-        ExtendXML(`<UDim2 name="Position"><XS>0</XS><XO>${RotatedPosition.X}</XO><YS>0</YS><YO>${RotatedPosition.Y}</YO></UDim2>`);
-        ExtendXML(`<UDim2 name="Size"><XS>0</XS><XO>${LimitDecimals(Size.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Size.Y, 0)}</YO></UDim2>`);
-        ExtendXML(`<float name="Rotation">${LimitDecimals(-Properties.Rotation, 3)}</float>`);
-    } else {*/
     if (Properties.Size !== undefined) {
         var Size = Properties.Size;
         ExtendXML(`<UDim2 name="Size"><XS>0</XS><XO>${LimitDecimals(Size.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Size.Y, 0)}</YO></UDim2>`);
@@ -1014,7 +941,7 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
 
     // Add children
 
-    if (Properties.Children !== undefined && Properties.Children.length > 0) {
+    if (Properties.Children !== undefined && Properties.Children.length > 0 && Properties.NoChildren === undefined) {
         for (var i = 0; i < Properties.Children.length; i++) {
             ExtendXML(CreateRobloxElement(Properties.Children[i], i));
         }
