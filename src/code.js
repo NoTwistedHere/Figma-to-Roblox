@@ -923,7 +923,8 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
     if (Properties.TextYAlignment !== undefined) ExtendXML(`<token name="TextYAlignment">${TextYAlignments.indexOf(Properties.TextYAlignment)}</token>`);
     if (Properties.Font !== undefined) {
         const Font = Fonts[Properties.Font.Style] || Fonts["Regular"];
-        ExtendXML(`<Font name="FontFace"><Family><url>rbxasset://fonts/families/${Properties.Font.Family}.json</url></Family><Weight>${Font.Weight}</Weight><Style>${Font.Style}</Style></Font>`);
+        const fontFamily = Properties.Font.Family.replace(/\s/g, '');
+        ExtendXML(`<Font name="FontFace"><Family><url>rbxasset://fonts/families/${fontFamily}.json</url></Family><Weight>${Font.Weight}</Weight><Style>${Font.Style}</Style></Font>`);
     }
     if (Properties.RichText !== undefined) ExtendXML(`<bool name="RichText">${Properties.RichText}</bool>`);
     if (Properties.UploadId !== undefined && ImageExports[Properties.UploadId] !== undefined) ExtendXML(`<string name="Image"><url>${ImageExports[Properties.UploadId].ImageId}</url></string>`); // Image is exported
