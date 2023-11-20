@@ -214,11 +214,11 @@ function ExportImage(Element, Properties, CustomExport) {
 const PropertyTypes = {
     ["children"]: (Element, Properties) => {
         if (Properties.NoChildren || Properties.Children == undefined || Properties.Class == "ImageLabel") return;
-        
+
         for (var i = 0; i < Element.children.length; i++) {
             Properties.Children.push(GetMainProperties(Element.children[i], Properties));
         }
-        
+
         /*
         // TODO: Re-implement masks
         var Mask = [];
@@ -274,11 +274,11 @@ const PropertyTypes = {
         } else if (Element.fills.length == 0) {
             Properties.BackgroundColor3 = {R: 0, G: 0, B: 0}; // TODO: default to missing texture
         }
-    
+
         const Filler = Element.fills[0];
 
         if (!Filler) return;
-    
+
         switch (Filler.type) {
             case "SOLID":
                 var Colour = {
@@ -501,9 +501,9 @@ const PropertyTypes = {
             Class: "UIStroke",
             Type: "UIStroke",
             Colour: {
-                R: Stroke.color.r || 1,
-                G: Stroke.color.g || 1,
-                B: Stroke.color.b || 1,
+                R: Stroke.color.r !== undefined ? Stroke.color.r : 1,
+                G: Stroke.color.g !== undefined ? Stroke.color.g : 1,
+                B: Stroke.color.b !== undefined ? Stroke.color.b : 1,
             },
             Transparency: Element.opacity,
             Thickness: Element.strokeWeight,
@@ -591,7 +591,7 @@ const ElementTypes = {
 
             Properties.BackgroundTransparency = Properties.GroupOpacity // simple fix
         }
-    
+
         if (PropertyTypes["exportSettings"](Element, Properties) === false) {
             for (const Property in Element) {
                 if (Property in PropertyTypes) {
@@ -600,7 +600,7 @@ const ElementTypes = {
                 }
             }
         }
-    
+
         return Properties;
     },
     ["RECTANGLE"]: (Element, Parent) => {
@@ -632,7 +632,7 @@ const ElementTypes = {
                 Properties.Position.Y -= Parent._OriginalPosition.Y;
             }
         }
-    
+
         if (PropertyTypes["exportSettings"](Element, Properties) === false) {
             for (const Property in Element) {
                 if (Property in PropertyTypes) {
@@ -641,7 +641,7 @@ const ElementTypes = {
                 }
             }
         }
-    
+
         return Properties;
     },
     ["ELLIPSE"]: (Element, Parent) => {
@@ -682,7 +682,7 @@ const ElementTypes = {
                 Properties.Position.Y -= Parent._OriginalPosition.Y;
             }
         }
-    
+
         if (PropertyTypes["exportSettings"](Element, Properties) === false) {
             for (const Property in Element) {
                 if (Property in PropertyTypes) {
@@ -691,7 +691,7 @@ const ElementTypes = {
                 }
             }
         }
-    
+
         return Properties;
     },
     ["TEXT"]: (Element, Parent) => {
@@ -699,7 +699,7 @@ const ElementTypes = {
             === WARNING ===
 
             Some fonts are not supported by Roblox.
-            
+
             If you don't see the text in Roblox, check the following:
 
                 Check the output for a message saying "Temp read failed"
@@ -749,7 +749,7 @@ const ElementTypes = {
                 }
             }
         }
-    
+
         return Properties;
     },
     ["OTHER"]: (Element, Parent) => {
@@ -785,7 +785,7 @@ const ElementTypes = {
         if (Element["children"]) PropertyTypes["children"](Element, Properties);
 
         ExportImage(Element, Properties);
-    
+
         return Properties;
     }
 }
@@ -956,7 +956,7 @@ function ConvertToRoblox(Objects) { // Converts the code into roblox xml format
     for (var i = 0; i < Objects.length; i++) {
         XML += CreateRobloxElement(Objects[i]);
     }
-    
+
     return XML + '</roblox>';
 }
 
@@ -1021,14 +1021,14 @@ figma.ui.onmessage = msg => {
                 if (!HandledError) {
                     throw e;
                 }
-            
+
                 console.warn(e);
             }
             break;
         case "close-plugin":
             figma.closePlugin();
             break;
-        case "SetAsync": 
+        case "SetAsync":
             figma.clientStorage.setAsync(msg.key, msg.value);
             break;
         case "FetchAsync":
