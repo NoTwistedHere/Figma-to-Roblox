@@ -272,7 +272,7 @@ const PropertyTypes = {
         if (Element.fills.length > 1) {
             return QuickClose("Multiple fills are unsupported, on element: " + Element.name);
         } else if (Element.fills.length == 0) {
-            Properties.BackgroundColor3 = {R: 0, G: 0, B: 0}; // TODO: default to missing texture
+            Properties.BackgroundColor3 = {R: 1, G: 1, B: 1}; // TODO: default to missing texture
         }
 
         const Filler = Element.fills[0];
