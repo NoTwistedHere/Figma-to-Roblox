@@ -601,7 +601,7 @@ const ElementTypes = {
             }
         }
 
-        if (Element.name === "Container") {
+        if (Element.name === "Container" || Element.name === "ScrollingFrame") {
             Properties.Class = "ScrollingFrame"
 
             const template = Element.children[0]
@@ -624,6 +624,17 @@ const ElementTypes = {
                 VerticalAlignment: yAxis === "CENTER" ? 0 : yAxis === "MIN" ? 1 : 2,
                 HorizontalAlignment: xAxis === "CENTER" ? 0 : xAxis === "MIN" ? 1 : 2,
                 FillDirection: layoutInfo.layoutMode === "VERTICAL" ? 1 : 0,
+            })
+        }
+
+        if (Element.paddingTop !== 0 || Element.paddingRight !== 0 || Element.paddingBottom !== 0 || Element.paddingLeft !== 0) {
+            Properties.Children.push({
+                Class: "UIPadding",
+                Type: "UIPadding",
+                PaddingTop: Element.paddingTop,
+                PaddingBottom: Element.paddingBottom,
+                PaddingLeft: Element.paddingLeft,
+                PaddingRight: Element.paddingRight,
             })
         }
 
@@ -938,6 +949,11 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
     if (Properties.VerticalAlignment !== undefined) ExtendXML(`<token name="VerticalAlignment">${Properties.VerticalAlignment}</token>`);
     if (Properties.CellSize) ExtendXML(`<UDim2 name="CellSize"><XS>0</XS><XO>${LimitDecimals(Properties.CellSize.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Properties.CellSize.Y, 0)}</YO></UDim2>`);
     if (Properties.CellPadding) ExtendXML(`<UDim2 name="CellPadding"><XS>0</XS><XO>${LimitDecimals(Properties.CellPadding.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Properties.CellPadding.Y, 0)}</YO></UDim2>`);
+
+    if (Properties.PaddingBottom) ExtendXML(`<UDim name="PaddingBottom"><S>0</S><O>${LimitDecimals(Properties.PaddingBottom, 0)}</O></UDim>`);
+    if (Properties.PaddingTop) ExtendXML(`<UDim name="PaddingTop"><S>0</S><O>${LimitDecimals(Properties.PaddingTop, 0)}</O></UDim>`);
+    if (Properties.PaddingLeft) ExtendXML(`<UDim name="PaddingLeft"><S>0</S><O>${LimitDecimals(Properties.PaddingLeft, 0)}</O></UDim>`);
+    if (Properties.PaddingRight) ExtendXML(`<UDim name="PaddingRight"><S>0</S><O>${LimitDecimals(Properties.PaddingRight, 0)}</O></UDim>`);
 
     if (Properties.BackgroundTransparency !== undefined) ExtendXML(`<float name="BackgroundTransparency">${1 - LimitDecimals(Properties.BackgroundTransparency, 3)}</float>`);
     if (Properties.Thickness !== undefined) ExtendXML(`<float name="Thickness">${LimitDecimals(Properties.Thickness, 0)}</float>`);
