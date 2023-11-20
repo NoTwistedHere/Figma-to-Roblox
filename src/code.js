@@ -799,6 +799,13 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
         XML += String;
     }
 
+    switch (Properties.Name) {
+        case "Container":
+        case "ScrollingFrame":
+            Properties.Class = "ScrollingFrame"
+            break;
+    }
+
     ExtendXML(`<Item class="${Properties.Class}" referent="RBX0">`);
     ExtendXML(`<Properties>`);
 
