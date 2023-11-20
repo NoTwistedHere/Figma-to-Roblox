@@ -601,6 +601,32 @@ const ElementTypes = {
             }
         }
 
+        if (Element.name === "Container") {
+            Properties.Class = "ScrollingFrame"
+
+            const template = Element.children[0]
+
+            const layoutInfo = Element.inferredAutoLayout
+            const yAxis = Element.primaryAxisAlignItems
+            const xAxis = Element.counterAxisAlignItems
+
+            Properties.Children.push({
+                Class: "UIGridLayout",
+                Type: "UIGridLayout",
+                CellSize: {
+                    X: template.width,
+                    Y: template.height
+                },
+                CellPadding: {
+                    X: layoutInfo.itemSpacing,
+                    Y: layoutInfo.itemSpacing
+                },
+                VerticalAlignment: yAxis === "CENTER" ? 0 : yAxis === "MIN" ? 1 : 2,
+                HorizontalAlignment: xAxis === "CENTER" ? 0 : xAxis === "MIN" ? 1 : 2,
+                FillDirection: layoutInfo.layoutMode === "VERTICAL" ? 1 : 0,
+            })
+        }
+
         return Properties;
     },
     ["RECTANGLE"]: (Element, Parent) => {
@@ -799,12 +825,6 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
         XML += String;
     }
 
-    switch (Properties.Name) {
-        case "Container":
-        case "ScrollingFrame":
-            Properties.Class = "ScrollingFrame"
-            break;
-    }
 
     ExtendXML(`<Item class="${Properties.Class}" referent="RBX0">`);
     ExtendXML(`<Properties>`);
@@ -913,6 +933,12 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
         ExtendXML(`<UDim2 name="Position"><XS>0</XS><XO>${LimitDecimals(Position.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Position.Y, 0)}</YO></UDim2>`);
     }
 
+    if (Properties.FillDirection !== undefined) ExtendXML(`<token name="FillDirection">${Properties.FillDirection}</token>`);
+    if (Properties.HorizontalAlignment !== undefined) ExtendXML(`<token name="HorizontalAlignment">${Properties.HorizontalAlignment}</token>`);
+    if (Properties.VerticalAlignment !== undefined) ExtendXML(`<token name="VerticalAlignment">${Properties.VerticalAlignment}</token>`);
+    if (Properties.CellSize) ExtendXML(`<UDim2 name="CellSize"><XS>0</XS><XO>${LimitDecimals(Properties.CellSize.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Properties.CellSize.Y, 0)}</YO></UDim2>`);
+    if (Properties.CellPadding) ExtendXML(`<UDim2 name="CellPadding"><XS>0</XS><XO>${LimitDecimals(Properties.CellPadding.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Properties.CellPadding.Y, 0)}</YO></UDim2>`);
+
     if (Properties.BackgroundTransparency !== undefined) ExtendXML(`<float name="BackgroundTransparency">${1 - LimitDecimals(Properties.BackgroundTransparency, 3)}</float>`);
     if (Properties.Thickness !== undefined) ExtendXML(`<float name="Thickness">${LimitDecimals(Properties.Thickness, 0)}</float>`);
     if (Properties.LineJoinMode !== undefined) ExtendXML(`<Enum name="LineJoinMode">${LineJoinModes.indexOf(Properties.LineJoinMode)}</Enum>`);
@@ -948,7 +974,6 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
     ExtendXML("</Properties>");
 
     // Add children
-
     if (Properties.Children !== undefined && Properties.Children.length > 0 && Properties.NoChildren === undefined) {
         for (var i = 0; i < Properties.Children.length; i++) {
             ExtendXML(CreateRobloxElement(Properties.Children[i], i));
