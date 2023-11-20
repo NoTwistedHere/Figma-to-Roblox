@@ -744,10 +744,13 @@ const ElementTypes = {
                 if FontFace/Weight says "(unavailable)" This means the font style is not supported.
         */
 
+                console.log(Element)
         var Properties = {
             Class: "TextLabel",
             Type: Element.type,
             Name: Element.name,
+            AutomaticSize: Element.textAutoResize === "HEIGHT" ? 2 : Element.textAutoResize === "WIDTH" ? 1 : 0,
+            TextWrapped: Element.textAutoResize === "HEIGHT",
             BackgroundTransparency: 0,
             BorderSizePixel: 0,
             TextTransparency: Element.opacity,
@@ -955,6 +958,7 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
     if (Properties.PaddingLeft) ExtendXML(`<UDim name="PaddingLeft"><S>0</S><O>${LimitDecimals(Properties.PaddingLeft, 0)}</O></UDim>`);
     if (Properties.PaddingRight) ExtendXML(`<UDim name="PaddingRight"><S>0</S><O>${LimitDecimals(Properties.PaddingRight, 0)}</O></UDim>`);
 
+    if (Properties.AutomaticSize !== undefined) ExtendXML(`<token name="AutomaticSize">${Properties.AutomaticSize}</token>`);
     if (Properties.BackgroundTransparency !== undefined) ExtendXML(`<float name="BackgroundTransparency">${1 - LimitDecimals(Properties.BackgroundTransparency, 3)}</float>`);
     if (Properties.Thickness !== undefined) ExtendXML(`<float name="Thickness">${LimitDecimals(Properties.Thickness, 0)}</float>`);
     if (Properties.LineJoinMode !== undefined) ExtendXML(`<Enum name="LineJoinMode">${LineJoinModes.indexOf(Properties.LineJoinMode)}</Enum>`);
