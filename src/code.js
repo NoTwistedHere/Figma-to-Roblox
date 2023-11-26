@@ -512,7 +512,7 @@ const PropertyTypes = {
             return;
         }
 
-        const isInsideTextButton = Properties.Name.includes("TextButton")
+        const isInsideTextObject = Properties.Name.includes("TextButton") || Properties.Name.includes("TextBox");
 
         Properties.Children.push({
             Class: "UIStroke",
@@ -525,7 +525,7 @@ const PropertyTypes = {
             Transparency: Element.opacity,
             Thickness: Element.strokeWeight,
             LineJoinMode: Element.strokeJoin.substring(0, 1).toUpperCase() + Element.strokeJoin.substring(1).toLowerCase(),
-            ApplyStrokeMode: isInsideTextButton ? 1 : 0,
+            ApplyStrokeMode: isInsideTextObject ? 1 : 0,
             Children: []
         });
     }
