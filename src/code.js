@@ -512,6 +512,8 @@ const PropertyTypes = {
             return;
         }
 
+        const isInsideTextButton = Properties.Name.includes("TextButton")
+
         Properties.Children.push({
             Class: "UIStroke",
             Type: "UIStroke",
@@ -523,6 +525,7 @@ const PropertyTypes = {
             Transparency: Element.opacity,
             Thickness: Element.strokeWeight,
             LineJoinMode: Element.strokeJoin.substring(0, 1).toUpperCase() + Element.strokeJoin.substring(1).toLowerCase(),
+            ApplyStrokeMode: isInsideTextButton ? 1 : 0,
             Children: []
         });
     }
@@ -759,7 +762,6 @@ const ElementTypes = {
                 if FontFace/Weight says "(unavailable)" This means the font style is not supported.
         */
 
-                console.log(Element)
         var Properties = {
             Class: "TextLabel",
             Type: Element.type,
@@ -988,6 +990,8 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
         var Position = Properties.Position;
         ExtendXML(`<UDim2 name="Position"><XS>0</XS><XO>${LimitDecimals(Position.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Position.Y, 0)}</YO></UDim2>`);
     }
+
+    if (Properties.ApplyStrokeMode !== undefined) ExtendXML(`<token name="ApplyStrokeMode">${Properties.ApplyStrokeMode}</token>`);
 
     if (Properties.FillDirection !== undefined) ExtendXML(`<token name="FillDirection">${Properties.FillDirection}</token>`);
     if (Properties.HorizontalAlignment !== undefined) ExtendXML(`<token name="HorizontalAlignment">${Properties.HorizontalAlignment}</token>`);
