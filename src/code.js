@@ -1094,15 +1094,20 @@ async function RunPlugin() {
 
     var XML = ConvertToRoblox(Objects);
 
+    const firstObject = Objects[0]
+
     Objects = null;
 
     if (XML === false) {
         return;
     }
 
+    const name = firstObject.Name ? firstObject.Name : "Export"
+
     figma.ui.postMessage({
         type: "Download",
-        data: XML
+        data: XML,
+        name: name
     });
     XML = null;
 
