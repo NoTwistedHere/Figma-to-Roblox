@@ -42,6 +42,21 @@
 
 */
 
+const INSTANCE_NAMES = [
+    "BillboardGui",
+    "CanvasGroup",
+    "ScrollingFrame",
+    "ImageButton",
+    "ImageLabel",
+    "ViewportFrame",
+    "ScreenGui",
+    "SurfaceGui",
+    "TextButton",
+    "TextLabel",
+    "TextBox",
+
+]
+
 var HandledError = false;
 var CurrentNotif;
 var ImageExports = {};
@@ -839,13 +854,33 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
         XML += String;
     }
 
+    const oldClass = Properties.Class + "";
+
+    const propertyName = Properties.Name ? Properties.Name : ""
+    let includedInstanceName
+    for (const name of INSTANCE_NAMES) {
+        if (propertyName.includes(name)) {
+            includedInstanceName = name
+            break
+        }
+    }
+
+    if (includedInstanceName) {
+        Properties.Class = includedInstanceName
+        Properties.Name = Properties.Name.replace(` ${includedInstanceName}`, "")
+        Properties.Name = Properties.Name.replace(includedInstanceName, "")
+    }
 
     ExtendXML(`<Item class="${Properties.Class}" referent="RBX0">`);
     ExtendXML(`<Properties>`);
 
+    Properties.Class = oldClass
+
     // Add properties
 
     ExtendXML(`<string name="Name">${(Properties.Name || Properties.Class || "Unknown").replace("\n", "")}</string>`);
+
+
 
     if (Properties.BackgroundColor3 !== undefined) {
         var Colour = Properties.BackgroundColor3;
