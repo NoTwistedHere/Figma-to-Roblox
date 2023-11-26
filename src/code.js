@@ -1007,8 +1007,8 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
     if (Properties.AutomaticSize !== undefined) ExtendXML(`<token name="AutomaticSize">${Properties.AutomaticSize}</token>`);
     if (Properties.BackgroundTransparency !== undefined) ExtendXML(`<float name="BackgroundTransparency">${1 - LimitDecimals(Properties.BackgroundTransparency, 3)}</float>`);
     if (Properties.Thickness !== undefined) ExtendXML(`<float name="Thickness">${LimitDecimals(Properties.Thickness, 0)}</float>`);
-    if (Properties.LineJoinMode !== undefined) ExtendXML(`<Enum name="LineJoinMode">${LineJoinModes.indexOf(Properties.LineJoinMode)}</Enum>`);
-    if (Properties.CornerRadius !== undefined) ExtendXML(`<UDim2 name="CornerRadius"><S>${LimitDecimals(Properties.CornerRadius.S, 0)}</S><O>${LimitDecimals(Properties.CornerRadius.O, 0)}</O></UDim2>`);
+    if (Properties.LineJoinMode !== undefined) ExtendXML(`<token name="LineJoinMode">${LineJoinModes.indexOf(Properties.LineJoinMode)}</token>`);
+    if (Properties.CornerRadius !== undefined) ExtendXML(`<UDim name="CornerRadius"><S>${LimitDecimals(Properties.CornerRadius.S, 0)}</S><O>${LimitDecimals(Properties.CornerRadius.O, 0)}</O></UDim>`);
     if (Properties.BorderSizePixel !== undefined) ExtendXML(`<int name="BorderSizePixel">${LimitDecimals(Properties.BorderSizePixel, 0)}</int>`);
     if (Properties.ClipsDescendants !== undefined) ExtendXML(`<bool name="ClipsDescendants">${Properties.ClipsDescendants}</bool>`);
     if (Properties.TextTransparency !== undefined) ExtendXML(`<float name="TextTransparency">${1 - Properties.TextTransparency}</float>`);
@@ -1026,8 +1026,8 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
         ExtendXML(`<Font name="FontFace"><Family><url>rbxasset://fonts/families/${fontFamily}.json</url></Family><Weight>${Font.Weight}</Weight><Style>${Font.Style}</Style></Font>`);
     }
     if (Properties.RichText !== undefined) ExtendXML(`<bool name="RichText">${Properties.RichText}</bool>`);
-    if (Properties.UploadId !== undefined && ImageExports[Properties.UploadId] !== undefined) ExtendXML(`<string name="Image"><url>${ImageExports[Properties.UploadId].ImageId}</url></string>`); // Image is exported
-    else if (Properties.Image !== undefined) ExtendXML(`<string name="Image">${Properties.Image}</string>`); // Image is not exported
+    if (Properties.UploadId !== undefined && ImageExports[Properties.UploadId] !== undefined) ExtendXML(`<Content name="Image"><url>${ImageExports[Properties.UploadId].ImageId ? ImageExports[Properties.UploadId].ImageId : "rbxasset://textures/ui/GuiImagePlaceholder.png"}</url></Content>`); // Image is exported
+    else if (Properties.Image !== undefined) ExtendXML(`<Content name="Image">${Properties.Image}</Content>`); // Image is not exported
     if (Properties.ImageTransparency !== undefined) ExtendXML(`<float name="ImageTransparency">${1 - LimitDecimals(Properties.ImageTransparency, 3)}</float>`);
     //if (Properties.Position !== undefined) ExtendXML(`<UDim2 name="Position"><XS>0</XS><XO>${LimitDecimals(Properties.Position.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Properties.Position.Y, 0)}</YO></UDim2>`);
     //if (Properties.Size !== undefined) ExtendXML(`<UDim2 name="Size"><XS>0</XS><XO>${LimitDecimals(Properties.Size.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Properties.Size.Y, 0)}</YO></UDim2>`);
