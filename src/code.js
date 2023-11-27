@@ -1010,7 +1010,15 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
     if (Properties.PaddingRight) ExtendXML(`<UDim name="PaddingRight"><S>0</S><O>${LimitDecimals(Properties.PaddingRight, 0)}</O></UDim>`);
 
     if (Properties.AutomaticSize !== undefined) ExtendXML(`<token name="AutomaticSize">${Properties.AutomaticSize}</token>`);
-    if (Properties.BackgroundTransparency !== undefined) ExtendXML(`<float name="BackgroundTransparency">${1 - LimitDecimals(Properties.BackgroundTransparency, 3)}</float>`);
+
+    let isTransparent
+    if (Properties.Element) {
+        const fills = Properties.Element.fills
+        isTransparent = fills && fills.length === 0;
+    }
+
+    if (Properties.BackgroundTransparency !== undefined) ExtendXML(`<float name="BackgroundTransparency">${isTransparent ? 1 : 1 - LimitDecimals(Properties.BackgroundTransparency, 3)}</float>`);
+
     if (Properties.Thickness !== undefined) ExtendXML(`<float name="Thickness">${LimitDecimals(Properties.Thickness, 0)}</float>`);
     if (Properties.LineJoinMode !== undefined) ExtendXML(`<token name="LineJoinMode">${LineJoinModes.indexOf(Properties.LineJoinMode)}</token>`);
     if (Properties.CornerRadius !== undefined) ExtendXML(`<UDim name="CornerRadius"><S>${LimitDecimals(Properties.CornerRadius.S, 0)}</S><O>${LimitDecimals(Properties.CornerRadius.O, 0)}</O></UDim>`);
