@@ -873,12 +873,17 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
         Properties.Name = Properties.Name.replace(includedInstanceName, "")
     }
 
-    if (includedInstanceName === "ScreenGui") {
+    switch (includedInstanceName) {
+        case "ScreenGui":
         const child = Properties.Children[0]
         if (Properties.Position && child && child.Class === "Frame") {
             child.Position = Properties.Position
         }
+        break
+        case "TextButton":
+            Properties.Text = ""
     }
+
 
     ExtendXML(`<Item class="${Properties.Class}" referent="RBX0">`);
     ExtendXML(`<Properties>`);
