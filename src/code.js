@@ -42,6 +42,7 @@
 
 */
 
+
 const INSTANCE_NAMES = [
     "BillboardGui",
     "CanvasGroup",
@@ -84,6 +85,17 @@ function getGradientRotation(gradientTransform) {
     const angle = Math.atan2(b, a) * 180 / Math.PI;
 
     return angle >= 0 ? angle : angle + 360;
+}
+
+function getImageIdFromStyle(hash) {
+    const styles = figma.getLocalPaintStyles();
+
+    for (var i = 0; i < styles.length; i++) {
+        const key = styles[i].paints[0].imageHash;
+        if (key === hash) {
+            return styles[i].description
+        }
+    }
 }
 
 function LimitDecimals(Number, Decimals) { // Limit decimals to x places and round up/down
@@ -350,6 +362,7 @@ const PropertyTypes = {
                     Properties.Class = "ImageLabel";
                     Properties.BackgroundTransparency = 0;
                     Properties.ImageTransparency = Filler.opacity;
+                    Properties.Image = `rbxassetid://${getImageIdFromStyle(Element.fills[0].imageHash)}`.replace("rbxassetid://rbxassetid://", "rbxassetid://")
 
                     ExportImage(Element, Properties);
                 }
@@ -1039,7 +1052,7 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
         ExtendXML(`<Font name="FontFace"><Family><url>rbxasset://fonts/families/${fontFamily}.json</url></Family><Weight>${Font.Weight}</Weight><Style>${Font.Style}</Style></Font>`);
     }
     if (Properties.RichText !== undefined) ExtendXML(`<bool name="RichText">${Properties.RichText}</bool>`);
-    if (Properties.UploadId !== undefined && ImageExports[Properties.UploadId] !== undefined) ExtendXML(`<Content name="Image"><url>${ImageExports[Properties.UploadId].ImageId ? ImageExports[Properties.UploadId].ImageId : "rbxasset://textures/ui/GuiImagePlaceholder.png"}</url></Content>`); // Image is exported
+    if (Properties.UploadId !== undefined && ImageExports[Properties.UploadId] !== undefined) ExtendXML(`<Content name="Image"><url>${ImageExports[Properties.UploadId].ImageId ? ImageExports[Properties.UploadId].ImageId : Properties.Image}</url></Content>`); // Image is exported
     else if (Properties.Image !== undefined) ExtendXML(`<Content name="Image">${Properties.Image}</Content>`); // Image is not exported
     if (Properties.ImageTransparency !== undefined) ExtendXML(`<float name="ImageTransparency">${1 - LimitDecimals(Properties.ImageTransparency, 3)}</float>`);
     //if (Properties.Position !== undefined) ExtendXML(`<UDim2 name="Position"><XS>0</XS><XO>${LimitDecimals(Properties.Position.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Properties.Position.Y, 0)}</YO></UDim2>`);
@@ -1069,6 +1082,7 @@ function ConvertToRoblox(Objects) { // Converts the code into roblox xml format
         XML += CreateRobloxElement(Objects[i]);
     }
 
+
     return XML + '</roblox>';
 }
 
@@ -1084,6 +1098,7 @@ async function RunPlugin() {
     // Get selected elements
 
     var SelectedElements = figma.currentPage.selection;
+
 
     if (SelectedElements.length == 0) {
         return QuickClose("No elements selected");
