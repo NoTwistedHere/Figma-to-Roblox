@@ -658,16 +658,17 @@ const ElementTypes = {
             })
         }
 
-        if (Element.paddingTop !== 0 || Element.paddingRight !== 0 || Element.paddingBottom !== 0 || Element.paddingLeft !== 0) {
-            Properties.Children.push({
-                Class: "UIPadding",
-                Type: "UIPadding",
-                PaddingTop: Element.paddingTop,
-                PaddingBottom: Element.paddingBottom,
-                PaddingLeft: Element.paddingLeft,
-                PaddingRight: Element.paddingRight,
-            })
-        }
+        // TODO: Re-implement padding
+        // if (Element.paddingTop !== 0 || Element.paddingRight !== 0 || Element.paddingBottom !== 0 || Element.paddingLeft !== 0) {
+        //     Properties.Children.push({
+        //         Class: "UIPadding",
+        //         Type: "UIPadding",
+        //         PaddingTop: Element.paddingTop,
+        //         PaddingBottom: Element.paddingBottom,
+        //         PaddingLeft: Element.paddingLeft,
+        //         PaddingRight: Element.paddingRight,
+        //     })
+        // }
 
         return Properties;
     },
