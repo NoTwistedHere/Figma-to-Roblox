@@ -1,6 +1,6 @@
 {
-    "name": "Figma To Roblox",
-    "id": "1221497650571322872",
+    "name": "Figma To Roblox Fork",
+    "id": "1311848700208641478",
     "api": "1.0.0",
     "main": "src/code.js",
     "capabilities": [],
@@ -8,5 +8,6 @@
     "editorType": [
         "figma"
     ],
-    "ui": "src/index.html"
+    "ui": "src/index.html",
+    "networkAccess": { "allowedDomains": ["none"] }
 }

@@ -42,6 +42,22 @@
 
 */
 
+
+const INSTANCE_NAMES = [
+    "BillboardGui",
+    "CanvasGroup",
+    "ScrollingFrame",
+    "ImageButton",
+    "ImageLabel",
+    "ViewportFrame",
+    "ScreenGui",
+    "SurfaceGui",
+    "TextButton",
+    "TextLabel",
+    "TextBox",
+
+]
+
 var HandledError = false;
 var CurrentNotif;
 var ImageExports = {};
@@ -69,6 +85,17 @@ function getGradientRotation(gradientTransform) {
     const angle = Math.atan2(b, a) * 180 / Math.PI;
 
     return angle >= 0 ? angle : angle + 360;
+}
+
+function getImageIdFromStyle(hash) {
+    const styles = figma.getLocalPaintStyles();
+
+    for (var i = 0; i < styles.length; i++) {
+        const key = styles[i].paints[0].imageHash;
+        if (key === hash) {
+            return styles[i].description
+        }
+    }
 }
 
 function LimitDecimals(Number, Decimals) { // Limit decimals to x places and round up/down
@@ -214,11 +241,11 @@ function ExportImage(Element, Properties, CustomExport) {
 const PropertyTypes = {
     ["children"]: (Element, Properties) => {
         if (Properties.NoChildren || Properties.Children == undefined || Properties.Class == "ImageLabel") return;
-        
+
         for (var i = 0; i < Element.children.length; i++) {
             Properties.Children.push(GetMainProperties(Element.children[i], Properties));
         }
-        
+
         /*
         // TODO: Re-implement masks
         var Mask = [];
@@ -272,13 +299,13 @@ const PropertyTypes = {
         if (Element.fills.length > 1) {
             return QuickClose("Multiple fills are unsupported, on element: " + Element.name);
         } else if (Element.fills.length == 0) {
-            Properties.BackgroundColor3 = {R: 0, G: 0, B: 0}; // TODO: default to missing texture
+            Properties.BackgroundColor3 = {R: 1, G: 1, B: 1}; // TODO: default to missing texture
         }
-    
+
         const Filler = Element.fills[0];
 
         if (!Filler) return;
-    
+
         switch (Filler.type) {
             case "SOLID":
                 var Colour = {
@@ -335,6 +362,7 @@ const PropertyTypes = {
                     Properties.Class = "ImageLabel";
                     Properties.BackgroundTransparency = 0;
                     Properties.ImageTransparency = Filler.opacity;
+                    Properties.Image = `rbxassetid://${getImageIdFromStyle(Element.fills[0].imageHash)}`.replace("rbxassetid://rbxassetid://", "rbxassetid://")
 
                     ExportImage(Element, Properties);
                 }
@@ -497,17 +525,20 @@ const PropertyTypes = {
             return;
         }
 
+        const isInsideTextObject = Properties.Name.includes("TextButton") || Properties.Name.includes("TextBox");
+
         Properties.Children.push({
             Class: "UIStroke",
             Type: "UIStroke",
             Colour: {
-                R: Stroke.color.r || 1,
-                G: Stroke.color.g || 1,
-                B: Stroke.color.b || 1,
+                R: Stroke.color.r !== undefined ? Stroke.color.r : 1,
+                G: Stroke.color.g !== undefined ? Stroke.color.g : 1,
+                B: Stroke.color.b !== undefined ? Stroke.color.b : 1,
             },
             Transparency: Element.opacity,
             Thickness: Element.strokeWeight,
             LineJoinMode: Element.strokeJoin.substring(0, 1).toUpperCase() + Element.strokeJoin.substring(1).toLowerCase(),
+            ApplyStrokeMode: isInsideTextObject ? 1 : 0,
             Children: []
         });
     }
@@ -591,7 +622,7 @@ const ElementTypes = {
 
             Properties.BackgroundTransparency = Properties.GroupOpacity // simple fix
         }
-    
+
         if (PropertyTypes["exportSettings"](Element, Properties) === false) {
             for (const Property in Element) {
                 if (Property in PropertyTypes) {
@@ -600,7 +631,45 @@ const ElementTypes = {
                 }
             }
         }
-    
+
+        if (Element.name === "Container" || Element.name === "ScrollingFrame") {
+            Properties.Class = "ScrollingFrame"
+
+            const template = Element.children[0]
+
+            const layoutInfo = Element.inferredAutoLayout
+            const yAxis = Element.primaryAxisAlignItems
+            const xAxis = Element.counterAxisAlignItems
+
+            Properties.Children.push({
+                Class: "UIGridLayout",
+                Type: "UIGridLayout",
+                CellSize: {
+                    X: template.width,
+                    Y: template.height
+                },
+                CellPadding: {
+                    X: layoutInfo.itemSpacing,
+                    Y: layoutInfo.itemSpacing
+                },
+                VerticalAlignment: yAxis === "CENTER" ? 0 : yAxis === "MIN" ? 1 : 2,
+                HorizontalAlignment: xAxis === "CENTER" ? 0 : xAxis === "MIN" ? 1 : 2,
+                FillDirection: layoutInfo.layoutMode === "VERTICAL" ? 1 : 0,
+            })
+        }
+
+        // TODO: Re-implement padding
+        // if (Element.paddingTop !== 0 || Element.paddingRight !== 0 || Element.paddingBottom !== 0 || Element.paddingLeft !== 0) {
+        //     Properties.Children.push({
+        //         Class: "UIPadding",
+        //         Type: "UIPadding",
+        //         PaddingTop: Element.paddingTop,
+        //         PaddingBottom: Element.paddingBottom,
+        //         PaddingLeft: Element.paddingLeft,
+        //         PaddingRight: Element.paddingRight,
+        //     })
+        // }
+
         return Properties;
     },
     ["RECTANGLE"]: (Element, Parent) => {
@@ -632,7 +701,7 @@ const ElementTypes = {
                 Properties.Position.Y -= Parent._OriginalPosition.Y;
             }
         }
-    
+
         if (PropertyTypes["exportSettings"](Element, Properties) === false) {
             for (const Property in Element) {
                 if (Property in PropertyTypes) {
@@ -641,7 +710,7 @@ const ElementTypes = {
                 }
             }
         }
-    
+
         return Properties;
     },
     ["ELLIPSE"]: (Element, Parent) => {
@@ -682,7 +751,7 @@ const ElementTypes = {
                 Properties.Position.Y -= Parent._OriginalPosition.Y;
             }
         }
-    
+
         if (PropertyTypes["exportSettings"](Element, Properties) === false) {
             for (const Property in Element) {
                 if (Property in PropertyTypes) {
@@ -691,7 +760,7 @@ const ElementTypes = {
                 }
             }
         }
-    
+
         return Properties;
     },
     ["TEXT"]: (Element, Parent) => {
@@ -699,7 +768,7 @@ const ElementTypes = {
             === WARNING ===
 
             Some fonts are not supported by Roblox.
-            
+
             If you don't see the text in Roblox, check the following:
 
                 Check the output for a message saying "Temp read failed"
@@ -711,6 +780,8 @@ const ElementTypes = {
             Class: "TextLabel",
             Type: Element.type,
             Name: Element.name,
+            AutomaticSize: Element.textAutoResize === "HEIGHT" ? 2 : Element.textAutoResize === "WIDTH" ? 1 : 0,
+            TextWrapped: Element.textAutoResize === "HEIGHT",
             BackgroundTransparency: 0,
             BorderSizePixel: 0,
             TextTransparency: Element.opacity,
@@ -749,7 +820,7 @@ const ElementTypes = {
                 }
             }
         }
-    
+
         return Properties;
     },
     ["OTHER"]: (Element, Parent) => {
@@ -785,7 +856,7 @@ const ElementTypes = {
         if (Element["children"]) PropertyTypes["children"](Element, Properties);
 
         ExportImage(Element, Properties);
-    
+
         return Properties;
     }
 }
@@ -799,12 +870,45 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
         XML += String;
     }
 
+    const oldClass = Properties.Class + "";
+
+    const propertyName = Properties.Name ? Properties.Name : ""
+    let includedInstanceName
+    for (const name of INSTANCE_NAMES) {
+        if (propertyName.includes(name)) {
+            includedInstanceName = name
+            break
+        }
+    }
+
+    if (includedInstanceName) {
+        Properties.Class = includedInstanceName
+        Properties.Name = Properties.Name.replace(` ${includedInstanceName}`, "")
+        Properties.Name = Properties.Name.replace(includedInstanceName, "")
+    }
+
+    switch (includedInstanceName) {
+        case "ScreenGui":
+        const child = Properties.Children[0]
+        if (Properties.Position && child && child.Class === "Frame") {
+            child.Position = Properties.Position
+        }
+        break
+        case "TextButton":
+            Properties.Text = ""
+    }
+
+
     ExtendXML(`<Item class="${Properties.Class}" referent="RBX0">`);
     ExtendXML(`<Properties>`);
+
+    Properties.Class = oldClass
 
     // Add properties
 
     ExtendXML(`<string name="Name">${(Properties.Name || Properties.Class || "Unknown").replace("\n", "")}</string>`);
+
+
 
     if (Properties.BackgroundColor3 !== undefined) {
         var Colour = Properties.BackgroundColor3;
@@ -906,10 +1010,32 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
         ExtendXML(`<UDim2 name="Position"><XS>0</XS><XO>${LimitDecimals(Position.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Position.Y, 0)}</YO></UDim2>`);
     }
 
-    if (Properties.BackgroundTransparency !== undefined) ExtendXML(`<float name="BackgroundTransparency">${1 - LimitDecimals(Properties.BackgroundTransparency, 3)}</float>`);
+    if (Properties.ApplyStrokeMode !== undefined) ExtendXML(`<token name="ApplyStrokeMode">${Properties.ApplyStrokeMode}</token>`);
+
+    if (Properties.FillDirection !== undefined) ExtendXML(`<token name="FillDirection">${Properties.FillDirection}</token>`);
+    if (Properties.HorizontalAlignment !== undefined) ExtendXML(`<token name="HorizontalAlignment">${Properties.HorizontalAlignment}</token>`);
+    if (Properties.VerticalAlignment !== undefined) ExtendXML(`<token name="VerticalAlignment">${Properties.VerticalAlignment}</token>`);
+    if (Properties.CellSize) ExtendXML(`<UDim2 name="CellSize"><XS>0</XS><XO>${LimitDecimals(Properties.CellSize.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Properties.CellSize.Y, 0)}</YO></UDim2>`);
+    if (Properties.CellPadding) ExtendXML(`<UDim2 name="CellPadding"><XS>0</XS><XO>${LimitDecimals(Properties.CellPadding.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Properties.CellPadding.Y, 0)}</YO></UDim2>`);
+
+    if (Properties.PaddingBottom) ExtendXML(`<UDim name="PaddingBottom"><S>0</S><O>${LimitDecimals(Properties.PaddingBottom, 0)}</O></UDim>`);
+    if (Properties.PaddingTop) ExtendXML(`<UDim name="PaddingTop"><S>0</S><O>${LimitDecimals(Properties.PaddingTop, 0)}</O></UDim>`);
+    if (Properties.PaddingLeft) ExtendXML(`<UDim name="PaddingLeft"><S>0</S><O>${LimitDecimals(Properties.PaddingLeft, 0)}</O></UDim>`);
+    if (Properties.PaddingRight) ExtendXML(`<UDim name="PaddingRight"><S>0</S><O>${LimitDecimals(Properties.PaddingRight, 0)}</O></UDim>`);
+
+    if (Properties.AutomaticSize !== undefined) ExtendXML(`<token name="AutomaticSize">${Properties.AutomaticSize}</token>`);
+
+    let isTransparent
+    if (Properties.Element) {
+        const fills = Properties.Element.fills
+        isTransparent = fills && fills.length === 0;
+    }
+
+    if (Properties.BackgroundTransparency !== undefined) ExtendXML(`<float name="BackgroundTransparency">${isTransparent ? 1 : 1 - LimitDecimals(Properties.BackgroundTransparency, 3)}</float>`);
+
     if (Properties.Thickness !== undefined) ExtendXML(`<float name="Thickness">${LimitDecimals(Properties.Thickness, 0)}</float>`);
-    if (Properties.LineJoinMode !== undefined) ExtendXML(`<Enum name="LineJoinMode">${LineJoinModes.indexOf(Properties.LineJoinMode)}</Enum>`);
-    if (Properties.CornerRadius !== undefined) ExtendXML(`<UDim2 name="CornerRadius"><S>${LimitDecimals(Properties.CornerRadius.S, 0)}</S><O>${LimitDecimals(Properties.CornerRadius.O, 0)}</O></UDim2>`);
+    if (Properties.LineJoinMode !== undefined) ExtendXML(`<token name="LineJoinMode">${LineJoinModes.indexOf(Properties.LineJoinMode)}</token>`);
+    if (Properties.CornerRadius !== undefined) ExtendXML(`<UDim name="CornerRadius"><S>${LimitDecimals(Properties.CornerRadius.S, 0)}</S><O>${LimitDecimals(Properties.CornerRadius.O, 0)}</O></UDim>`);
     if (Properties.BorderSizePixel !== undefined) ExtendXML(`<int name="BorderSizePixel">${LimitDecimals(Properties.BorderSizePixel, 0)}</int>`);
     if (Properties.ClipsDescendants !== undefined) ExtendXML(`<bool name="ClipsDescendants">${Properties.ClipsDescendants}</bool>`);
     if (Properties.TextTransparency !== undefined) ExtendXML(`<float name="TextTransparency">${1 - Properties.TextTransparency}</float>`);
@@ -923,11 +1049,12 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
     if (Properties.TextYAlignment !== undefined) ExtendXML(`<token name="TextYAlignment">${TextYAlignments.indexOf(Properties.TextYAlignment)}</token>`);
     if (Properties.Font !== undefined) {
         const Font = Fonts[Properties.Font.Style] || Fonts["Regular"];
-        ExtendXML(`<Font name="FontFace"><Family><url>rbxasset://fonts/families/${Properties.Font.Family}.json</url></Family><Weight>${Font.Weight}</Weight><Style>${Font.Style}</Style></Font>`);
+        const fontFamily = Properties.Font.Family.replace(/\s/g, '');
+        ExtendXML(`<Font name="FontFace"><Family><url>rbxasset://fonts/families/${fontFamily}.json</url></Family><Weight>${Font.Weight}</Weight><Style>${Font.Style}</Style></Font>`);
     }
     if (Properties.RichText !== undefined) ExtendXML(`<bool name="RichText">${Properties.RichText}</bool>`);
-    if (Properties.UploadId !== undefined && ImageExports[Properties.UploadId] !== undefined) ExtendXML(`<string name="Image"><url>${ImageExports[Properties.UploadId].ImageId}</url></string>`); // Image is exported
-    else if (Properties.Image !== undefined) ExtendXML(`<string name="Image">${Properties.Image}</string>`); // Image is not exported
+    if (Properties.UploadId !== undefined && ImageExports[Properties.UploadId] !== undefined) ExtendXML(`<Content name="Image"><url>${ImageExports[Properties.UploadId].ImageId ? ImageExports[Properties.UploadId].ImageId : Properties.Image}</url></Content>`); // Image is exported
+    else if (Properties.Image !== undefined) ExtendXML(`<Content name="Image">${Properties.Image}</Content>`); // Image is not exported
     if (Properties.ImageTransparency !== undefined) ExtendXML(`<float name="ImageTransparency">${1 - LimitDecimals(Properties.ImageTransparency, 3)}</float>`);
     //if (Properties.Position !== undefined) ExtendXML(`<UDim2 name="Position"><XS>0</XS><XO>${LimitDecimals(Properties.Position.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Properties.Position.Y, 0)}</YO></UDim2>`);
     //if (Properties.Size !== undefined) ExtendXML(`<UDim2 name="Size"><XS>0</XS><XO>${LimitDecimals(Properties.Size.X, 0)}</XO><YS>0</YS><YO>${LimitDecimals(Properties.Size.Y, 0)}</YO></UDim2>`);
@@ -940,7 +1067,6 @@ function CreateRobloxElement(Properties) { // Creates the roblox xml for the ele
     ExtendXML("</Properties>");
 
     // Add children
-
     if (Properties.Children !== undefined && Properties.Children.length > 0 && Properties.NoChildren === undefined) {
         for (var i = 0; i < Properties.Children.length; i++) {
             ExtendXML(CreateRobloxElement(Properties.Children[i], i));
@@ -956,7 +1082,8 @@ function ConvertToRoblox(Objects) { // Converts the code into roblox xml format
     for (var i = 0; i < Objects.length; i++) {
         XML += CreateRobloxElement(Objects[i]);
     }
-    
+
+
     return XML + '</roblox>';
 }
 
@@ -972,6 +1099,7 @@ async function RunPlugin() {
     // Get selected elements
 
     var SelectedElements = figma.currentPage.selection;
+
 
     if (SelectedElements.length == 0) {
         return QuickClose("No elements selected");
@@ -995,15 +1123,20 @@ async function RunPlugin() {
 
     var XML = ConvertToRoblox(Objects);
 
+    const firstObject = Objects[0]
+
     Objects = null;
 
     if (XML === false) {
         return;
     }
 
+    const name = firstObject.Name ? firstObject.Name : "Export"
+
     figma.ui.postMessage({
         type: "Download",
-        data: XML
+        data: XML,
+        name: name
     });
     XML = null;
 
@@ -1021,14 +1154,14 @@ figma.ui.onmessage = msg => {
                 if (!HandledError) {
                     throw e;
                 }
-            
+
                 console.warn(e);
             }
             break;
         case "close-plugin":
             figma.closePlugin();
             break;
-        case "SetAsync": 
+        case "SetAsync":
             figma.clientStorage.setAsync(msg.key, msg.value);
             break;
         case "FetchAsync":

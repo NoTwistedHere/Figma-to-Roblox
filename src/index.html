@@ -54,7 +54,7 @@
     }
 
     parent.postMessage({ pluginMessage: { type: 'FetchAsync' } }, '*')
-    
+
     const DownloadLink = document.getElementById("download");
     var Images = [];
 
@@ -80,12 +80,12 @@
     }
 
     onmessage = async (event) => {
-        const { type, data } = event.data.pluginMessage;
-        
+        const { type, data, name } = event.data.pluginMessage;
+
         switch (type) {
             case "Download":
                 DownloadLink.href = "data:text/xml;charset=utf-8," + encodeURIComponent(data);
-                DownloadLink.download = "export.rbxmx";
+                DownloadLink.download = `${name}.rbxmx`;
                 DownloadLink.click();
 
                 DownloadImages();
