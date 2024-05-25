@@ -4,6 +4,8 @@ If you encounter any bugs/issues please let me know through [github](https://git
 
 
 ## How to build:
+Make sure you have [browserify](https://browserify.org) installed `npm install browserify`
+
 Open up a terminal and run `npm run build`
 
 ## How to use:
