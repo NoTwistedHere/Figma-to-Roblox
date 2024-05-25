@@ -91,6 +91,12 @@ const TextYAlignments = [
     "BOTTOM",
 ]
 
+const TextTruncate = [
+    "ENDING",
+    "NONE",
+    // There is 3 options in roblox but only 2 in figma?
+]
+
 function getGradientRotation(gradientTransform) {
     const angle = Math.atan2(gradientTransform[0][0], gradientTransform[0][1]) * 180 / Math.PI;
 
@@ -102,5 +108,6 @@ module.exports = {
     TextXAlignments: TextXAlignments,
     TextYAlignments: TextYAlignments,
     LineJoinModes: LineJoinModes,
+    TextTruncate: TextTruncate,
     Fonts: Fonts
 }

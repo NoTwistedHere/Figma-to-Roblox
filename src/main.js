@@ -86,14 +86,14 @@ function LoopElements(Elements, ParentObject) {
 
         ElementProperties.forEach((i) => {
             if (PropertyTypes[i]) {
-                PropertyTypes[i](Element[i], Properties);
+                PropertyTypes[i](Element[i], Properties, Element);
             }
         });
 
         //Properties.Position.XO -= some math //*= Scale.X
         //Properties.Position.YO //*= Scale.Y
-        Properties.Size.XO *= Scale.X
-        Properties.Size.YO *= Scale.Y
+        //Properties.Size.XO *= Scale.X
+        //Properties.Size.YO *= Scale.Y
 
         if (ParentObject && ParentObject.Position) {
             Properties.Position.XO -= ParentObject.Position.XO;

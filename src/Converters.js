@@ -77,7 +77,7 @@ const PropertyTypes = {
             })
         }
     },
-    ["strokes"]: (Value, Object) => {
+    ["strokes"]: (Value, Object, Element) => {
         if (Value.length > 1) return console.warn(`Frame ${Object.Name} cannot have more than 1 stroke`);
         else if (Value.length === 0) {
             return;
@@ -105,10 +105,10 @@ const PropertyTypes = {
     },
     ["textCase"]: (Value, Object) => {
         switch (Value) {
-            case "UPPERCASE": 
+            case "UPPER": 
                 Object.Text = Object.Text.toUpperCase();
                 break;
-            case "LOWERCASE": 
+            case "LOWER": 
                 Object.Text = Object.Text.toLowerCase();
                 break;
             case "TITLE":
@@ -118,7 +118,7 @@ const PropertyTypes = {
 
                 break;
         }
-    }
+    },
 }
 
 const ElementTypes = { // Is this really needed? I could probably make it less repetative
@@ -129,41 +129,6 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
             Active: true,
             Visible: Element.visible,
             BackgroundTransparency: 1.0,
-            BorderSizePixel: 0,
-
-            Rotation: -Element.rotation,
-            ZIndex: 1,
-
-            AnchorPoint: {
-                X: 0,
-                Y: 0,
-            },
-            Position: {
-                XS: 0,
-                XO: Element.x,
-                YS: 0,
-                YO: Element.y
-            },
-            Size: {
-                XS: 0,
-                XO: Element.width,
-                YS: 0,
-                YO: Element.height
-            },
-
-            Children: [],
-            Element: Element,
-        }
-
-        return Properties
-    },
-    ["FRAME"]: (Element) => {
-        var Properties = {
-            Class: "Frame",
-            Name: Element.name,
-            Active: true,
-            Visible: Element.visible,
-            BackgroundTransparency: 1 - Element.opacity,
             BorderSizePixel: 0,
 
             Rotation: -Element.rotation,
@@ -274,6 +239,8 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
         }
     },
     ["TEXT"]: (Element) => {
+        var Font = Conversions.Fonts[Element.fontName.style];
+
         var Properties = {
             Class: "TextLabel",
             Name: Element.name,
@@ -286,9 +253,17 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
             ZIndex: 1,
 
             Text: Element.characters,
+            TextSize: Element.fontSize,
             TextXAlignment: Conversions.TextXAlignments[Element.textAlignHorizontal],
             TextYAlignment: Conversions.TextYAlignments[Element.textAlignVertical],
             TextWrapped: Element.textAutoResize == "HEIGHT" ? true : false,
+            TextTruncate: Conversions.TextTruncate[Element.textTruncation],
+
+            FontFace: {
+                Family: `<url>rbxasset://fonts/families/${Element.fontName.family}.json</url>`,
+                Weight: Font.Weight,
+                Style: Font.Style
+            },
 
             AnchorPoint: {
                 X: 0,
@@ -328,7 +303,8 @@ function LoopTable(TObject) {
 
     for (var [Key, Value] of Object.entries(TObject)) {
         if (Key === "XO" || Key === "YO") Xml += `<${Key}>${Round(Value, 1)}</${Key}>`; // UDim(2) Offset is an int
-        else Xml += `<${Key}>${Round(Value, 1000)}</${Key}>`;
+        else if (typeof(Value) === "number") Xml += `<${Key}>${Round(Value, 1000)}</${Key}>`;
+        else Xml += `<${Key}>${Value}</${Key}>`;
     }
 
     return Xml;
@@ -379,6 +355,8 @@ const XMLTypes = {
             });
 
             return `<NumberSequence name="${Name}">${Sequence}</NumberSequence>`
+        } else if (Value.Family) {
+            return `<Font name="${Name}">${LoopTable(Value)}</Font>`
         }
     }
 }
