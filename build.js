@@ -92,6 +92,12 @@ const TextYAlignments = [
     "BOTTOM",
 ]
 
+const TextTruncate = [
+    "ENDING",
+    "NONE",
+    // There is 3 options in roblox but only 2 in figma?
+]
+
 function getGradientRotation(gradientTransform) {
     const angle = Math.atan2(gradientTransform[0][0], gradientTransform[0][1]) * 180 / Math.PI;
 
@@ -103,15 +109,16 @@ module.exports = {
     TextXAlignments: TextXAlignments,
     TextYAlignments: TextYAlignments,
     LineJoinModes: LineJoinModes,
+    TextTruncate: TextTruncate,
     Fonts: Fonts
 }
 },{}],2:[function(require,module,exports){
 const Conversions = require("./Conversions");
 
 const PropertyTypes = {
-    ["fills"]: (Value, Object) => {
-        if (Value.length > 1) {
-            return console.warn(`Frame ${Properties.Name} cannot have more than 1 fill`);
+    ["fills"]: (Value, Object, Return) => {
+        if (Value.length > 1 || Value == figma.mixed) {
+            return console.warn(`Frame ${Object.Name} cannot have more than 1 fill`);
         } else if (Value.length === 0) {
             Object.BackgroundTransparency = 1;
             return;
@@ -168,9 +175,11 @@ const PropertyTypes = {
         if (Object.Class == "TextLabel") {
             Object.TextColor3 = Color3;
             Object.TextTransparency = Transparency;
-        } else {
+        } else if (Return !== true) {
             Object.BackgroundColor3 = Color3;
             Object.BackgroundTransparency = Transparency;
+        } else {
+            return [Color3, Transparency]
         }
     },
     ["cornerRadius"]: (Value, Object) => {
@@ -207,6 +216,33 @@ const PropertyTypes = {
             Transparency: 1 - Stroke.opacity,
         });
     },
+    ["characters"]: (Value, Object, Element) => {
+        var Segments = Element.getStyledTextSegments(["fills", "fontSize", "fontWeight", "textDecoration", "textCase"]);
+        var Text = "";
+
+        Segments.forEach(Segment => {
+            Text += "<font"
+
+            if (Segment.fills && Segment.fills.length === 1) {
+                var Fill = Segment.fills[0];
+
+                Text += ` color="rgb(${Round(Fill.color.r * 255, 1) + "," + Round(Fill.color.g * 255, 1) + "," + Round(Fill.color.b * 255, 1)})"`;
+            };
+
+            if (!Object.TextSize || Segment.fontSize !== Object.TextSize) {
+                Text += ` size="${Segment.fontSize}"`;
+            };
+
+            if (!Object.FontFace || Segment.fontWeight !== Object.FontFace.Weight) {
+                Text += ` weight="${Segment.fontWeight}"`;
+            };
+
+            Text += `>${Segment.characters}</font>`;
+        })
+
+        Object.RichText = true;
+        Object.Text = Text;
+    },
     ["textDecoration"]: (Value, Object) => {
         if (Value === "UNDERLINE") Object.Text = `<u>${Object.Text}</u>`;
         else if (Value === "STRIKETHROUGH") Object.Text = `<s>${Object.Text}</s>`;
@@ -226,7 +262,7 @@ const PropertyTypes = {
 
                 break;
         }
-    }
+    },
 }
 
 const ElementTypes = { // Is this really needed? I could probably make it less repetative
@@ -237,41 +273,6 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
             Active: true,
             Visible: Element.visible,
             BackgroundTransparency: 1.0,
-            BorderSizePixel: 0,
-
-            Rotation: -Element.rotation,
-            ZIndex: 1,
-
-            AnchorPoint: {
-                X: 0,
-                Y: 0,
-            },
-            Position: {
-                XS: 0,
-                XO: Element.x,
-                YS: 0,
-                YO: Element.y
-            },
-            Size: {
-                XS: 0,
-                XO: Element.width,
-                YS: 0,
-                YO: Element.height
-            },
-
-            Children: [],
-            Element: Element,
-        }
-
-        return Properties
-    },
-    ["FRAME"]: (Element) => {
-        var Properties = {
-            Class: "Frame",
-            Name: Element.name,
-            Active: true,
-            Visible: Element.visible,
-            BackgroundTransparency: 1 - Element.opacity,
             BorderSizePixel: 0,
 
             Rotation: -Element.rotation,
@@ -396,15 +397,16 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
             ZIndex: 1,
 
             Text: Element.characters,
-            TextSize: Element.fontSize,
+            TextSize: Element.fontSize !== figma.mixed ? Element.fontSize : 14,
             TextXAlignment: Conversions.TextXAlignments[Element.textAlignHorizontal],
             TextYAlignment: Conversions.TextYAlignments[Element.textAlignVertical],
             TextWrapped: Element.textAutoResize == "HEIGHT" ? true : false,
+            TextTruncate: Conversions.TextTruncate[Element.textTruncation],
 
             FontFace: {
                 Family: `<url>rbxasset://fonts/families/${Element.fontName.family}.json</url>`,
-                Weight: Font.Weight,
-                Style: Font.Style
+                Weight: Font ? Font.Weight: 400,
+                Style: Font ? Font.Style: "Regular"
             },
 
             AnchorPoint: {
@@ -452,13 +454,25 @@ function LoopTable(TObject) {
     return Xml;
 }
 
+function EncodeStr(String) {
+    const T = {
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;"
+    }
+
+    return String.replace(/[<>"]/g, (c) => {
+        return T[c];
+    })
+}
+
 const XMLTypes = {
     ["token"]: (Name, Value) => {
         return `<token name="${Name}">${Value}</token>`
     },
 
     ["string"]: (Name, Value) => {
-        return `<string name="${Name}">${Value}</string>`
+        return `<string name="${Name}">${EncodeStr(Value)}</string>`
     },
     ["number"]: (Name, Value, IsInteger, RoundTo) => {
         if (RoundTo) Value = Round(Value, RoundTo);
@@ -656,10 +670,10 @@ function LoopElements(Elements, ParentObject) {
         }
         if (Element.children) New += LoopElements(Element.children, Properties);
 
-        if (!ParentObject) {
-            Properties.Position.XO = 0;
-            Properties.Position.YO = 0;
-        }
+        //if (!ParentObject) {
+        //    Properties.Position.XO = 0;
+        //    Properties.Position.YO = 0;
+        //}
 
         FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n" + New;
 

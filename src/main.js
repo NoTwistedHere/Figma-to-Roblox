@@ -123,10 +123,10 @@ function LoopElements(Elements, ParentObject) {
         }
         if (Element.children) New += LoopElements(Element.children, Properties);
 
-        if (!ParentObject) {
-            Properties.Position.XO = 0;
-            Properties.Position.YO = 0;
-        }
+        //if (!ParentObject) {
+        //    Properties.Position.XO = 0;
+        //    Properties.Position.YO = 0;
+        //}
 
         FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n" + New;
 
