@@ -398,10 +398,10 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
 
             Text: Element.characters,
             TextSize: Element.fontSize !== figma.mixed ? Element.fontSize : 14,
-            TextXAlignment: Conversions.TextXAlignments[Element.textAlignHorizontal],
-            TextYAlignment: Conversions.TextYAlignments[Element.textAlignVertical],
+            TextXAlignment: Conversions.TextXAlignments.indexOf(Element.textAlignHorizontal),
+            TextYAlignment: Conversions.TextYAlignments.indexOf(Element.textAlignVertical),
             TextWrapped: Element.textAutoResize == "HEIGHT" ? true : false,
-            TextTruncate: Conversions.TextTruncate[Element.textTruncation],
+            TextTruncate: Conversions.TextTruncate.indexOf(Element.textTruncation),
 
             FontFace: {
                 Family: `<url>rbxasset://fonts/families/${Element.fontName.family}.json</url>`,
@@ -599,6 +599,11 @@ function ConvertObject(Properties, ParentObject) {
             case "Children":
             case "Class":
                 break;
+            case "TextTruncate":
+            case "TextXAlignment":
+            case "TextYAlignment":
+                XML += XMLTypes.token(Key, Value)
+                break;
             case "BackgroundTransparency":
             case "TextSize":
             case "TextStrokeTransparency":
@@ -662,6 +667,8 @@ function LoopElements(Elements, ParentObject) {
         var New = "";
 
         //FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n"
+
+        console.log(Properties)
 
         if (Properties.Children) {
             Properties.Children.forEach(Child => {

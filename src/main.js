@@ -52,6 +52,11 @@ function ConvertObject(Properties, ParentObject) {
             case "Children":
             case "Class":
                 break;
+            case "TextTruncate":
+            case "TextXAlignment":
+            case "TextYAlignment":
+                XML += XMLTypes.token(Key, Value)
+                break;
             case "BackgroundTransparency":
             case "TextSize":
             case "TextStrokeTransparency":
