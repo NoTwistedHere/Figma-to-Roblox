@@ -106,23 +106,24 @@ const PropertyTypes = {
         var Text = "";
 
         Segments.forEach(Segment => {
-            Text += "<font"
+            var NewText = ""
 
             if (Segment.fills && Segment.fills.length === 1) {
                 var Fill = Segment.fills[0];
 
-                Text += ` color="rgb(${Round(Fill.color.r * 255, 1) + "," + Round(Fill.color.g * 255, 1) + "," + Round(Fill.color.b * 255, 1)})"`;
+                if (Fill.type == "SOLID") NewText += ` color="rgb(${Round(Fill.color.r * 255, 1) + "," + Round(Fill.color.g * 255, 1) + "," + Round(Fill.color.b * 255, 1)})"`
+                else console.warn(`Unsupported rich text fill type "${Fill.type}" on text element`, Element)
             };
 
             if (!Object.TextSize || Segment.fontSize !== Object.TextSize) {
-                Text += ` size="${Segment.fontSize}"`;
+                NewText += ` size="${Segment.fontSize}"`;
             };
 
             if (!Object.FontFace || Segment.fontWeight !== Object.FontFace.Weight) {
-                Text += ` weight="${Segment.fontWeight}"`;
+                NewText += ` weight="${Segment.fontWeight}"`;
             };
 
-            Text += `>${Segment.characters}</font>`;
+            if (NewText.length > 0) Text += `<font ${NewText}>${Segment.characters}</font>`; // We only want to add font tags if we have new data to add
         })
 
         Object.RichText = true;

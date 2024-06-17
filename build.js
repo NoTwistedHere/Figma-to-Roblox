@@ -223,10 +223,13 @@ const PropertyTypes = {
         Segments.forEach(Segment => {
             Text += "<font"
 
+            console.log(Segment);
+
             if (Segment.fills && Segment.fills.length === 1) {
                 var Fill = Segment.fills[0];
 
-                Text += ` color="rgb(${Round(Fill.color.r * 255, 1) + "," + Round(Fill.color.g * 255, 1) + "," + Round(Fill.color.b * 255, 1)})"`;
+                if (Fill.type == "SOLID") Text += ` color="rgb(${Round(Fill.color.r * 255, 1) + "," + Round(Fill.color.g * 255, 1) + "," + Round(Fill.color.b * 255, 1)})"`
+                else console.warn(`Unsupported fill type "${Fill.type}" on text element`, Element)
             };
 
             if (!Object.TextSize || Segment.fontSize !== Object.TextSize) {
@@ -667,8 +670,6 @@ function LoopElements(Elements, ParentObject) {
         var New = "";
 
         //FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n"
-
-        console.log(Properties)
 
         if (Properties.Children) {
             Properties.Children.forEach(Child => {
