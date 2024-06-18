@@ -93,8 +93,9 @@ const TextYAlignments = [
 ]
 
 const TextTruncate = [
-    "ENDING",
     "NONE",
+    "", // This is the Ending option in roblox
+    "ENDING" // This is the Split Word option in roblox
     // There is 3 options in roblox but only 2 in figma?
 ]
 
@@ -131,7 +132,7 @@ const PropertyTypes = {
 
         switch (Fill.type) {
             case "SOLID":
-                Transparency = 1 - Fill.opacity;
+                Transparency = Fill.opacity;
                 Color3 = {
                     R: Fill.color.r,
                     G: Fill.color.g,
@@ -140,7 +141,7 @@ const PropertyTypes = {
 
                 break;
             case "GRADIENT_LINEAR":
-                Transparency = 1 - Fill.opacity;
+                Transparency = Fill.opacity;
                 Color3 = { R: 1, G: 1, B: 1 };
 
                 Object.Children.push({
@@ -176,8 +177,9 @@ const PropertyTypes = {
             Object.TextColor3 = Color3;
             Object.TextTransparency = Transparency;
         } else if (Return !== true) {
+            console.log(Object, Transparency)
             Object.BackgroundColor3 = Color3;
-            Object.BackgroundTransparency = Transparency;
+            Object.BackgroundTransparency *= Transparency;
         } else {
             return [Color3, Transparency]
         }
@@ -213,7 +215,7 @@ const PropertyTypes = {
             },
             LineJoinMode: Conversions.LineJoinModes.indexOf(Element.strokeJoin),
             Thickness: Element.strokeWeight,
-            Transparency: 1 - Stroke.opacity,
+            Transparency: Stroke.opacity,
         });
     },
     ["characters"]: (Value, Object, Element) => {
@@ -221,26 +223,24 @@ const PropertyTypes = {
         var Text = "";
 
         Segments.forEach(Segment => {
-            Text += "<font"
-
-            console.log(Segment);
+            var NewText = ""
 
             if (Segment.fills && Segment.fills.length === 1) {
                 var Fill = Segment.fills[0];
 
-                if (Fill.type == "SOLID") Text += ` color="rgb(${Round(Fill.color.r * 255, 1) + "," + Round(Fill.color.g * 255, 1) + "," + Round(Fill.color.b * 255, 1)})"`
-                else console.warn(`Unsupported fill type "${Fill.type}" on text element`, Element)
+                if (Fill.type == "SOLID") NewText += ` color="rgb(${Round(Fill.color.r * 255, 1) + "," + Round(Fill.color.g * 255, 1) + "," + Round(Fill.color.b * 255, 1)})"`
+                else console.warn(`Unsupported rich text fill type "${Fill.type}" on text element`, Element)
             };
 
             if (!Object.TextSize || Segment.fontSize !== Object.TextSize) {
-                Text += ` size="${Segment.fontSize}"`;
+                NewText += ` size="${Segment.fontSize}"`;
             };
 
-            if (!Object.FontFace || Segment.fontWeight !== Object.FontFace.Weight) {
-                Text += ` weight="${Segment.fontWeight}"`;
+            if (Object.FontFace && Segment.fontWeight !== Object.FontFace.Weight) {
+                NewText += ` weight="${Segment.fontWeight}"`;
             };
 
-            Text += `>${Segment.characters}</font>`;
+            if (NewText.length > 0) Text += `<font ${NewText}>${Segment.characters}</font>`; // We only want to add font tags if we have new data to add
         })
 
         Object.RichText = true;
@@ -249,22 +249,6 @@ const PropertyTypes = {
     ["textDecoration"]: (Value, Object) => {
         if (Value === "UNDERLINE") Object.Text = `<u>${Object.Text}</u>`;
         else if (Value === "STRIKETHROUGH") Object.Text = `<s>${Object.Text}</s>`;
-    },
-    ["textCase"]: (Value, Object) => {
-        switch (Value) {
-            case "UPPER": 
-                Object.Text = Object.Text.toUpperCase();
-                break;
-            case "LOWER": 
-                Object.Text = Object.Text.toLowerCase();
-                break;
-            case "TITLE":
-                Object.Text = Object.Text.replace(/\w\S*/g, function(Text) {
-                    return Text.charAt(0).toUpperCase() + Text.substr(1).toLowerCase();
-                })
-
-                break;
-        }
     },
 }
 
@@ -275,7 +259,8 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
             Name: Element.name,
             Active: true,
             Visible: Element.visible,
-            BackgroundTransparency: 1.0,
+            BackgroundTransparency: 0,
+            _Transparency: Element.opacity,
             BorderSizePixel: 0,
 
             Rotation: -Element.rotation,
@@ -310,7 +295,8 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
             Name: Element.name,
             Active: true,
             Visible: Element.visible,
-            BackgroundTransparency: 1 - Element.opacity,
+            BackgroundTransparency: Element.opacity,
+            _Transparency: Element.opacity,
             BorderSizePixel: 0,
 
             Rotation: -Element.rotation,
@@ -349,7 +335,8 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
             Name: Element.name,
             Active: true,
             Visible: Element.visible,
-            BackgroundTransparency: 1 - Element.opacity,
+            BackgroundTransparency: Element.opacity,
+            _Transparency: Element.opacity,
             BorderSizePixel: 0,
 
             Rotation: -Element.rotation,
@@ -393,21 +380,22 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
             Name: Element.name,
             Active: true,
             Visible: Element.visible,
-            BackgroundTransparency: 1,
+            BackgroundTransparency: 0.0,
+            _Transparency: Element.opacity,
             BorderSizePixel: 0,
 
             Rotation: -Element.rotation,
             ZIndex: 1,
 
             Text: Element.characters,
-            TextSize: Element.fontSize !== figma.mixed ? Element.fontSize : 14,
+            TextSize: Element.fontSize !== figma.mixed ? Element.fontSize : 16,
             TextXAlignment: Conversions.TextXAlignments.indexOf(Element.textAlignHorizontal),
             TextYAlignment: Conversions.TextYAlignments.indexOf(Element.textAlignVertical),
-            TextWrapped: Element.textAutoResize == "HEIGHT" ? true : false,
+            TextWrapped: true,
             TextTruncate: Conversions.TextTruncate.indexOf(Element.textTruncation),
 
             FontFace: {
-                Family: `<url>rbxasset://fonts/families/${Element.fontName.family}.json</url>`,
+                Family: `<url>rbxasset://fonts/families/${(Element.fontName !== figma.mixed ? Element.fontName.family : "Source Sans Pro").replace(/ /g, "")}.json</url>`,
                 Weight: Font ? Font.Weight: 400,
                 Style: Font ? Font.Style: "Regular"
             },
@@ -431,6 +419,23 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
 
             Children: [],
             Element: Element,
+        }
+
+        if (Element.textCase) {
+            switch (Element.textCase) {
+                case "UPPER": 
+                    Properties.Text = Properties.Text.toUpperCase();
+                    break;
+                case "LOWER": 
+                    Properties.Text = Properties.Text.toLowerCase();
+                    break;
+                case "TITLE":
+                    Properties.Text = Properties.Text.replace(/\w\S*/g, function(Text) {
+                        return Text.charAt(0).toUpperCase() + Text.substr(1).toLowerCase();
+                    })
+        
+                    break;
+            }
         }
 
         return Properties;
@@ -581,6 +586,8 @@ module.exports = {
 
     This plugin is free to use, report any bugs to me on Discord (NoTwistedHere)
 
+    TODO:
+        Implement section support
 */
 
 const { widget } = figma;
@@ -602,17 +609,25 @@ function ConvertObject(Properties, ParentObject) {
             case "Children":
             case "Class":
                 break;
+            case "DominantAxis":
+            case "AspectType":
             case "TextTruncate":
             case "TextXAlignment":
             case "TextYAlignment":
                 XML += XMLTypes.token(Key, Value)
                 break;
             case "BackgroundTransparency":
-            case "TextSize":
+            case "Transparency":
             case "TextStrokeTransparency":
             case "TextTransparency":
+                // Should always be parented to a group as only groups and sections allow children
+                if (ParentObject) Value = ParentObject._Transparency * Value;
+
+                XML += XMLTypes.number(Key, 1 - Value, false);
+                break
+            /*case "TextSize":
                 XML += XMLTypes.number(Key, Value, false);
-                break;
+                break;*/
             case "Rotation":
                 if (ParentObject && ParentObject.Rotation) {
                     Value = Value - ParentObject.Rotation
@@ -622,8 +637,10 @@ function ConvertObject(Properties, ParentObject) {
                 break;
             default:
                 //console.log(Key, Value, typeof(Value))
+                if (Key.substring(0, 1) == "_") break;
                 
                 if (XMLTypes[typeof(Value)]) XML += XMLTypes[typeof(Value)](Key, Value);
+                break;
         }
     }
 
@@ -633,10 +650,12 @@ function ConvertObject(Properties, ParentObject) {
 function LoopElements(Elements, ParentObject) {
     var FileContent = "";
 
+    // Loop elements
     for (var i = 0; i < Elements.length; i++) {
         var Element = Elements[i];
         var Properties = ElementTypes[Element.type || "OTHER"](Element); // Can't name it Object because of below v
 
+        // Loop element properties
         var ElementProperties = Object.getOwnPropertyNames(Object.getPrototypeOf(Element));
 
         ElementProperties.forEach((i) => {
@@ -645,15 +664,25 @@ function LoopElements(Elements, ParentObject) {
             }
         });
 
+        // Calculate Aspect Ratio and Scale
+
+        console.log(Properties)
+
+        var AspectRatio = Math.round((Properties.Size.XO / Properties.Size.YO) * 1000) / 1000;
+
+        Properties.Children.push({
+            Class: "UIAspectRatioConstraint",
+            AspectRatio: AspectRatio,
+            AspectType: 1,
+            DominantAxis: Properties.Size.XO > Properties.Size.YO ? 1 : 0
+        })
+
+        //
+
         //Properties.Position.XO -= some math //*= Scale.X
         //Properties.Position.YO //*= Scale.Y
         //Properties.Size.XO *= Scale.X
         //Properties.Size.YO *= Scale.Y
-
-        if (ParentObject && ParentObject.Position) {
-            Properties.Position.XO -= ParentObject.Position.XO;
-            Properties.Position.YO -= ParentObject.Position.YO;
-        }
 
         if (Properties.Rotation && Properties.Rotation != 0) {
             var BoundingBox = Element.absoluteBoundingBox;
@@ -664,6 +693,29 @@ function LoopElements(Elements, ParentObject) {
             Properties.Position.XO = CX - Properties.Size.XO / 2;
             Properties.Position.YO = CY - Properties.Size.YO / 2;
         }
+
+        if (ParentObject && ParentObject.Position) {
+            Properties.Position.XO -= ParentObject.Position.XO;
+            Properties.Position.YO -= ParentObject.Position.YO;
+        } else if (ParentObject && ParentObject._Transparency) {
+            Properties._Transparency = ParentObject._Transparency * Properties._Transparency
+        }
+        
+        // Convert to scale?
+
+        var SX, SY = ParentObject ? (ParentObject.Size.XO, ParentObject.Size.YO) : (1920, 1080);
+
+        // Properties.Position.XS = Properties.Position.XO / SX;
+        // Properties.Position.YS = Properties.Position.YO / SY;
+        // Properties.Size.XS = Properties.Size.XO / SX;
+        // Properties.Size.YS = Properties.Size.YO / SY;
+
+        // Properties.Position.XO = 0;
+        // Properties.Position.YO = 0;
+        // Properties.Size.XO = 0;
+        // Properties.Size.YO = 0;
+
+        //
 
         FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
 

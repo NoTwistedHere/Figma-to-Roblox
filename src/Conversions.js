@@ -92,8 +92,9 @@ const TextYAlignments = [
 ]
 
 const TextTruncate = [
-    "ENDING",
     "NONE",
+    "", // This is the Ending option in roblox
+    "ENDING" // This is the Split Word option in roblox
     // There is 3 options in roblox but only 2 in figma?
 ]
 

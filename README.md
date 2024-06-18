@@ -21,23 +21,24 @@ NOTE: This might be missing some things
 
 ### Rectangle
 * Background Transparency/Colour
-* Stroke
+* Stroke (**ONLY** using UIStroke)
 * Gradient
     * Only supports linear gradients
     * May also apply to any strokes
-* Corners
+* Corners (in px)
 * Rotation
 
 ### Ellipse
-* Must be a circle (height = width)
-* Just a frame with a ui corner
+* Must be an even circle (height == width)
+* Has the same properties as Rectangles (with a corner radius scaled to 1)
 
 ### Text
 * Text Transparency/Colour
-* Text Stroke
+* Text Stroke (**ONLY** using UIStroke)
 * Text Gradient
     * Only supports linear gradients
-    * May also apply to any strokes
+    * Will also apply to any strokes
+    * Does not support rich text
 * Rotation
 * Auto Resizing (?)
 * Text Alignment

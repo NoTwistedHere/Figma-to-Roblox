@@ -16,7 +16,7 @@ const PropertyTypes = {
 
         switch (Fill.type) {
             case "SOLID":
-                Transparency = 1 - Fill.opacity;
+                Transparency = Fill.opacity;
                 Color3 = {
                     R: Fill.color.r,
                     G: Fill.color.g,
@@ -25,7 +25,7 @@ const PropertyTypes = {
 
                 break;
             case "GRADIENT_LINEAR":
-                Transparency = 1 - Fill.opacity;
+                Transparency = Fill.opacity;
                 Color3 = { R: 1, G: 1, B: 1 };
 
                 Object.Children.push({
@@ -61,8 +61,9 @@ const PropertyTypes = {
             Object.TextColor3 = Color3;
             Object.TextTransparency = Transparency;
         } else if (Return !== true) {
+            console.log(Object, Transparency)
             Object.BackgroundColor3 = Color3;
-            Object.BackgroundTransparency = Transparency;
+            Object.BackgroundTransparency *= Transparency;
         } else {
             return [Color3, Transparency]
         }
@@ -98,7 +99,7 @@ const PropertyTypes = {
             },
             LineJoinMode: Conversions.LineJoinModes.indexOf(Element.strokeJoin),
             Thickness: Element.strokeWeight,
-            Transparency: 1 - Stroke.opacity,
+            Transparency: Stroke.opacity,
         });
     },
     ["characters"]: (Value, Object, Element) => {
@@ -119,7 +120,7 @@ const PropertyTypes = {
                 NewText += ` size="${Segment.fontSize}"`;
             };
 
-            if (!Object.FontFace || Segment.fontWeight !== Object.FontFace.Weight) {
+            if (Object.FontFace && Segment.fontWeight !== Object.FontFace.Weight) {
                 NewText += ` weight="${Segment.fontWeight}"`;
             };
 
@@ -133,22 +134,6 @@ const PropertyTypes = {
         if (Value === "UNDERLINE") Object.Text = `<u>${Object.Text}</u>`;
         else if (Value === "STRIKETHROUGH") Object.Text = `<s>${Object.Text}</s>`;
     },
-    ["textCase"]: (Value, Object) => {
-        switch (Value) {
-            case "UPPER": 
-                Object.Text = Object.Text.toUpperCase();
-                break;
-            case "LOWER": 
-                Object.Text = Object.Text.toLowerCase();
-                break;
-            case "TITLE":
-                Object.Text = Object.Text.replace(/\w\S*/g, function(Text) {
-                    return Text.charAt(0).toUpperCase() + Text.substr(1).toLowerCase();
-                })
-
-                break;
-        }
-    },
 }
 
 const ElementTypes = { // Is this really needed? I could probably make it less repetative
@@ -158,7 +143,8 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
             Name: Element.name,
             Active: true,
             Visible: Element.visible,
-            BackgroundTransparency: 1.0,
+            BackgroundTransparency: 0,
+            _Transparency: Element.opacity,
             BorderSizePixel: 0,
 
             Rotation: -Element.rotation,
@@ -193,7 +179,8 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
             Name: Element.name,
             Active: true,
             Visible: Element.visible,
-            BackgroundTransparency: 1 - Element.opacity,
+            BackgroundTransparency: Element.opacity,
+            _Transparency: Element.opacity,
             BorderSizePixel: 0,
 
             Rotation: -Element.rotation,
@@ -232,7 +219,8 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
             Name: Element.name,
             Active: true,
             Visible: Element.visible,
-            BackgroundTransparency: 1 - Element.opacity,
+            BackgroundTransparency: Element.opacity,
+            _Transparency: Element.opacity,
             BorderSizePixel: 0,
 
             Rotation: -Element.rotation,
@@ -276,21 +264,22 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
             Name: Element.name,
             Active: true,
             Visible: Element.visible,
-            BackgroundTransparency: 1,
+            BackgroundTransparency: 0.0,
+            _Transparency: Element.opacity,
             BorderSizePixel: 0,
 
             Rotation: -Element.rotation,
             ZIndex: 1,
 
             Text: Element.characters,
-            TextSize: Element.fontSize !== figma.mixed ? Element.fontSize : 14,
+            TextSize: Element.fontSize !== figma.mixed ? Element.fontSize : 16,
             TextXAlignment: Conversions.TextXAlignments.indexOf(Element.textAlignHorizontal),
             TextYAlignment: Conversions.TextYAlignments.indexOf(Element.textAlignVertical),
-            TextWrapped: Element.textAutoResize == "HEIGHT" ? true : false,
+            TextWrapped: true,
             TextTruncate: Conversions.TextTruncate.indexOf(Element.textTruncation),
 
             FontFace: {
-                Family: `<url>rbxasset://fonts/families/${Element.fontName.family}.json</url>`,
+                Family: `<url>rbxasset://fonts/families/${(Element.fontName !== figma.mixed ? Element.fontName.family : "Source Sans Pro").replace(/ /g, "")}.json</url>`,
                 Weight: Font ? Font.Weight: 400,
                 Style: Font ? Font.Style: "Regular"
             },
@@ -314,6 +303,23 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
 
             Children: [],
             Element: Element,
+        }
+
+        if (Element.textCase) {
+            switch (Element.textCase) {
+                case "UPPER": 
+                    Properties.Text = Properties.Text.toUpperCase();
+                    break;
+                case "LOWER": 
+                    Properties.Text = Properties.Text.toLowerCase();
+                    break;
+                case "TITLE":
+                    Properties.Text = Properties.Text.replace(/\w\S*/g, function(Text) {
+                        return Text.charAt(0).toUpperCase() + Text.substr(1).toLowerCase();
+                    })
+        
+                    break;
+            }
         }
 
         return Properties;

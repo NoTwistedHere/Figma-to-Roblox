@@ -31,6 +31,8 @@
 
     This plugin is free to use, report any bugs to me on Discord (NoTwistedHere)
 
+    TODO:
+        Implement section support
 */
 
 const { widget } = figma;
@@ -52,17 +54,25 @@ function ConvertObject(Properties, ParentObject) {
             case "Children":
             case "Class":
                 break;
+            case "DominantAxis":
+            case "AspectType":
             case "TextTruncate":
             case "TextXAlignment":
             case "TextYAlignment":
                 XML += XMLTypes.token(Key, Value)
                 break;
             case "BackgroundTransparency":
-            case "TextSize":
+            case "Transparency":
             case "TextStrokeTransparency":
             case "TextTransparency":
+                // Should always be parented to a group as only groups and sections allow children
+                if (ParentObject) Value = ParentObject._Transparency * Value;
+
+                XML += XMLTypes.number(Key, 1 - Value, false);
+                break
+            /*case "TextSize":
                 XML += XMLTypes.number(Key, Value, false);
-                break;
+                break;*/
             case "Rotation":
                 if (ParentObject && ParentObject.Rotation) {
                     Value = Value - ParentObject.Rotation
@@ -72,8 +82,10 @@ function ConvertObject(Properties, ParentObject) {
                 break;
             default:
                 //console.log(Key, Value, typeof(Value))
+                if (Key.substring(0, 1) == "_") break;
                 
                 if (XMLTypes[typeof(Value)]) XML += XMLTypes[typeof(Value)](Key, Value);
+                break;
         }
     }
 
@@ -83,10 +95,12 @@ function ConvertObject(Properties, ParentObject) {
 function LoopElements(Elements, ParentObject) {
     var FileContent = "";
 
+    // Loop elements
     for (var i = 0; i < Elements.length; i++) {
         var Element = Elements[i];
         var Properties = ElementTypes[Element.type || "OTHER"](Element); // Can't name it Object because of below v
 
+        // Loop element properties
         var ElementProperties = Object.getOwnPropertyNames(Object.getPrototypeOf(Element));
 
         ElementProperties.forEach((i) => {
@@ -95,15 +109,25 @@ function LoopElements(Elements, ParentObject) {
             }
         });
 
+        // Calculate Aspect Ratio and Scale
+
+        console.log(Properties)
+
+        var AspectRatio = Math.round((Properties.Size.XO / Properties.Size.YO) * 1000) / 1000;
+
+        Properties.Children.push({
+            Class: "UIAspectRatioConstraint",
+            AspectRatio: AspectRatio,
+            AspectType: 1,
+            DominantAxis: Properties.Size.XO > Properties.Size.YO ? 1 : 0
+        })
+
+        //
+
         //Properties.Position.XO -= some math //*= Scale.X
         //Properties.Position.YO //*= Scale.Y
         //Properties.Size.XO *= Scale.X
         //Properties.Size.YO *= Scale.Y
-
-        if (ParentObject && ParentObject.Position) {
-            Properties.Position.XO -= ParentObject.Position.XO;
-            Properties.Position.YO -= ParentObject.Position.YO;
-        }
 
         if (Properties.Rotation && Properties.Rotation != 0) {
             var BoundingBox = Element.absoluteBoundingBox;
@@ -114,6 +138,29 @@ function LoopElements(Elements, ParentObject) {
             Properties.Position.XO = CX - Properties.Size.XO / 2;
             Properties.Position.YO = CY - Properties.Size.YO / 2;
         }
+
+        if (ParentObject && ParentObject.Position) {
+            Properties.Position.XO -= ParentObject.Position.XO;
+            Properties.Position.YO -= ParentObject.Position.YO;
+        } else if (ParentObject && ParentObject._Transparency) {
+            Properties._Transparency = ParentObject._Transparency * Properties._Transparency
+        }
+        
+        // Convert to scale?
+
+        var SX, SY = ParentObject ? (ParentObject.Size.XO, ParentObject.Size.YO) : (1920, 1080);
+
+        // Properties.Position.XS = Properties.Position.XO / SX;
+        // Properties.Position.YS = Properties.Position.YO / SY;
+        // Properties.Size.XS = Properties.Size.XO / SX;
+        // Properties.Size.YS = Properties.Size.YO / SY;
+
+        // Properties.Position.XO = 0;
+        // Properties.Position.YO = 0;
+        // Properties.Size.XO = 0;
+        // Properties.Size.YO = 0;
+
+        //
 
         FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
 
