@@ -40,6 +40,21 @@ const Conversions = require('./Conversions.js');
 const { QuickClose, Notify } = require('./Utilities.js');
 const { PropertyTypes, ElementTypes, XMLTypes} = require('./Converters.js');
 
+var Settings = {
+    ApiKey: "",
+    DefaultExport: {
+        format: "PNG",
+        contentsOnly: true,
+        constraint: {
+            type: "SCALE",
+            value: 2
+        }
+    },
+    ApplyAspectRatio: false,
+    ExportVectors: true,
+    ApplyZIndex: true,
+};
+
 var Scale = {
     X: 0.25,
     Y: 0.25,
@@ -98,7 +113,9 @@ function LoopElements(Elements, ParentObject) {
     // Loop elements
     for (var i = 0; i < Elements.length; i++) {
         var Element = Elements[i];
-        var Properties = ElementTypes[Element.type || "OTHER"](Element); // Can't name it Object because of below v
+        var Properties = ElementTypes[Element.type || "OTHER"](Element, Settings); // Can't name it Object because of below v
+
+        if (!Properties) continue;
 
         // Loop element properties
         var ElementProperties = Object.getOwnPropertyNames(Object.getPrototypeOf(Element));
@@ -111,16 +128,20 @@ function LoopElements(Elements, ParentObject) {
 
         // Calculate Aspect Ratio and Scale
 
-        console.log(Properties)
+        console.log("Element Properties:", Properties)
 
-        var AspectRatio = Math.round((Properties.Size.XO / Properties.Size.YO) * 1000) / 1000;
+        if (Settings.ApplyAspectRatio) {
+            var AspectRatio = Math.round((Properties.Size.XO / Properties.Size.YO) * 1000) / 1000;
 
-        Properties.Children.push({
-            Class: "UIAspectRatioConstraint",
-            AspectRatio: AspectRatio,
-            AspectType: 1,
-            DominantAxis: Properties.Size.XO > Properties.Size.YO ? 1 : 0
-        })
+            if (Element.width != 0 && Element.height != 0 && AspectRatio) {
+                Properties.Children.push({
+                    Class: "UIAspectRatioConstraint",
+                    AspectRatio: AspectRatio,
+                    AspectType: 1,
+                    DominantAxis: Properties.Size.XO > Properties.Size.YO ? 1 : 0
+                })
+            }
+        }
 
         //
 
@@ -212,12 +233,59 @@ async function ConvertElements() {
     return true
 }
 
+async function ExportImage(Element, Properties, CustomExport) {
+    const Name = CustomExport ? CustomExport.suffix : Element.name;
+
+    Element.exportAsync(CustomExport || Settings.DefaultExport).then(Bytes => {
+        const Format = (CustomExport ? CustomExport.format : "PNG").toLowerCase();
+        const UploadId = Element.id;
+
+        figma.ui.postMessage({
+            type: "UploadImage",
+            data: {
+                Data: Bytes,
+                Id: UploadId,
+                Name: Name.replace(/EI[-]?/, ""),
+                Format: Format
+            }
+        })
+
+        // const NewBody = new FormData()
+        //     .append("request", JSON.stringify({
+        //         assetType: "Image",
+        //         displayName: Name,
+        //         description: "Exported from figma",
+        //         creationContext: {
+        //             creator: {
+        //                 userId: Settings.UserId
+        //             }
+        //         }
+        //     }))
+        //     .append("fileContent", Bytes.buffer, Name + "." + Format);
+
+        // fetch.post("https://apis.roblox.com/assets/v1/assets", {
+        //     headers: {
+        //         "x-api-key": Settings.ApiKey,
+        //         body: NewBody,
+        //     }
+        // }).then(res => {
+        //     console.log(res);
+
+        //     if (!res.success) {
+        //         console.log("Failed to upload image to roblox", Bytes);
+        //         return;
+        //     }
+        // })
+    })
+}
+
 //ConvertElements();
 
 figma.ui.onmessage = msg => {
     switch (msg.type) {
         case "run":
             console.log("[FTR] Starting");
+            //ExportImage(figma.currentPage.selection[0])
             ConvertElements();
             console.log("[FTR] Done");
 

@@ -3,7 +3,7 @@
     "version": "2.0.0",
     "description": "Figma to roblox",
     "scripts": {
-        "build": "browserify --outfile ./build.js --entry ./src/main.js"
+        "build": "browserify --outfile ./build.js --entry ./src/main.js --insert-globals false"
     },
     "author": "NoTwistedHere"
 }

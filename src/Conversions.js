@@ -92,10 +92,27 @@ const TextYAlignments = [
 ]
 
 const TextTruncate = [
+    // There is 3 options in roblox but only 2 in figma
     "NONE",
     "", // This is the Ending option in roblox
     "ENDING" // This is the Split Word option in roblox
-    // There is 3 options in roblox but only 2 in figma?
+]
+
+const FillDirection = [
+    "HORIZONTAL",
+    "VERTICAL"
+]
+
+const HorizontalAlignment = [
+    "CENTER",
+    "LEFT",
+    "RIGHT"
+]
+
+const VerticalAlignment = [
+    "CENTER",
+    "TOP",
+    "BOTTOM"
 ]
 
 function getGradientRotation(gradientTransform) {
@@ -110,5 +127,8 @@ module.exports = {
     TextYAlignments: TextYAlignments,
     LineJoinModes: LineJoinModes,
     TextTruncate: TextTruncate,
+    FillDirection: FillDirection,
+    HorizontalAlignment: HorizontalAlignment,
+    VerticalAlignment: VerticalAlignment,
     Fonts: Fonts
 }

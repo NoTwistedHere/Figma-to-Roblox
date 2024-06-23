@@ -73,7 +73,7 @@
                 break;
             case "UploadImage":
                 const Form = new FormData();
-                const blob = new Blob([data.ImageData.buffer], { type: "image/" + data.ImageFormat.toLowerCase() });
+                const blob = new Blob([data.Data.buffer], { type: "image/" + data.Format });
 
                 if (ExportImages) {
                     Images.push(data);
@@ -86,7 +86,7 @@
 
                 Form.append("request", JSON.stringify({
                     assetType: "Image",
-                    displayName: "Exported Image",
+                    displayName: data.Name,
                     description: "Exported from Figma",
                     creationContext: {
                         creator: {
@@ -94,39 +94,17 @@
                         }
                     }
                 }));
-                Form.append("fileContent", blob, "export.png");
+                Form.append("fileContent", blob, data.Name + "." + data.Format);
 
-                try {
-                    fetch(Proxy.match(/http[s]?:\/\/((localhost)|([a-z]+[\.]*[a-z]*\.[a-z]+))(:[0-9]+)?\/.*/) ? Proxy : "https://silenteye.thisstuff.xyz/FigmaToRobloxProxy", {
-                        method: "POST",
-                        headers: {
-                            "x-api-key": CloudApiKey,
-                        },
-                        body: Form
-                    }).then(Response => {
-                        console.log(Response);
-                        if (Response.status !== 200) {
-                            parent.postMessage({ pluginMessage: { type: 'image-upload-fail', data: "Cloud API Key is not valid" } }, '*')
-                            return;
-                        }
-
-                        return Response.json();
-                    })
-                    .then(Response => {
-                        if (Response.error) {
-                            parent.postMessage({ pluginMessage: { type: 'image-upload-fail', data: Response.error.message } }, '*')
-                        } else {
-                            Response.UploadId = data.UploadId
-                            parent.postMessage({ pluginMessage: { type: 'image-upload-success', data: Response } }, '*')
-                        }
-                    })
-                    .catch((Error) => {
-                        console.warn(Error);
-                    });
-                } catch (Error) {
-                    parent.postMessage({ pluginMessage: { type: 'image-upload-fail', data: "An unexpected error occured, is the proxy url correct?" } }, '*')
-                    console.warn(Error);
-                }
+                fetch("https://apis.roblox.com/assets/v1/assets", {
+                    method: "POST",
+                    headers: {
+                        ["x-api-key"]: CloudApiKey
+                    },
+                    body: Form
+                }).then(res => {
+                    console.log(res);
+                })
                 break;
             case "GetAsync":
                 switch (data.key) {
