@@ -330,6 +330,7 @@ const PropertyTypes = {
                 YO: VerticalCellSize,
             },
             FillDirection: FillDirection,
+            SortOrder: 0,
 
             HorizontalAlignment: Conversions.HorizontalAlignment.indexOf(HorizontalAlignment),
             VerticalAlignment: Conversions.VerticalAlignment.indexOf(VerticalAlignment),
@@ -824,6 +825,8 @@ function ConvertObject(Properties, ParentObject) {
             case "TextTruncate":
             case "TextXAlignment":
             case "TextYAlignment":
+            case "SortOrder":
+            case "FillDirection":
                 XML += XMLTypes.token(Key, Value)
                 break;
             case "BackgroundTransparency":
@@ -940,9 +943,17 @@ function LoopElements(Elements, ParentObject) {
         //FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n"
 
         if (Properties.Children) {
-            Properties.Children.forEach(Child => {
-                New += `<Item class="${Child.Class}" referent="RBX0">\n<Properties>\n${ConvertObject(Child, Properties)}\n</Properties>\n</Item>`
-            });
+            function LoopChildren(Children) {
+                var New2 = "";
+
+                Children.forEach(Child => {
+                    New2 += `<Item class="${Child.Class}" referent="RBX0">\n${Child.Children ? LoopChildren(Child.Children) : ""}<Properties>\n${ConvertObject(Child, Properties)}\n</Properties></Item>\n`
+                });
+
+                return New2
+            }
+
+            New += LoopChildren(Properties.Children);
         }
         if (Element.children) New += LoopElements(Element.children, Properties);
 

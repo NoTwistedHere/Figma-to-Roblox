@@ -194,6 +194,7 @@ const PropertyTypes = {
                 YO: VerticalCellSize,
             },
             FillDirection: FillDirection,
+            SortOrder: 0,
 
             HorizontalAlignment: Conversions.HorizontalAlignment.indexOf(HorizontalAlignment),
             VerticalAlignment: Conversions.VerticalAlignment.indexOf(VerticalAlignment),
