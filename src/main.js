@@ -33,27 +33,14 @@
 
     TODO:
         Implement section support
+        Finish implementing Image uploading, Settings
+        Better ui
 */
 
 const { widget } = figma;
 const Conversions = require('./Conversions.js');
-const { QuickClose, Notify } = require('./Utilities.js');
-const { PropertyTypes, ElementTypes, XMLTypes} = require('./Converters.js');
-
-var Settings = {
-    ApiKey: "",
-    DefaultExport: {
-        format: "PNG",
-        contentsOnly: true,
-        constraint: {
-            type: "SCALE",
-            value: 2
-        }
-    },
-    ApplyAspectRatio: false,
-    ExportVectors: true,
-    ApplyZIndex: true,
-};
+const { Flags, QuickClose, Notify } = require('./Utilities.js');
+const { PropertyTypes, NodeTypes, XMLTypes, Settings, UpdateImage, UpdateOperationId, GetImageFromOperation, IsDone } = require('./Converters.js');
 
 var Scale = {
     X: 0.25,
@@ -65,7 +52,7 @@ function ConvertObject(Properties, ParentObject) {
 
     for (var [Key, Value] of Object.entries(Properties)) {
         switch (Key) {
-            case "Element":
+            case "Node":
             case "Children":
             case "Class":
                 break;
@@ -77,6 +64,9 @@ function ConvertObject(Properties, ParentObject) {
             case "SortOrder":
             case "FillDirection":
                 XML += XMLTypes.token(Key, Value)
+                break;
+            case "Image":
+                XML += XMLTypes.content(Key, Value)
                 break;
             case "BackgroundTransparency":
             case "Transparency":
@@ -109,33 +99,40 @@ function ConvertObject(Properties, ParentObject) {
     return XML
 }
 
-function LoopElements(Elements, ParentObject) {
+function LoopNodes(Nodes, ParentObject) {
     var FileContent = "";
 
-    // Loop elements
-    for (var i = 0; i < Elements.length; i++) {
-        var Element = Elements[i];
-        var Properties = ElementTypes[Element.type || "OTHER"](Element, Settings); // Can't name it Object because of below v
+    // Loop Nodes
+    for (var i = 0; i < Nodes.length; i++) {
+        const Node = Nodes[i];
+        const NodeData = Node.getPluginDataKeys();
+
+        // Check for a previous export
+        if (NodeData.ImageId) {
+            
+        }
+
+        var Properties = NodeTypes[Node.type || "OTHER"](Node, Settings); // Can't name it Object because of below v
 
         if (!Properties) continue;
 
-        // Loop element properties
-        var ElementProperties = Object.getOwnPropertyNames(Object.getPrototypeOf(Element));
+        // Loop Node properties
+        var NodeProperties = Object.getOwnPropertyNames(Object.getPrototypeOf(Node));
 
-        ElementProperties.forEach((i) => {
+        NodeProperties.forEach((i) => {
             if (PropertyTypes[i]) {
-                PropertyTypes[i](Element[i], Properties, Element);
+                PropertyTypes[i](Node[i], Properties, Node);
             }
         });
 
         // Calculate Aspect Ratio and Scale
 
-        console.log("Element Properties:", Properties)
+        console.log("Node Properties:", Properties)
 
         if (Settings.ApplyAspectRatio) {
             var AspectRatio = Math.round((Properties.Size.XO / Properties.Size.YO) * 1000) / 1000;
 
-            if (Element.width != 0 && Element.height != 0 && AspectRatio) {
+            if (Node.width != 0 && Node.height != 0 && AspectRatio) {
                 Properties.Children.push({
                     Class: "UIAspectRatioConstraint",
                     AspectRatio: AspectRatio,
@@ -153,7 +150,7 @@ function LoopElements(Elements, ParentObject) {
         //Properties.Size.YO *= Scale.Y
 
         if (Properties.Rotation && Properties.Rotation != 0) {
-            var BoundingBox = Element.absoluteBoundingBox;
+            var BoundingBox = Node.absoluteBoundingBox;
 
             var CX = BoundingBox.x + BoundingBox.width / 2;
             var CY = BoundingBox.y + BoundingBox.height / 2;
@@ -196,7 +193,9 @@ function LoopElements(Elements, ParentObject) {
                 var New2 = "";
 
                 Children.forEach(Child => {
-                    New2 += `<Item class="${Child.Class}" referent="RBX0">\n${Child.Children ? LoopChildren(Child.Children) : ""}<Properties>\n${ConvertObject(Child, Properties)}\n</Properties></Item>\n`
+                    var XMLProperties = ConvertObject(Child, Properties);
+
+                    New2 += `<Item class="${Child.Class}" referent="RBX0">\n${Child.Children ? LoopChildren(Child.Children) : ""}<Properties>\n${XMLProperties}\n</Properties></Item>\n`
                 });
 
                 return New2
@@ -204,7 +203,7 @@ function LoopElements(Elements, ParentObject) {
 
             New += LoopChildren(Properties.Children);
         }
-        if (Element.children) New += LoopElements(Element.children, Properties);
+        if (Node.children) New += LoopNodes(Node.children, Properties);
 
         //if (!ParentObject) {
         //    Properties.Position.XO = 0;
@@ -220,85 +219,96 @@ function LoopElements(Elements, ParentObject) {
     return FileContent
 }
 
-async function ConvertElements() {
-    var SelectedElements = figma.currentPage.selection;
+async function ConvertNodes() {
+    var SelectedNodes = figma.currentPage.selection;
 
-    if (SelectedElements.length == 0) QuickClose("No elements selected");
+    if (SelectedNodes.length == 0) QuickClose("No Nodes selected");
 
-    // Start Converting Elements
+    // Start Converting Nodes
 
     var FileContent = '<!--\n\tGenerated by Figma to Roblox\n\tReport any bugs/issues to me (notwistedhere)\n-->\n\n<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Meta name="ExplicitAutoJoints">true</Meta>\n';
 
-    FileContent += LoopElements(SelectedElements) + "</roblox>";
+    var Nodes = LoopNodes(SelectedNodes);
 
-    // figma.ui.postMessage({
-    //     type: "Download",
-    //     data: FileContent
-    // });
+    /*(Nodes.forEach((Properties) => {
+        FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
+    })*/
 
-    console.log(FileContent);
+    const a = await new Promise((resolve, reject) => {
+        function Timeout() {
+            if (IsDone()) return resolve();
+
+            setTimeout(Timeout, 500);
+        }
+
+        Timeout()
+    })
+
+    const ImageOperations = Nodes.replace(/{OP-([0-9a-bA-B-:]+)}/g, (_, Id) => {
+        console.log("Found operationId:", Id)
+
+        var ExportedImage = GetImageFromOperation(Id)
+
+        console.log("Got Exported Image:", ExportedImage)
+
+        return ExportedImage.Properties.Image
+    })
+
+    console.log("Result:", ImageOperations);
+
+    FileContent += ImageOperations + "</roblox>";
+
+    figma.ui.postMessage({
+        type: "Download",
+        data: FileContent
+    });
+
+    //console.log(FileContent);
 
     Notify("Successfully exported")
 
     return true
 }
 
-async function ExportImage(Element, Properties, CustomExport) {
-    const Name = CustomExport ? CustomExport.suffix : Element.name;
-
-    Element.exportAsync(CustomExport || Settings.DefaultExport).then(Bytes => {
-        const Format = (CustomExport ? CustomExport.format : "PNG").toLowerCase();
-        const UploadId = Element.id;
-
-        figma.ui.postMessage({
-            type: "UploadImage",
-            data: {
-                Data: Bytes,
-                Id: UploadId,
-                Name: Name.replace(/EI[-]?/, ""),
-                Format: Format
-            }
-        })
-
-        // const NewBody = new FormData()
-        //     .append("request", JSON.stringify({
-        //         assetType: "Image",
-        //         displayName: Name,
-        //         description: "Exported from figma",
-        //         creationContext: {
-        //             creator: {
-        //                 userId: Settings.UserId
-        //             }
-        //         }
-        //     }))
-        //     .append("fileContent", Bytes.buffer, Name + "." + Format);
-
-        // fetch.post("https://apis.roblox.com/assets/v1/assets", {
-        //     headers: {
-        //         "x-api-key": Settings.ApiKey,
-        //         body: NewBody,
-        //     }
-        // }).then(res => {
-        //     console.log(res);
-
-        //     if (!res.success) {
-        //         console.log("Failed to upload image to roblox", Bytes);
-        //         return;
-        //     }
-        // })
-    })
-}
-
-//ConvertElements();
+//ConvertNodes();
 
 figma.ui.onmessage = msg => {
     switch (msg.type) {
         case "run":
             console.log("[FTR] Starting");
             //ExportImage(figma.currentPage.selection[0])
-            ConvertElements();
+            ConvertNodes();
             console.log("[FTR] Done");
 
+            break;
+        case "UpdateOperationId":
+            UpdateOperationId(msg);
+        case "ImageUploaded":
+            UpdateImage(msg);
+
+            /*
+            {
+                "id": "167:3",
+                "type": "ImageUploaded",
+                "data": {
+                    "path": "assets/18355966113",
+                    "revisionId": "1",
+                    "revisionCreateTime": "2024-07-06T04:49:52.260972600Z",
+                    "assetId": "18355966113",
+                    "displayName": "280271241_999080940999673_786787218521993595_n 1",
+                    "description": "Exported from Figma",
+                    "assetType": "Image",
+                    "creationContext": {
+                        "creator": {
+                            "userId": "7020899714"
+                        }
+                    },
+                    "moderationResult": {
+                        "moderationState": "Approved"
+                    },
+                    "state": "Active"
+                }
+            */
             break;
     }
 }

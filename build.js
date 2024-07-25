@@ -135,6 +135,24 @@ module.exports = {
 }
 },{}],2:[function(require,module,exports){
 const Conversions = require("./Conversions");
+const { Flags } = require("./Utilities");
+
+var ImagesRemaining = 0;
+var ImageExports = {};
+var Settings = {
+    ApiKey: "",
+    DefaultExport: {
+        format: "PNG",
+        contentsOnly: true,
+        constraint: {
+            type: "SCALE",
+            value: 2
+        }
+    },
+    ApplyAspectRatio: false,
+    ExportVectors: true,
+    ApplyZIndex: true,
+};
 
 function ConvertFill(Fill, Object) {
     var Transparency = 0;
@@ -186,8 +204,170 @@ function ConvertFill(Fill, Object) {
     return [Color3, Transparency];
 }
 
+async function ExportImage(Node, Properties, CustomExport) {
+    const Name = Node.name;
+
+    console.log("exporting image");
+
+    let AssetId = Node.getPluginData("AssetId");
+
+    if (!Flags.ForceUploadImages) {
+        if (AssetId) {
+
+            // Check if image hashes match?
+
+            if (Node.getPluginData("ImageHash") == Properties._ImageHash) {
+                console.log("Image has not changed, using Image:", AssetId)
+
+                Properties.Image = `rbxassetid://${AssetId}`
+
+                return;
+            }
+        } else if (Node.getPluginData("OperationId")) {
+            // try fetching before attempting to re-upload
+
+            console.log("Image was uploaded, checking status")
+
+            return;
+        }
+    }
+
+    var UploadId = Node.id;
+
+    //Node.setPluginData("AssetId", null);
+    //Node.setPluginData("OperationId", null);
+
+    //Properties.UploadId = UploadId;
+
+    ImagesRemaining += 1
+    Properties.Image = `{OP-${UploadId}}`
+    Node.setPluginData("ImageHash", Properties._ImageHash);
+
+    Node.exportAsync(CustomExport || Settings.DefaultExport).then(Bytes => {
+        const Format = (CustomExport ? CustomExport.format : "PNG").toLowerCase();
+        var IgnoreUpload = false;
+
+        // for (var i = 0; i < ImageExports.length; i++) {
+        //     if (ImageExports[i].Bytes == Bytes) {
+        //         IgnoreUpload = true;
+        //         UploadId = ImageExports[i].UploadId
+        //     };
+        // }
+
+        if (!ImageExports[UploadId]) {
+            ImageExports[UploadId] = {
+                Node: Node,
+                Properties: Properties,
+                Bytes: Bytes, // Uint8Array
+                UploadId: UploadId
+            }
+        }
+
+        console.log("Exported Image bytes:", Bytes, UploadId);
+
+        if (Flags.ImageUploadTesting) {
+            UpdateImage({id: UploadId, data: Flags.ImageUploadBoilerplate});
+        } else if (!IgnoreUpload) figma.ui.postMessage({
+            type: "UploadImage",
+            data: {
+                Data: Bytes,
+                Id: UploadId,
+                Name: Name,
+                Format: Format
+            }
+        })
+   
+
+        //
+
+        //Node.setPluginData("ImageHash", )
+
+        // const NewBody = new FormData()
+        //     .append("request", JSON.stringify({
+        //         assetType: "Image",
+        //         displayName: Name,
+        //         description: "Exported from figma",
+        //         creationContext: {
+        //             creator: {
+        //                 userId: Settings.UserId
+        //             }
+        //         }
+        //     }))
+        //     .append("fileContent", Bytes.buffer, Name + "." + Format);
+
+        // fetch.post("https://apis.roblox.com/assets/v1/assets", {
+        //     headers: {
+        //         "x-api-key": Settings.ApiKey,
+        //         body: NewBody,
+        //     }
+        // }).then(res => {
+        //     console.log(res);
+
+        //     if (!res.success) {
+        //         console.log("Failed to upload image to roblox", Bytes);
+        //         return;
+        //     }
+        // })
+    })
+
+    return UploadId
+}
+
+function UpdateImage(msg) {
+    console.log("Got Uploaded Image:", msg)
+    var ImageInfo = ImageExports[msg.id];
+
+    if (!ImageInfo) {
+        figma.notify(`Unable to find Image Node "${msg.id}" (check console for more info)`);
+        console.warn(`Failed to find Image Node "${msg.id}":`, msg);
+        return;
+    } else if (typeof(msg.data) == "string") {
+        ImageInfo.Node.setPluginData("OperationId", null);
+        figma.notify(`Failed to upload Image Node "${msg.id}": ${msg.data}`);
+        console.warn(`Failed to upload Image Node "${msg.id}":`, msg);
+        return;
+    }
+    
+    let ModerationResult = msg.data.moderationResult
+
+    if (ModerationResult && (ModerationResult.moderationState != "Approved" && ModerationResult.moderationState != "MODERATION_STATE_APPROVED")) {
+        ImageInfo.Node.setPluginData("OperationId", null);
+        figma.notify(`Image Element ${msg.id} failed moderation (check console for more info)`);
+        console.warn(`Image Element ${msg.id} failed moderation:`, ModerationResult);
+        return;
+    }
+
+    ImageInfo.Node.setPluginData("AssetId", msg.data.assetId);
+    ImageInfo.Properties.Image = "rbxassetid://" + msg.data.assetId;
+
+    ImagesRemaining -= 1
+    console.log("Updating Image:", ImageInfo);
+    console.log("Images Remaning:", ImagesRemaining);
+}
+
+function UpdateOperationId(msg) {
+    console.log("Got Image retreived:", msg);
+    var ImageInfo = ImageExports[msg.id];
+
+    if (!ImageInfo) {
+        figma.notify(`Unable to find Image Node "${msg.id}" (check console for more info)`);
+        console.warn(`Failed to find Image Node "${msg.id}":`, msg);
+        return;
+    }
+
+    ImageInfo.Node.setPluginData("OperationId", msg);
+}
+
+function GetImageFromOperation(OperationId) {
+    return ImageExports[OperationId]
+}
+
+function IsDone() {
+    return ImagesRemaining == 0
+}
+
 const PropertyTypes = {
-    ["fills"]: (Value, Object, Element) => {
+    ["fills"]: (Value, Object, Node) => {
         if (Value.length > 1 || Value == figma.mixed) {
             return console.warn(`Frame ${Object.Name} cannot have more than 1 fill`);
         } else if (Value.length === 0) {
@@ -196,6 +376,30 @@ const PropertyTypes = {
         }
 
         const Fill = Value[0];
+
+        /*
+            0: Black Fill                       BackgroundColor3 = Black; Transparency = 0
+            1: Image 50% Transparency           Image = Image; ImageTransparency = 0.5
+            2: Purple Fill 20% transparency      ImageColor3 = Purple (hue at 80%?)
+        */
+
+        if (Fill.type == "IMAGE") {
+            // TODO: Implement better fill support
+            // if (Node.getPluginData("ImageHash") === Fill.imageHash) {
+            //     Object.Class = "ImageLabel"
+            //     Object.Image = Node.getPluginData("ImageId")
+            //     return;
+            // }
+
+            // Export image
+
+            Object._ImageHash = Fill.imageHash
+            Object.Class = "ImageLabel" // or ImageButton?!
+
+            ExportImage(Node, Object)
+
+            return;
+        }
 
         var [Color3, Transparency] = ConvertFill(Fill, Object);
 
@@ -219,7 +423,7 @@ const PropertyTypes = {
             })
         }
     },
-    ["strokes"]: (Value, Object, Element) => {
+    ["strokes"]: (Value, Object, Node) => {
         if (Value.length > 1) return console.warn(`Frame ${Object.Name} cannot have more than 1 stroke`);
         else if (Value.length === 0) {
             return;
@@ -243,8 +447,8 @@ const PropertyTypes = {
                 G: 0,
                 B: 1
             },
-            LineJoinMode: Conversions.LineJoinModes.indexOf(Element.strokeJoin),
-            Thickness: Element.strokeWeight,
+            LineJoinMode: Conversions.LineJoinModes.indexOf(Node.strokeJoin),
+            Thickness: Node.strokeWeight,
             Transparency: Stroke.opacity,
 
             Children: [],
@@ -258,8 +462,8 @@ const PropertyTypes = {
 
         Object.Children.push(StrokeObject);
     },
-    ["characters"]: (Value, Object, Element) => {
-        var Segments = Element.getStyledTextSegments(["fills", "fontSize", "fontWeight", "textDecoration", "textCase"]);
+    ["characters"]: (Value, Object, Node) => {
+        var Segments = Node.getStyledTextSegments(["fills", "fontSize", "fontWeight", "textDecoration", "textCase"]);
         var Text = "";
 
         Segments.forEach(Segment => {
@@ -270,7 +474,7 @@ const PropertyTypes = {
                 // TODO: Implement use of new funtion ConvertFill(Fill, Object?)
 
                 if (Fill.type == "SOLID") NewText += ` color="rgb(${Round(Fill.color.r * 255, 1) + "," + Round(Fill.color.g * 255, 1) + "," + Round(Fill.color.b * 255, 1)})"`
-                else console.warn(`Unsupported rich text fill type "${Fill.type}" on text element`, Element)
+                else console.warn(`Unsupported rich text fill type "${Fill.type}" on text Node`, Node)
             };
 
             if (!Object.TextSize || Segment.fontSize !== Object.TextSize) {
@@ -291,7 +495,7 @@ const PropertyTypes = {
         if (Value === "UNDERLINE") Object.Text = `<u>${Object.Text}</u>`;
         else if (Value === "STRIKETHROUGH") Object.Text = `<s>${Object.Text}</s>`;
     },
-    ["layoutMode"]: (Value, Object, Element) => {
+    ["layoutMode"]: (Value, Object, Node) => {
         /*
             TODO: Support reverse ZIndex
         */
@@ -301,18 +505,18 @@ const PropertyTypes = {
 
         // Get Padding and Alignment Offset
 
-        const HorizontalCellPadding = IsHorizontal ? Element.itemSpacing : Element.counterAxisSpacing || Element.itemSpacing;
-        const VerticalCellPadding = !IsHorizontal ? Element.itemSpacing : Element.counterAxisSpacing || Element.itemSpacing;
+        const HorizontalCellPadding = IsHorizontal ? Node.itemSpacing : Node.counterAxisSpacing || Node.itemSpacing;
+        const VerticalCellPadding = !IsHorizontal ? Node.itemSpacing : Node.counterAxisSpacing || Node.itemSpacing;
 
-        const HorizontalAlignment = IsHorizontal ? Element.primaryAxisAlignItems : Element.counterAxisAlignItems || Element.primaryAxisAlignItems;
-        const VerticalAlignment = !IsHorizontal ? Element.primaryAxisAlignItems : Element.counterAxisAlignItems || Element.primaryAxisAlignItems;
+        const HorizontalAlignment = IsHorizontal ? Node.primaryAxisAlignItems : Node.counterAxisAlignItems || Node.primaryAxisAlignItems;
+        const VerticalAlignment = !IsHorizontal ? Node.primaryAxisAlignItems : Node.counterAxisAlignItems || Node.primaryAxisAlignItems;
 
         // Get Size Offset
         //
         // It's annoying roblox enforces all children to be uniform in size
         // Could add a setting to toggle this on/off depending on what's needed
-        const HorizontalCellSize = Element.children[0] ? Element.children[0].width : 100;
-        const VerticalCellSize = Element.children[0] ? Element.children[0].height : 100;
+        const HorizontalCellSize = Node.children[0] ? Node.children[0].width : 100;
+        const VerticalCellSize = Node.children[0] ? Node.children[0].height : 100;
 
         Object.Children.push({
             Class: "UIGridLayout",
@@ -348,18 +552,18 @@ function CalculateAngle(P1, P2, P3) { // https://stackoverflow.com/a/39673693
     return AngleDeg < 0 ? AngleDeg + 180 : AngleDeg;
 }
 
-const ElementTypes = { // Is this really needed? I could probably make it less repetative
-    ["GROUP"]: (Element) => {
+const NodeTypes = { // Is this really needed? I could probably make it less repetative
+    ["GROUP"]: (Node) => {
         var Properties = {
             Class: "Frame",
-            Name: Element.name,
+            Name: Node.name,
             Active: true,
-            Visible: Element.visible,
+            Visible: Node.visible,
             BackgroundTransparency: 0,
-            _Transparency: Element.opacity,
+            _Transparency: Node.opacity,
             BorderSizePixel: 0,
 
-            Rotation: -Element.rotation,
+            Rotation: -Node.rotation,
             ZIndex: 1,
 
             AnchorPoint: {
@@ -368,35 +572,35 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
             },
             Position: {
                 XS: 0,
-                XO: Element.x,
+                XO: Node.x,
                 YS: 0,
-                YO: Element.y
+                YO: Node.y
             },
             Size: {
                 XS: 0,
-                XO: Element.width,
+                XO: Node.width,
                 YS: 0,
-                YO: Element.height
+                YO: Node.height
             },
 
             Children: [],
-            Element: Element,
+            Node: Node,
         }
 
         return Properties
     },
-    ["FRAME"]: (Element) => {
+    ["FRAME"]: (Node) => {
         var Properties = {
             Class: "Frame",
-            Name: Element.name,
+            Name: Node.name,
             Active: true,
-            Visible: Element.visible,
-            BackgroundTransparency: Element.opacity,
-            _Transparency: Element.opacity,
+            Visible: Node.visible,
+            BackgroundTransparency: Node.opacity,
+            _Transparency: Node.opacity,
             BorderSizePixel: 0,
 
-            ClipsDescendants: Element.clipsContent,
-            Rotation: -Element.rotation,
+            ClipsDescendants: Node.clipsContent,
+            Rotation: -Node.rotation,
             ZIndex: 1,
 
             AnchorPoint: {
@@ -405,34 +609,34 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
             },
             Position: {
                 XS: 0,
-                XO: Element.x,
+                XO: Node.x,
                 YS: 0,
-                YO: Element.y
+                YO: Node.y
             },
             Size: {
                 XS: 0,
-                XO: Element.width,
+                XO: Node.width,
                 YS: 0,
-                YO: Element.height
+                YO: Node.height
             },
 
             Children: [],
-            Element: Element,
+            Node: Node,
         }
 
         return Properties
     },
-    ["RECTANGLE"]: (Element) => {
+    ["RECTANGLE"]: (Node) => {
         var Properties = {
             Class: "Frame",
-            Name: Element.name,
+            Name: Node.name,
             Active: true,
-            Visible: Element.visible,
-            BackgroundTransparency: Element.opacity,
-            _Transparency: Element.opacity,
+            Visible: Node.visible,
+            BackgroundTransparency: Node.opacity,
+            _Transparency: Node.opacity,
             BorderSizePixel: 0,
 
-            Rotation: -Element.rotation,
+            Rotation: -Node.rotation,
             ZIndex: 1,
 
             AnchorPoint: {
@@ -441,38 +645,38 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
             },
             Position: {
                 XS: 0,
-                XO: Element.x,
+                XO: Node.x,
                 YS: 0,
-                YO: Element.y
+                YO: Node.y
             },
             Size: {
                 XS: 0,
-                XO: Element.width,
+                XO: Node.width,
                 YS: 0,
-                YO: Element.height
+                YO: Node.height
             },
 
             Children: [],
-            Element: Element,
+            Node: Node,
         }
 
         return Properties;
     },
-    ["ELLIPSE"]: (Element) => {
+    ["ELLIPSE"]: (Node) => {
         // Note: Only supports circles (ellipses would have to be images)
 
-        let Size = Math.min(Element.width, Element.height); // Will get the smallest of the two (no need to check if they are the same)
+        let Size = Math.min(Node.width, Node.height); // Will get the smallest of the two (no need to check if they are the same)
 
         return {
             Class: "Frame",
-            Name: Element.name,
+            Name: Node.name,
             Active: true,
-            Visible: Element.visible,
-            BackgroundTransparency: Element.opacity,
-            _Transparency: Element.opacity,
+            Visible: Node.visible,
+            BackgroundTransparency: Node.opacity,
+            _Transparency: Node.opacity,
             BorderSizePixel: 0,
 
-            Rotation: -Element.rotation,
+            Rotation: -Node.rotation,
             ZIndex: 1,
 
             AnchorPoint: {
@@ -481,9 +685,9 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
             },
             Position: {
                 XS: 0,
-                XO: Element.x + (Element.width - Size),
+                XO: Node.x + (Node.width - Size),
                 YS: 0,
-                YO: Element.y + (Element.height - Size)
+                YO: Node.y + (Node.height - Size)
             },
             Size: {
                 XS: 0,
@@ -502,33 +706,33 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
                     }
                 }
             ],
-            Element: Element,
+            Node: Node,
         }
     },
-    ["TEXT"]: (Element) => {
-        var Font = Conversions.Fonts[Element.fontName.style];
+    ["TEXT"]: (Node) => {
+        var Font = Conversions.Fonts[Node.fontName.style];
 
         var Properties = {
             Class: "TextLabel",
-            Name: Element.name,
+            Name: Node.name,
             Active: true,
-            Visible: Element.visible,
+            Visible: Node.visible,
             BackgroundTransparency: 0.0,
-            _Transparency: Element.opacity,
+            _Transparency: Node.opacity,
             BorderSizePixel: 0,
 
-            Rotation: -Element.rotation,
+            Rotation: -Node.rotation,
             ZIndex: 1,
 
-            Text: Element.characters,
-            TextSize: Element.fontSize !== figma.mixed ? Element.fontSize : 16,
-            TextXAlignment: Conversions.TextXAlignments.indexOf(Element.textAlignHorizontal),
-            TextYAlignment: Conversions.TextYAlignments.indexOf(Element.textAlignVertical),
+            Text: Node.characters,
+            TextSize: Node.fontSize !== figma.mixed ? Node.fontSize : 16,
+            TextXAlignment: Conversions.TextXAlignments.indexOf(Node.textAlignHorizontal),
+            TextYAlignment: Conversions.TextYAlignments.indexOf(Node.textAlignVertical),
             TextWrapped: true,
-            TextTruncate: Conversions.TextTruncate.indexOf(Element.textTruncation),
+            TextTruncate: Conversions.TextTruncate.indexOf(Node.textTruncation),
 
             FontFace: {
-                Family: `<url>rbxasset://fonts/families/${(Element.fontName !== figma.mixed ? Element.fontName.family : "Source Sans Pro").replace(/ /g, "")}.json</url>`,
+                Family: `<url>rbxasset://fonts/families/${(Node.fontName !== figma.mixed ? Node.fontName.family : "Source Sans Pro").replace(/ /g, "")}.json</url>`,
                 Weight: Font ? Font.Weight: 400,
                 Style: Font ? Font.Style: "Regular"
             },
@@ -539,23 +743,23 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
             },
             Position: {
                 XS: 0,
-                XO: Element.x,
+                XO: Node.x,
                 YS: 0,
-                YO: Element.y
+                YO: Node.y
             },
             Size: {
                 XS: 0,
-                XO: Element.width,
+                XO: Node.width,
                 YS: 0,
-                YO: Element.height
+                YO: Node.height
             },
 
             Children: [],
-            Element: Element,
+            Node: Node,
         }
 
-        if (Element.textCase) {
-            switch (Element.textCase) {
+        if (Node.textCase) {
+            switch (Node.textCase) {
                 case "UPPER": 
                     Properties.Text = Properties.Text.toUpperCase();
                     break;
@@ -573,14 +777,14 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
 
         return Properties;
     },
-    ["VECTOR"]: (Element, Settings) => {
+    ["VECTOR"]: (Node, Settings) => {
         // Calculate how many rectangles fit into the area
 
         if (!Settings.ExportVectors) {
             return;
         }
 
-        const VectorNetwork = Element.vectorNetwork;
+        const VectorNetwork = Node.vectorNetwork;
         const Vertices = VectorNetwork.vertices;
 
         var Checked = {};
@@ -605,14 +809,14 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
 
         return {
             Class: "N/A",
-            Name: Element.name,
+            Name: Node.name,
             Active: true,
-            Visible: Element.visible,
+            Visible: Node.visible,
             BackgroundTransparency: 0.0,
-            _Transparency: Element.opacity,
+            _Transparency: Node.opacity,
             BorderSizePixel: 0,
 
-            Rotation: -Element.rotation,
+            Rotation: -Node.rotation,
             ZIndex: 1,
 
             AnchorPoint: {
@@ -621,24 +825,24 @@ const ElementTypes = { // Is this really needed? I could probably make it less r
             },
             Position: {
                 XS: 0,
-                XO: Element.x,
+                XO: Node.x,
                 YS: 0,
-                YO: Element.y
+                YO: Node.y
             },
             Size: {
                 XS: 0,
-                XO: Element.width,
+                XO: Node.width,
                 YS: 0,
-                YO: Element.height
+                YO: Node.height
             },
 
             Children: [],
-            Element: Element,
+            Node: Node,
         }
     },
 
-    ["OTHER"]: (Element) => {
-        console.warn("Unknwon type:", Element.type)
+    ["OTHER"]: (Node) => {
+        console.warn("Unknwon type:", Node.type)
     }
 }
 
@@ -673,6 +877,11 @@ function EncodeStr(String) {
 const XMLTypes = {
     ["token"]: (Name, Value) => {
         return `<token name="${Name}">${Value}</token>`
+    },
+    ["content"]: (Name, Value) => {
+        //if (Value.match(/:\/\//g)) return `<Content name="${Name}"><url>${Value}</url</Content>`;
+
+        return `<Content name="${Name}"><url>${Value}</url></Content>`
     },
 
     ["string"]: (Name, Value) => {
@@ -723,11 +932,39 @@ const XMLTypes = {
 
 module.exports = {
     PropertyTypes,
-    ElementTypes,
-    XMLTypes
+    NodeTypes,
+    XMLTypes,
+    Settings,
+    UpdateImage,
+    UpdateOperationId,
+    GetImageFromOperation,
+    IsDone
 }
-},{"./Conversions":1}],3:[function(require,module,exports){
+},{"./Conversions":1,"./Utilities":3}],3:[function(require,module,exports){
 var CurrentNotification;
+
+const Flags = {
+    ForceUploadImages: false, // Skips image matching, upload is still overwritten by ImageUploadTesting
+    ImageUploadTesting: false, 
+    ImageUploadBoilerplate: {
+        "path": "assets/18355701361",
+        "revisionId": "1",
+        "revisionCreateTime": "2024-07-06T04:49:52.260972600Z",
+        "assetId": "18355701361",
+        "displayName": "280271241_999080940999673_786787218521993595_n 1",
+        "description": "Exported from Figma",
+        "assetType": "Image",
+        "creationContext": {
+            "creator": {
+                "userId": "7020899714"
+            }
+        },
+        "moderationResult": {
+            "moderationState": "Approved"
+        },
+        "state": "Active"
+    }
+}
 
 function QuickClose(Message) {
     if (CurrentNotification) CurrentNotification.cancel();
@@ -745,6 +982,7 @@ function Notify(Message) {
 }
 
 module.exports = {
+    Flags,
     QuickClose,
     Notify
 }
@@ -784,27 +1022,14 @@ module.exports = {
 
     TODO:
         Implement section support
+        Finish implementing Image uploading, Settings
+        Better ui
 */
 
 const { widget } = figma;
 const Conversions = require('./Conversions.js');
-const { QuickClose, Notify } = require('./Utilities.js');
-const { PropertyTypes, ElementTypes, XMLTypes} = require('./Converters.js');
-
-var Settings = {
-    ApiKey: "",
-    DefaultExport: {
-        format: "PNG",
-        contentsOnly: true,
-        constraint: {
-            type: "SCALE",
-            value: 2
-        }
-    },
-    ApplyAspectRatio: false,
-    ExportVectors: true,
-    ApplyZIndex: true,
-};
+const { Flags, QuickClose, Notify } = require('./Utilities.js');
+const { PropertyTypes, NodeTypes, XMLTypes, Settings, UpdateImage, UpdateOperationId, GetImageFromOperation, IsDone } = require('./Converters.js');
 
 var Scale = {
     X: 0.25,
@@ -816,7 +1041,7 @@ function ConvertObject(Properties, ParentObject) {
 
     for (var [Key, Value] of Object.entries(Properties)) {
         switch (Key) {
-            case "Element":
+            case "Node":
             case "Children":
             case "Class":
                 break;
@@ -828,6 +1053,9 @@ function ConvertObject(Properties, ParentObject) {
             case "SortOrder":
             case "FillDirection":
                 XML += XMLTypes.token(Key, Value)
+                break;
+            case "Image":
+                XML += XMLTypes.content(Key, Value)
                 break;
             case "BackgroundTransparency":
             case "Transparency":
@@ -860,33 +1088,40 @@ function ConvertObject(Properties, ParentObject) {
     return XML
 }
 
-function LoopElements(Elements, ParentObject) {
+function LoopNodes(Nodes, ParentObject) {
     var FileContent = "";
 
-    // Loop elements
-    for (var i = 0; i < Elements.length; i++) {
-        var Element = Elements[i];
-        var Properties = ElementTypes[Element.type || "OTHER"](Element, Settings); // Can't name it Object because of below v
+    // Loop Nodes
+    for (var i = 0; i < Nodes.length; i++) {
+        const Node = Nodes[i];
+        const NodeData = Node.getPluginDataKeys();
+
+        // Check for a previous export
+        if (NodeData.ImageId) {
+            
+        }
+
+        var Properties = NodeTypes[Node.type || "OTHER"](Node, Settings); // Can't name it Object because of below v
 
         if (!Properties) continue;
 
-        // Loop element properties
-        var ElementProperties = Object.getOwnPropertyNames(Object.getPrototypeOf(Element));
+        // Loop Node properties
+        var NodeProperties = Object.getOwnPropertyNames(Object.getPrototypeOf(Node));
 
-        ElementProperties.forEach((i) => {
+        NodeProperties.forEach((i) => {
             if (PropertyTypes[i]) {
-                PropertyTypes[i](Element[i], Properties, Element);
+                PropertyTypes[i](Node[i], Properties, Node);
             }
         });
 
         // Calculate Aspect Ratio and Scale
 
-        console.log("Element Properties:", Properties)
+        console.log("Node Properties:", Properties)
 
         if (Settings.ApplyAspectRatio) {
             var AspectRatio = Math.round((Properties.Size.XO / Properties.Size.YO) * 1000) / 1000;
 
-            if (Element.width != 0 && Element.height != 0 && AspectRatio) {
+            if (Node.width != 0 && Node.height != 0 && AspectRatio) {
                 Properties.Children.push({
                     Class: "UIAspectRatioConstraint",
                     AspectRatio: AspectRatio,
@@ -904,7 +1139,7 @@ function LoopElements(Elements, ParentObject) {
         //Properties.Size.YO *= Scale.Y
 
         if (Properties.Rotation && Properties.Rotation != 0) {
-            var BoundingBox = Element.absoluteBoundingBox;
+            var BoundingBox = Node.absoluteBoundingBox;
 
             var CX = BoundingBox.x + BoundingBox.width / 2;
             var CY = BoundingBox.y + BoundingBox.height / 2;
@@ -947,7 +1182,9 @@ function LoopElements(Elements, ParentObject) {
                 var New2 = "";
 
                 Children.forEach(Child => {
-                    New2 += `<Item class="${Child.Class}" referent="RBX0">\n${Child.Children ? LoopChildren(Child.Children) : ""}<Properties>\n${ConvertObject(Child, Properties)}\n</Properties></Item>\n`
+                    var XMLProperties = ConvertObject(Child, Properties);
+
+                    New2 += `<Item class="${Child.Class}" referent="RBX0">\n${Child.Children ? LoopChildren(Child.Children) : ""}<Properties>\n${XMLProperties}\n</Properties></Item>\n`
                 });
 
                 return New2
@@ -955,7 +1192,7 @@ function LoopElements(Elements, ParentObject) {
 
             New += LoopChildren(Properties.Children);
         }
-        if (Element.children) New += LoopElements(Element.children, Properties);
+        if (Node.children) New += LoopNodes(Node.children, Properties);
 
         //if (!ParentObject) {
         //    Properties.Position.XO = 0;
@@ -971,85 +1208,96 @@ function LoopElements(Elements, ParentObject) {
     return FileContent
 }
 
-async function ConvertElements() {
-    var SelectedElements = figma.currentPage.selection;
+async function ConvertNodes() {
+    var SelectedNodes = figma.currentPage.selection;
 
-    if (SelectedElements.length == 0) QuickClose("No elements selected");
+    if (SelectedNodes.length == 0) QuickClose("No Nodes selected");
 
-    // Start Converting Elements
+    // Start Converting Nodes
 
     var FileContent = '<!--\n\tGenerated by Figma to Roblox\n\tReport any bugs/issues to me (notwistedhere)\n-->\n\n<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Meta name="ExplicitAutoJoints">true</Meta>\n';
 
-    FileContent += LoopElements(SelectedElements) + "</roblox>";
+    var Nodes = LoopNodes(SelectedNodes);
 
-    // figma.ui.postMessage({
-    //     type: "Download",
-    //     data: FileContent
-    // });
+    /*(Nodes.forEach((Properties) => {
+        FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
+    })*/
 
-    console.log(FileContent);
+    const a = await new Promise((resolve, reject) => {
+        function Timeout() {
+            if (IsDone()) return resolve();
+
+            setTimeout(Timeout, 500);
+        }
+
+        Timeout()
+    })
+
+    const ImageOperations = Nodes.replace(/{OP-([0-9a-bA-B-:]+)}/g, (_, Id) => {
+        console.log("Found operationId:", Id)
+
+        var ExportedImage = GetImageFromOperation(Id)
+
+        console.log("Got Exported Image:", ExportedImage)
+
+        return ExportedImage.Properties.Image
+    })
+
+    console.log("Result:", ImageOperations);
+
+    FileContent += ImageOperations + "</roblox>";
+
+    figma.ui.postMessage({
+        type: "Download",
+        data: FileContent
+    });
+
+    //console.log(FileContent);
 
     Notify("Successfully exported")
 
     return true
 }
 
-async function ExportImage(Element, Properties, CustomExport) {
-    const Name = CustomExport ? CustomExport.suffix : Element.name;
-
-    Element.exportAsync(CustomExport || Settings.DefaultExport).then(Bytes => {
-        const Format = (CustomExport ? CustomExport.format : "PNG").toLowerCase();
-        const UploadId = Element.id;
-
-        figma.ui.postMessage({
-            type: "UploadImage",
-            data: {
-                Data: Bytes,
-                Id: UploadId,
-                Name: Name.replace(/EI[-]?/, ""),
-                Format: Format
-            }
-        })
-
-        // const NewBody = new FormData()
-        //     .append("request", JSON.stringify({
-        //         assetType: "Image",
-        //         displayName: Name,
-        //         description: "Exported from figma",
-        //         creationContext: {
-        //             creator: {
-        //                 userId: Settings.UserId
-        //             }
-        //         }
-        //     }))
-        //     .append("fileContent", Bytes.buffer, Name + "." + Format);
-
-        // fetch.post("https://apis.roblox.com/assets/v1/assets", {
-        //     headers: {
-        //         "x-api-key": Settings.ApiKey,
-        //         body: NewBody,
-        //     }
-        // }).then(res => {
-        //     console.log(res);
-
-        //     if (!res.success) {
-        //         console.log("Failed to upload image to roblox", Bytes);
-        //         return;
-        //     }
-        // })
-    })
-}
-
-//ConvertElements();
+//ConvertNodes();
 
 figma.ui.onmessage = msg => {
     switch (msg.type) {
         case "run":
             console.log("[FTR] Starting");
             //ExportImage(figma.currentPage.selection[0])
-            ConvertElements();
+            ConvertNodes();
             console.log("[FTR] Done");
 
+            break;
+        case "UpdateOperationId":
+            UpdateOperationId(msg);
+        case "ImageUploaded":
+            UpdateImage(msg);
+
+            /*
+            {
+                "id": "167:3",
+                "type": "ImageUploaded",
+                "data": {
+                    "path": "assets/18355966113",
+                    "revisionId": "1",
+                    "revisionCreateTime": "2024-07-06T04:49:52.260972600Z",
+                    "assetId": "18355966113",
+                    "displayName": "280271241_999080940999673_786787218521993595_n 1",
+                    "description": "Exported from Figma",
+                    "assetType": "Image",
+                    "creationContext": {
+                        "creator": {
+                            "userId": "7020899714"
+                        }
+                    },
+                    "moderationResult": {
+                        "moderationState": "Approved"
+                    },
+                    "state": "Active"
+                }
+            */
             break;
     }
 }

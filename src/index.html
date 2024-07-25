@@ -30,10 +30,18 @@
     var UserId = ""
     var Proxy = ""
     var ExportImages = false
-    var UploadImages = false
+    var UploadImages = true
+
+    function PostMessage(Data) {
+        parent.postMessage({ pluginMessage: Data }, "*");
+    }
+
+    function Sleep(ms) {
+        return new Promise(res => setTimeout(res, ms));
+    }
 
     document.getElementById("convselect").onclick = () => {
-        parent.postMessage({ pluginMessage: { type: 'run' } }, '*')
+        PostMessage({ type: 'run' });
     }
 
     const DownloadLink = document.getElementById("download");
@@ -80,7 +88,8 @@
                 }
 
                 if (CloudApiKey == "" || UserId == "" || !UploadImages) {
-                    parent.postMessage({ pluginMessage: { type: 'image-upload-fail', data: "Cloud API Key is not set" } }, '*')
+                    console.warn("Cloud API Key is not set");
+                    PostMessage({ type: 'image-upload-fail', data: "Cloud API Key is not set" })
                     return;
                 }
 
@@ -98,13 +107,42 @@
 
                 fetch("https://apis.roblox.com/assets/v1/assets", {
                     method: "POST",
+                    //mode: "no-cors",
                     headers: {
-                        ["x-api-key"]: CloudApiKey
+                        ["x-api-key"]: CloudApiKey,
                     },
                     body: Form
-                }).then(res => {
-                    console.log(res);
-                })
+                }).then(res => res.json())
+                    .then(async InitialResponse => {
+                        if (InitialResponse.done) {
+                            PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status });
+                            return;
+                        }
+
+                        PostMessage({ type: "UpdateOperationId", id: data.id, data: InitialResponse.operationId })
+
+                        Sleep(500);
+
+                        for (var i = 0; i < 20; i++) {
+                            const UploadResponse = await (await fetch(`https://apis.roblox.com/assets/v1/${InitialResponse.path}`, {
+                                method: "GET",
+                                //mode: "no-cors",
+                                headers: {
+                                    ["x-api-key"]: CloudApiKey
+                                }
+                            })).json();
+
+                            console.log("got Status Response:", UploadResponse);
+
+                            if (UploadResponse.done) {
+                                PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status })
+                                break;
+                            }
+
+                            Sleep(1500);
+                        }
+                    })
+
                 break;
             case "GetAsync":
                 switch (data.key) {

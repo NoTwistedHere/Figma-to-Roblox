@@ -3,7 +3,10 @@
     "version": "2.0.0",
     "description": "Figma to roblox",
     "scripts": {
-        "build": "browserify --outfile ./build.js --entry ./src/main.js --insert-globals false"
+        "build": "browserify --outfile ./build.js --entry ./src/main.js"
     },
-    "author": "NoTwistedHere"
+    "author": "NoTwistedHere",
+    "dependencies": {
+        "form-data": "^4.0.0"
+    }
 }
