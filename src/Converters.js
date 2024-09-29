@@ -1,5 +1,5 @@
 const Conversions = require("./Conversions");
-const { Flags } = require("./Utilities");
+const { Flags, QuickClose } = require("./Utilities");
 
 var ImagesRemaining = 0;
 var ImageExports = {};
@@ -74,6 +74,7 @@ async function ExportImage(Node, Properties, CustomExport) {
     console.log("exporting image");
 
     let AssetId = Node.getPluginData("AssetId");
+    var UploadId = Node.getPluginData("OperationId");
 
     if (!Flags.ForceUploadImages) {
         if (AssetId) {
@@ -87,25 +88,36 @@ async function ExportImage(Node, Properties, CustomExport) {
 
                 return;
             }
-        } else if (Node.getPluginData("OperationId")) {
+        } else if (UploadId) {
             // try fetching before attempting to re-upload
 
-            console.log("Image was uploaded, checking status")
+            console.log("Image was uploaded, checking Operation:", UploadId)
 
-            return;
+            figma.ui.postMessage({
+                type: "CheckOperation",
+                data: {
+                    Id: UploadId
+                }
+            })
+
+            return UploadId
         }
     }
 
-    var UploadId = Node.id;
+    console.log(AssetId, UploadId)
 
-    //Node.setPluginData("AssetId", null);
-    //Node.setPluginData("OperationId", null);
+    UploadId = Node.id // yes dw this is meant to be above the check
+
+    if (!UploadId) QuickClose("Node has no id!?")
+
+    Node.setPluginData("AssetId", "");
+    Node.setPluginData("OperationId", "");
 
     //Properties.UploadId = UploadId;
 
     ImagesRemaining += 1
     Properties.Image = `{OP-${UploadId}}`
-    Node.setPluginData("ImageHash", Properties._ImageHash);
+    if (Properties._ImageHash) Node.setPluginData("ImageHash", Properties._ImageHash);
 
     Node.exportAsync(CustomExport || Settings.DefaultExport).then(Bytes => {
         const Format = (CustomExport ? CustomExport.format : "PNG").toLowerCase();
@@ -130,6 +142,7 @@ async function ExportImage(Node, Properties, CustomExport) {
         console.log("Exported Image bytes:", Bytes, UploadId);
 
         if (Flags.ImageUploadTesting) {
+            // Test post image upload with template data
             UpdateImage({id: UploadId, data: Flags.ImageUploadBoilerplate});
         } else if (!IgnoreUpload) figma.ui.postMessage({
             type: "UploadImage",
@@ -140,38 +153,6 @@ async function ExportImage(Node, Properties, CustomExport) {
                 Format: Format
             }
         })
-   
-
-        //
-
-        //Node.setPluginData("ImageHash", )
-
-        // const NewBody = new FormData()
-        //     .append("request", JSON.stringify({
-        //         assetType: "Image",
-        //         displayName: Name,
-        //         description: "Exported from figma",
-        //         creationContext: {
-        //             creator: {
-        //                 userId: Settings.UserId
-        //             }
-        //         }
-        //     }))
-        //     .append("fileContent", Bytes.buffer, Name + "." + Format);
-
-        // fetch.post("https://apis.roblox.com/assets/v1/assets", {
-        //     headers: {
-        //         "x-api-key": Settings.ApiKey,
-        //         body: NewBody,
-        //     }
-        // }).then(res => {
-        //     console.log(res);
-
-        //     if (!res.success) {
-        //         console.log("Failed to upload image to roblox", Bytes);
-        //         return;
-        //     }
-        // })
     })
 
     return UploadId
@@ -186,7 +167,7 @@ function UpdateImage(msg) {
         console.warn(`Failed to find Image Node "${msg.id}":`, msg);
         return;
     } else if (typeof(msg.data) == "string") {
-        ImageInfo.Node.setPluginData("OperationId", null);
+        //ImageInfo.Node.setPluginData("OperationId", "");
         figma.notify(`Failed to upload Image Node "${msg.id}": ${msg.data}`);
         console.warn(`Failed to upload Image Node "${msg.id}":`, msg);
         return;
@@ -195,7 +176,7 @@ function UpdateImage(msg) {
     let ModerationResult = msg.data.moderationResult
 
     if (ModerationResult && (ModerationResult.moderationState != "Approved" && ModerationResult.moderationState != "MODERATION_STATE_APPROVED")) {
-        ImageInfo.Node.setPluginData("OperationId", null);
+        ImageInfo.Node.setPluginData("OperationId", "");
         figma.notify(`Image Element ${msg.id} failed moderation (check console for more info)`);
         console.warn(`Image Element ${msg.id} failed moderation:`, ModerationResult);
         return;
@@ -219,7 +200,7 @@ function UpdateOperationId(msg) {
         return;
     }
 
-    ImageInfo.Node.setPluginData("OperationId", msg);
+    ImageInfo.Node.setPluginData("OperationId", msg.data);
 }
 
 function GetImageFromOperation(OperationId) {

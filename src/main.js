@@ -33,14 +33,15 @@
 
     TODO:
         Implement section support
-        Finish implementing Image uploading, Settings
-        Better ui
+        Implement Settings
+        Finish implementing Image uploading (DONE?)
+        Better ui (DONE?)
 */
 
 const { widget } = figma;
 const Conversions = require('./Conversions.js');
 const { Flags, QuickClose, Notify } = require('./Utilities.js');
-const { PropertyTypes, NodeTypes, XMLTypes, Settings, UpdateImage, UpdateOperationId, GetImageFromOperation, IsDone } = require('./Converters.js');
+const { PropertyTypes, NodeTypes, XMLTypes, Settings, UpdateImage, UpdateOperationId, GetImageFromOperation, ExportImage, IsDone } = require('./Converters.js');
 
 var Scale = {
     X: 0.25,
@@ -159,61 +160,68 @@ function LoopNodes(Nodes, ParentObject) {
             Properties.Position.YO = CY - Properties.Size.YO / 2;
         }
 
-        if (ParentObject && ParentObject.Position) {
-            Properties.Position.XO -= ParentObject.Position.XO;
-            Properties.Position.YO -= ParentObject.Position.YO;
-        } else if (ParentObject && ParentObject._Transparency) {
-            Properties._Transparency = ParentObject._Transparency * Properties._Transparency
-        }
         
-        // Convert to scale?
-
+        // Convert to scale? (WIP)
+        
         var SX, SY = ParentObject ? (ParentObject.Size.XO, ParentObject.Size.YO) : (1920, 1080);
-
+        
         // Properties.Position.XS = Properties.Position.XO / SX;
         // Properties.Position.YS = Properties.Position.YO / SY;
         // Properties.Size.XS = Properties.Size.XO / SX;
         // Properties.Size.YS = Properties.Size.YO / SY;
-
+        
         // Properties.Position.XO = 0;
         // Properties.Position.YO = 0;
         // Properties.Size.XO = 0;
         // Properties.Size.YO = 0;
-
+        
         //
-
+        // Create Item element, loop children (if applicable)
+        
         FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
-
+        
         var New = "";
-
+        
         //FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n"
-
+        
         if (Properties.Children) {
             function LoopChildren(Children) {
                 var New2 = "";
-
+                
                 Children.forEach(Child => {
                     var XMLProperties = ConvertObject(Child, Properties);
-
+                    
                     New2 += `<Item class="${Child.Class}" referent="RBX0">\n${Child.Children ? LoopChildren(Child.Children) : ""}<Properties>\n${XMLProperties}\n</Properties></Item>\n`
                 });
-
+                
                 return New2
             }
-
+            
             New += LoopChildren(Properties.Children);
         }
+
         if (Node.children) New += LoopNodes(Node.children, Properties);
 
-        //if (!ParentObject) {
-        //    Properties.Position.XO = 0;
-        //    Properties.Position.YO = 0;
-        //}
+        // Finish up and Convert Properties
+        
+        if (ParentObject) {
+            if (ParentObject.Position) { // Get Position relative to Parent
+                Properties.Position.XO -= ParentObject.Position.XO;
+                Properties.Position.YO -= ParentObject.Position.YO;
+            } else if (ParentObject._Transparency) { // Multiply Transparency with Parent Transparency/Pass through
+                Properties._Transparency = ParentObject._Transparency * Properties._Transparency
+            }
+        } else if (!Flags.UsePositionRelativeToScene) {
+            // Set Position of upmost Element (most likely a Group) to (0,0)
+            Properties.Position.XO = 0;
+            Properties.Position.YO = 0;
+        }
 
         FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n" + New;
 
         FileContent += "</Item>\n";
         Properties = null;
+        New = null;
     }
 
     return FileContent
@@ -254,7 +262,7 @@ async function ConvertNodes() {
         return ExportedImage.Properties.Image
     })
 
-    console.log("Result:", ImageOperations);
+    //console.log("Result:", ImageOperations);
 
     FileContent += ImageOperations + "</roblox>";
 
@@ -276,7 +284,6 @@ figma.ui.onmessage = msg => {
     switch (msg.type) {
         case "run":
             console.log("[FTR] Starting");
-            //ExportImage(figma.currentPage.selection[0])
             ConvertNodes();
             console.log("[FTR] Done");
 
@@ -313,4 +320,8 @@ figma.ui.onmessage = msg => {
     }
 }
 
-figma.showUI(__html__);
+figma.showUI(__html__, {
+    width: 250,
+    height: 380,
+    themeColors: true
+});

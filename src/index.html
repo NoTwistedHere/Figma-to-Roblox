@@ -1,173 +1,217 @@
-<a id="download" href="#" download="export.rbxmx" style="display:none;">Download</a>
-<button id="convselect">Convert Selection</button>
-<div></div>
-
-<label for="apikey">Cloud API Key (optional)</label>
-<input type="text" id="apikey" placeholder="Cloud API Key" />
-<div></div>
-
-<label for="userid">User ID</label>
-<input type="text" id="userid" placeholder="User ID" />
-<div></div>
-
-<label for="userid">Custom Proxy</label>
-<input type="text" id="prox" placeholder="Proxy URL" />
-<div></div>
-
-<label for="uploadImages">Upload Images</label>
-<input type="checkbox" id="uploadImages" name="Upload Images" />
-<div></div>
-
-<label for="exportImages">Export Images</label>
-<input type="checkbox" id="exportImages" name="Export Images" />
-
-<!-- get things :) -->
-<script src="https://unpkg.com/axios@1.4.0/dist/axios.min.js" integrity="sha384-I4Qw/vWb/sK/7VwepTtkaq636YLYClbEgEwKp3ueUCvjiLFrcoKUFAY5mOl40Fj3" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/jszip@3.7.1/dist/jszip.js" integrity="sha384-Lqk2um7o0W+Ke7IGh8Mk9EE7g2IrhepxXvttF/iw5hFqpMjFGKP4jcKYhNLAi/ZD" crossorigin="anonymous"></script>
-<script type="module" src="./main.js"></script>
-<script>
-    var CloudApiKey = ""
-    var UserId = ""
-    var Proxy = ""
-    var ExportImages = false
-    var UploadImages = true
-
-    function PostMessage(Data) {
-        parent.postMessage({ pluginMessage: Data }, "*");
-    }
-
-    function Sleep(ms) {
-        return new Promise(res => setTimeout(res, ms));
-    }
-
-    document.getElementById("convselect").onclick = () => {
-        PostMessage({ type: 'run' });
-    }
-
-    const DownloadLink = document.getElementById("download");
-    var Images = [];
-
-    function DownloadImages() {
-        if (!ExportImages || Images.length == 0) {
-            return;
-        }
-
-        let Zip = new JSZip();
-
-        for (let i = 0; i < Images.length; i++) {
-            var Image = Images[i];
-            Zip.file(`image-${Image.ImageName}(${i}).png`, new Blob([Image.ImageData.buffer], { type: "image/png" }));
-        }
-
-        Zip.generateAsync({ type: "blob" }).then((Content) => {
-            DownloadLink.href = URL.createObjectURL(Content);
-            DownloadLink.download = "images.zip";
-            DownloadLink.click();
-        });
-
-        Images = [];
-    }
-
-    onmessage = async (event) => {
-        const { type, data } = event.data.pluginMessage;
+<html>
+    <body style="width: 200px">
+        <style>
+            :root {
+                --background: var(--figma-color-bg);
+                --background-body: var(--figma-color-bg-secondary);
+                --button: var(--figma-color-bg-selected);
+                --button-hover: var(--figma-color-bg-selected-hover);
+                --text-main: var(--figma-color-text);
+            }
+        </style>
+        <a id="download" href="#" download="export.rbxmx" style="display:none;">Download</a>
+        <button id="convselect">Convert Selection</button>
+        <div></div>
         
-        switch (type) {
-            case "Download":
-                DownloadLink.href = "data:text/xml;charset=utf-8," + encodeURIComponent(data);
-                DownloadLink.download = "export.rbxmx";
-                DownloadLink.click();
+        <label for="apikey">Cloud API Key (optional)</label>
+        <input type="text" id="apikey" placeholder="Cloud API Key" />
+        <div></div>
+        
+        <label for="userid">User ID</label>
+        <input type="text" id="userid" placeholder="User ID" />
+        <div></div>
+        
+        <label for="userid">Custom Proxy</label>
+        <input type="text" id="prox" placeholder="Proxy URL" />
+        <div></div>
+        
+        <input type="checkbox" id="uploadImages" name="Upload Images" />
+        <label for="uploadImages">Upload Images</label>
+        <div></div>
+        
+        <input type="checkbox" id="exportImages" name="Export Images" />
+        <label for="exportImages">Export Images</label>
+        
+        <!-- Water CSS - Not required for the plugin to function -->
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/dark.css">
+        <!-- Axios - Required for Uploading Images, but can be omitted otherwise -->
+        <script src="https://unpkg.com/axios@1.4.0/dist/axios.min.js" integrity="sha384-I4Qw/vWb/sK/7VwepTtkaq636YLYClbEgEwKp3ueUCvjiLFrcoKUFAY5mOl40Fj3" crossorigin="anonymous" defer></script>
+        <!-- JSZip - Required for Downloading(/saving a local copy of every) Images, though not required for typical use -->
+        <script src="https://unpkg.com/jszip@3.7.1/dist/jszip.js" integrity="sha384-Lqk2um7o0W+Ke7IGh8Mk9EE7g2IrhepxXvttF/iw5hFqpMjFGKP4jcKYhNLAi/ZD" crossorigin="anonymous" defer></script>
+        <!--<script type="module" src="./main.js"></script> -->
+        <script>
+            var CloudApiKey = ""
+            var UserId = ""
+            var GroupId = ""
+            var Proxy = ""
+            var ExportImages = false
+            var UploadImages = true
 
-                DownloadImages();
-                break;
-            case "UploadImage":
-                const Form = new FormData();
-                const blob = new Blob([data.Data.buffer], { type: "image/" + data.Format });
+            function PostMessage(Data) {
+                parent.postMessage({ pluginMessage: Data }, "*");
+            }
 
-                if (ExportImages) {
-                    Images.push(data);
-                }
+            function Sleep(ms) {
+                return new Promise(res => setTimeout(res, ms));
+            }
 
-                if (CloudApiKey == "" || UserId == "" || !UploadImages) {
-                    console.warn("Cloud API Key is not set");
-                    PostMessage({ type: 'image-upload-fail', data: "Cloud API Key is not set" })
+            document.getElementById("convselect").onclick = () => {
+                PostMessage({ type: 'run' });
+            }
+
+            const DownloadLink = document.getElementById("download");
+            var Images = [];
+
+            function DownloadImages() {
+                if (!ExportImages || Images.length == 0) {
                     return;
                 }
 
-                Form.append("request", JSON.stringify({
-                    assetType: "Image",
-                    displayName: data.Name,
-                    description: "Exported from Figma",
-                    creationContext: {
-                        creator: {
-                            userId: parseFloat(UserId)
-                        }
-                    }
-                }));
-                Form.append("fileContent", blob, data.Name + "." + data.Format);
+                let Zip = new JSZip();
 
-                fetch("https://apis.roblox.com/assets/v1/assets", {
-                    method: "POST",
-                    //mode: "no-cors",
-                    headers: {
-                        ["x-api-key"]: CloudApiKey,
-                    },
-                    body: Form
-                }).then(res => res.json())
-                    .then(async InitialResponse => {
-                        if (InitialResponse.done) {
-                            PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status });
+                for (let i = 0; i < Images.length; i++) {
+                    var Image = Images[i];
+                    Zip.file(`image-${Image.ImageName}(${i}).png`, new Blob([Image.ImageData.buffer], { type: "image/png" }));
+                }
+
+                Zip.generateAsync({ type: "blob" }).then((Content) => {
+                    DownloadLink.href = URL.createObjectURL(Content);
+                    DownloadLink.download = "images.zip";
+                    DownloadLink.click();
+                });
+
+                Images = [];
+            }
+
+            onmessage = async (event) => {
+                const { type, data } = event.data.pluginMessage;
+
+                switch (type) {
+                    case "Download":
+                        DownloadLink.href = "data:text/xml;charset=utf-8," + encodeURIComponent(data);
+                        DownloadLink.download = "export.rbxmx";
+                        DownloadLink.click();
+
+                        DownloadImages();
+                        break;
+                    case "CheckOperation":
+                        const UploadResponse = await (await fetch(`https://apis.roblox.com/assets/v1/operations/${data.Id}`, {
+                            method: "GET",
+                            mode: "no-cors",
+                            headers: {
+                                ["Content-Type"]: "text/plain",
+                                //["Content-Language"]: "en-US",
+                                ["x-api-key"]: CloudApiKey
+                            }
+                        })).json();
+
+                        console.log("got Operation Response:", UploadResponse);
+
+                        //if (UploadResponse.done)
+                        //    PostMessage({ type: "image-" })
+
+                        break;
+                    case "UploadImage":
+                        const Form = new FormData();
+                        const blob = new Blob([data.Data.buffer], { type: "image/" + data.Format });
+
+                        if (ExportImages) Images.push(data);
+                        if (!UploadImages) return;
+                        else if (CloudApiKey == "" || UserId == "") {
+                            console.warn("Cloud API Key is not set");
+                            PostMessage({ type: 'image-upload-fail', data: "Cloud API Key is not set" })
                             return;
                         }
 
-                        PostMessage({ type: "UpdateOperationId", id: data.id, data: InitialResponse.operationId })
-
-                        Sleep(500);
-
-                        for (var i = 0; i < 20; i++) {
-                            const UploadResponse = await (await fetch(`https://apis.roblox.com/assets/v1/${InitialResponse.path}`, {
-                                method: "GET",
-                                //mode: "no-cors",
-                                headers: {
-                                    ["x-api-key"]: CloudApiKey
+                        Form.append("request", JSON.stringify({
+                            assetType: "Image",
+                            displayName: data.Name,
+                            description: "Exported from Figma",
+                            creationContext: {
+                                creator: {
+                                    userId: UserId ? parseFloat(UserId) : null,
+                                    groupId: GroupId ? parseFloat(GroupId) : null,
                                 }
-                            })).json();
+                            }
+                        }));
+                        Form.append("fileContent", blob, data.Name + "." + data.Format);
 
-                            console.log("got Status Response:", UploadResponse);
-
-                            if (UploadResponse.done) {
-                                PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status })
-                                break;
+                        fetch("https://apis.roblox.com/assets/v1/assets", {
+                            //mode: "no-cors",
+                            method: "POST",
+                            headers: {
+                                ["Origin"]: "FigmaToRoblox",
+                                ["Content-Type"]: "multipart/form-data; boundary=-16300",
+                                //["Accept"]: "multipart/form-data",
+                                //["Accept"]: "data/json",
+                                //["Content-Language"]: "en-US",
+                                ["x-api-key"]: CloudApiKey,
+                            },
+                            body: Form
+                        }).then(res => res.json())
+                        .then(async InitialResponse => {
+                            if (InitialResponse.done) {
+                                PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status });
+                                return;
                             }
 
-                            Sleep(1500);
-                        }
-                    })
+                            PostMessage({ type: "UpdateOperationId", id: data.Id, data: InitialResponse.operationId })
 
-                break;
-            case "GetAsync":
-                switch (data.key) {
-                    case "CloudApiKey":
-                        document.getElementById("apikey").value = data.value
-                        CloudApiKey = data.value
+                            console.log(InitialResponse)
+
+                            Sleep(500);
+
+                            for (var i = 0; i < 20; i++) {
+                                const UploadResponse = await (await fetch(`https://apis.roblox.com/assets/v1/${InitialResponse.path}`, {
+                                    method: "GET",
+                                    //mode: "no-cors",
+                                    headers: {
+                                        ["Accept"]: "data/json",
+                                        ["Content-Language"]: "en-US",
+                                        ["x-api-key"]: CloudApiKey
+                                    }
+                                })).json();
+
+                                console.log("got Status Response:", UploadResponse);
+
+                                if (UploadResponse.done) {
+                                    PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status })
+                                    break;
+                                }
+
+                                Sleep(1500);
+                            }
+                        })
+
                         break;
-                    case "UserId":
-                        document.getElementById("userid").value = data.value
-                        UserId = data.value
+                    case "GetAsync":
+                        switch (data.key) {
+                            case "CloudApiKey":
+                                document.getElementById("apikey").value = data.value
+                                CloudApiKey = data.value
+                                break;
+                            case "UserId":
+                                document.getElementById("userid").value = data.value
+                                UserId = data.value
+                                break;
+                            case "ExportImages":
+                                document.getElementById("exportImages").checked = data.value
+                                ExportImages = data.value
+                                break;
+                            case "UploadImages":
+                                document.getElementById("uploadImages").checked = data.value
+                                UploadImages = data.value
+                                break;
+                            case "Proxy":
+                                document.getElementById("prox").value = data.value
+                                Proxy = data.value
+                                break;
+                        };
+
                         break;
-                    case "ExportImages":
-                        document.getElementById("exportImages").checked = data.value
-                        ExportImages = data.value
-                        break;
-                    case "UploadImages":
-                        document.getElementById("uploadImages").checked = data.value
-                        UploadImages = data.value
-                        break;
-                    case "Proxy":
-                        document.getElementById("prox").value = data.value
-                        Proxy = data.value
-                        break;
-                }
-                break;
-        }
-    }
-</script>
+                };
+            };
+
+        </script>
+    </body>
+</html>

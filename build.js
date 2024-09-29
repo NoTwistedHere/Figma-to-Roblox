@@ -135,7 +135,7 @@ module.exports = {
 }
 },{}],2:[function(require,module,exports){
 const Conversions = require("./Conversions");
-const { Flags } = require("./Utilities");
+const { Flags, QuickClose } = require("./Utilities");
 
 var ImagesRemaining = 0;
 var ImageExports = {};
@@ -210,6 +210,7 @@ async function ExportImage(Node, Properties, CustomExport) {
     console.log("exporting image");
 
     let AssetId = Node.getPluginData("AssetId");
+    var UploadId = Node.getPluginData("OperationId");
 
     if (!Flags.ForceUploadImages) {
         if (AssetId) {
@@ -223,25 +224,36 @@ async function ExportImage(Node, Properties, CustomExport) {
 
                 return;
             }
-        } else if (Node.getPluginData("OperationId")) {
+        } else if (UploadId) {
             // try fetching before attempting to re-upload
 
-            console.log("Image was uploaded, checking status")
+            console.log("Image was uploaded, checking Operation:", UploadId)
 
-            return;
+            figma.ui.postMessage({
+                type: "CheckOperation",
+                data: {
+                    Id: UploadId
+                }
+            })
+
+            return UploadId
         }
     }
 
-    var UploadId = Node.id;
+    console.log(AssetId, UploadId)
 
-    //Node.setPluginData("AssetId", null);
-    //Node.setPluginData("OperationId", null);
+    UploadId = Node.id // yes dw this is meant to be above the check
+
+    if (!UploadId) QuickClose("Node has no id!?")
+
+    Node.setPluginData("AssetId", "");
+    Node.setPluginData("OperationId", "");
 
     //Properties.UploadId = UploadId;
 
     ImagesRemaining += 1
     Properties.Image = `{OP-${UploadId}}`
-    Node.setPluginData("ImageHash", Properties._ImageHash);
+    if (Properties._ImageHash) Node.setPluginData("ImageHash", Properties._ImageHash);
 
     Node.exportAsync(CustomExport || Settings.DefaultExport).then(Bytes => {
         const Format = (CustomExport ? CustomExport.format : "PNG").toLowerCase();
@@ -266,6 +278,7 @@ async function ExportImage(Node, Properties, CustomExport) {
         console.log("Exported Image bytes:", Bytes, UploadId);
 
         if (Flags.ImageUploadTesting) {
+            // Test post image upload with template data
             UpdateImage({id: UploadId, data: Flags.ImageUploadBoilerplate});
         } else if (!IgnoreUpload) figma.ui.postMessage({
             type: "UploadImage",
@@ -276,38 +289,6 @@ async function ExportImage(Node, Properties, CustomExport) {
                 Format: Format
             }
         })
-   
-
-        //
-
-        //Node.setPluginData("ImageHash", )
-
-        // const NewBody = new FormData()
-        //     .append("request", JSON.stringify({
-        //         assetType: "Image",
-        //         displayName: Name,
-        //         description: "Exported from figma",
-        //         creationContext: {
-        //             creator: {
-        //                 userId: Settings.UserId
-        //             }
-        //         }
-        //     }))
-        //     .append("fileContent", Bytes.buffer, Name + "." + Format);
-
-        // fetch.post("https://apis.roblox.com/assets/v1/assets", {
-        //     headers: {
-        //         "x-api-key": Settings.ApiKey,
-        //         body: NewBody,
-        //     }
-        // }).then(res => {
-        //     console.log(res);
-
-        //     if (!res.success) {
-        //         console.log("Failed to upload image to roblox", Bytes);
-        //         return;
-        //     }
-        // })
     })
 
     return UploadId
@@ -322,7 +303,7 @@ function UpdateImage(msg) {
         console.warn(`Failed to find Image Node "${msg.id}":`, msg);
         return;
     } else if (typeof(msg.data) == "string") {
-        ImageInfo.Node.setPluginData("OperationId", null);
+        //ImageInfo.Node.setPluginData("OperationId", "");
         figma.notify(`Failed to upload Image Node "${msg.id}": ${msg.data}`);
         console.warn(`Failed to upload Image Node "${msg.id}":`, msg);
         return;
@@ -331,7 +312,7 @@ function UpdateImage(msg) {
     let ModerationResult = msg.data.moderationResult
 
     if (ModerationResult && (ModerationResult.moderationState != "Approved" && ModerationResult.moderationState != "MODERATION_STATE_APPROVED")) {
-        ImageInfo.Node.setPluginData("OperationId", null);
+        ImageInfo.Node.setPluginData("OperationId", "");
         figma.notify(`Image Element ${msg.id} failed moderation (check console for more info)`);
         console.warn(`Image Element ${msg.id} failed moderation:`, ModerationResult);
         return;
@@ -355,7 +336,7 @@ function UpdateOperationId(msg) {
         return;
     }
 
-    ImageInfo.Node.setPluginData("OperationId", msg);
+    ImageInfo.Node.setPluginData("OperationId", msg.data);
 }
 
 function GetImageFromOperation(OperationId) {
@@ -944,19 +925,20 @@ module.exports = {
 var CurrentNotification;
 
 const Flags = {
+    RelativeToScene: true, // True: Will use the (x,y) position of the Upmost Group(s) (should be no.1); False: Set the Upmost Group(s) Position to (0,0)
     ForceUploadImages: false, // Skips image matching, upload is still overwritten by ImageUploadTesting
     ImageUploadTesting: false, 
-    ImageUploadBoilerplate: {
+    ImageUploadTestData: {
         "path": "assets/18355701361",
         "revisionId": "1",
         "revisionCreateTime": "2024-07-06T04:49:52.260972600Z",
         "assetId": "18355701361",
-        "displayName": "280271241_999080940999673_786787218521993595_n 1",
+        "displayName": "Image 1",
         "description": "Exported from Figma",
         "assetType": "Image",
         "creationContext": {
             "creator": {
-                "userId": "7020899714"
+                "userId": "xxxxxxxxxxxx"
             }
         },
         "moderationResult": {
@@ -1029,7 +1011,7 @@ module.exports = {
 const { widget } = figma;
 const Conversions = require('./Conversions.js');
 const { Flags, QuickClose, Notify } = require('./Utilities.js');
-const { PropertyTypes, NodeTypes, XMLTypes, Settings, UpdateImage, UpdateOperationId, GetImageFromOperation, IsDone } = require('./Converters.js');
+const { PropertyTypes, NodeTypes, XMLTypes, Settings, UpdateImage, UpdateOperationId, GetImageFromOperation, ExportImage, IsDone } = require('./Converters.js');
 
 var Scale = {
     X: 0.25,
@@ -1148,61 +1130,67 @@ function LoopNodes(Nodes, ParentObject) {
             Properties.Position.YO = CY - Properties.Size.YO / 2;
         }
 
-        if (ParentObject && ParentObject.Position) {
-            Properties.Position.XO -= ParentObject.Position.XO;
-            Properties.Position.YO -= ParentObject.Position.YO;
-        } else if (ParentObject && ParentObject._Transparency) {
-            Properties._Transparency = ParentObject._Transparency * Properties._Transparency
-        }
         
-        // Convert to scale?
-
+        // Convert to scale? (WIP)
+        
         var SX, SY = ParentObject ? (ParentObject.Size.XO, ParentObject.Size.YO) : (1920, 1080);
-
+        
         // Properties.Position.XS = Properties.Position.XO / SX;
         // Properties.Position.YS = Properties.Position.YO / SY;
         // Properties.Size.XS = Properties.Size.XO / SX;
         // Properties.Size.YS = Properties.Size.YO / SY;
-
+        
         // Properties.Position.XO = 0;
         // Properties.Position.YO = 0;
         // Properties.Size.XO = 0;
         // Properties.Size.YO = 0;
-
+        
         //
-
+        // Create Item element, loop children (if applicable)
+        
         FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
-
+        
         var New = "";
-
+        
         //FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n"
-
+        
         if (Properties.Children) {
             function LoopChildren(Children) {
                 var New2 = "";
-
+                
                 Children.forEach(Child => {
                     var XMLProperties = ConvertObject(Child, Properties);
-
+                    
                     New2 += `<Item class="${Child.Class}" referent="RBX0">\n${Child.Children ? LoopChildren(Child.Children) : ""}<Properties>\n${XMLProperties}\n</Properties></Item>\n`
                 });
-
+                
                 return New2
             }
-
+            
             New += LoopChildren(Properties.Children);
         }
+
         if (Node.children) New += LoopNodes(Node.children, Properties);
 
-        //if (!ParentObject) {
-        //    Properties.Position.XO = 0;
-        //    Properties.Position.YO = 0;
-        //}
+        // Finish up and Convert Properties
+        
+        if (ParentObject) {
+            if (ParentObject.Position) { // Get Position relative to Parent
+                Properties.Position.XO -= ParentObject.Position.XO;
+                Properties.Position.YO -= ParentObject.Position.YO;
+            } else if (ParentObject._Transparency) { // Multiply Transparency with Parent Transparency/Pass through
+                Properties._Transparency = ParentObject._Transparency * Properties._Transparency
+            }
+        } else if (!Flags.RelativeToScene) { // Set Position of upmost Element (most likely a Group) to (0,0)
+           Properties.Position.XO = 0;
+           Properties.Position.YO = 0;
+        }
 
         FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n" + New;
 
         FileContent += "</Item>\n";
         Properties = null;
+        New = null;
     }
 
     return FileContent
@@ -1243,7 +1231,7 @@ async function ConvertNodes() {
         return ExportedImage.Properties.Image
     })
 
-    console.log("Result:", ImageOperations);
+    //console.log("Result:", ImageOperations);
 
     FileContent += ImageOperations + "</roblox>";
 
@@ -1265,7 +1253,6 @@ figma.ui.onmessage = msg => {
     switch (msg.type) {
         case "run":
             console.log("[FTR] Starting");
-            //ExportImage(figma.currentPage.selection[0])
             ConvertNodes();
             console.log("[FTR] Done");
 
@@ -1302,5 +1289,9 @@ figma.ui.onmessage = msg => {
     }
 }
 
-figma.showUI(__html__);
+figma.showUI(__html__, {
+    width: 250,
+    height: 380,
+    themeColors: true
+});
 },{"./Conversions.js":1,"./Converters.js":2,"./Utilities.js":3}]},{},[4]);

@@ -5,8 +5,15 @@
     "main": "build.js",
     "capabilities": [],
     "enableProposedApi": false,
-    "editorType": [
-        "figma"
-    ],
+    "editorType": [ "figma" ],
+    "networkAccess": {
+        "allowedDomains": [
+            "https://apis.roblox.com/assets/v1/",
+            "https://cdn.jsdelivr.net/npm/water.css@2/out/dark.css",
+            "https://unpkg.com/axios@1.4.0/dist/axios.min.js",
+            "https://unpkg.com/jszip@3.7.1/dist/jszip.js"
+        ]
+    },
+    "documentAccess": "dynamic-page",
     "ui": "src/index.html"
 }

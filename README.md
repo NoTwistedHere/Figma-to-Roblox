@@ -4,9 +4,8 @@ If you encounter any bugs/issues please let me know through [github](https://git
 
 
 ## How to build:
-Make sure you have [browserify](https://browserify.org) installed `npm install browserify`
-
-Open up a terminal and run `npm run build`
+Install [Browserify](https://browserify.org/#install) with node: `npm install browserify`, or yarn: `yarn install browserify`
+Build with node: `npm run build`, or yarn: `yarn run build`
 
 ## How to use:
 1) Download this repo (Code -> Download as Zip)
