@@ -66,6 +66,9 @@ function ConvertObject(Properties, ParentObject) {
             case "FillDirection":
                 XML += XMLTypes.token(Key, Value)
                 break;
+            case "Text":
+                XML += XMLTypes.cdata(Key, Value)
+                break;
             case "Image":
                 XML += XMLTypes.content(Key, Value)
                 break;

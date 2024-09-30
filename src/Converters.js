@@ -324,7 +324,7 @@ const PropertyTypes = {
                 };
     
                 if (!Object.TextSize || Segment.fontSize !== Object.TextSize) {
-                    NewText += ` size="${Segment.fontSize + 4}"`; // Add 4 for better conversion >:)
+                    NewText += ` size="${Segment.fontSize}"`;
                 };
     
                 if (Object.FontFace && Segment.fontWeight !== Object.FontFace.Weight) {
@@ -337,8 +337,10 @@ const PropertyTypes = {
             })
     
             Object.RichText = true;
-            Object.Text = Text;
-        }
+            Object.Text = Text //StringToUTF8(Text);
+        } //else Object.Text = StringToUTF8(Object.Text);
+
+        //Object.Text = StringToUTF8(Value);
     },
     ["textDecoration"]: (Value, Object) => {
         if (Value === "UNDERLINE") Object.Text = `<u>${Object.Text}</u>`;
@@ -559,9 +561,8 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
         }
     },
     ["TEXT"]: (Node) => {
-        var Font = Conversions.Fonts[Node.fontName.style];
-
-        console.log(Node);
+        const FontStyle = Conversions.FontStyle[Node.fontName.style];
+        const FontFamily = Node.fontName !== figma.mixed && Conversions.MarketplaceFonts[Node.fontName.family];
 
         var Properties = {
             Class: "TextLabel",
@@ -576,16 +577,16 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             ZIndex: 1,
 
             Text: Node.characters,
-            TextSize: Node.fontSize !== figma.mixed ? Node.fontSize + 4 : 16, // Add 4 for better conversion >:)
+            TextSize: Node.fontSize !== figma.mixed ? Node.fontSize : 16,
             TextXAlignment: Conversions.TextXAlignments.indexOf(Node.textAlignHorizontal),
             TextYAlignment: Conversions.TextYAlignments.indexOf(Node.textAlignVertical),
             TextWrapped: true,
             TextTruncate: Conversions.TextTruncate.indexOf(Node.textTruncation),
 
             FontFace: {
-                Family: `<url>rbxasset://fonts/families/${(Node.fontName !== figma.mixed ? Node.fontName.family : "Source Sans Pro").replace(/ /g, "")}.json</url>`,
-                Weight: Font ? Font.Weight: 400,
-                Style: Font ? Font.Style: "Regular"
+                Family: FontFamily ? `<url>rbxassetid://${FontFamily}</url>` : `<url>rbxasset://fonts/families/${(Node.fontName !== figma.mixed ? Node.fontName.family : "Source Sans Pro").replace(/ /g, "")}.json</url>`, // Use Marketplace Font if available, if not try local font
+                Weight: FontStyle ? FontStyle.Weight: 400,
+                Style: FontStyle ? FontStyle.Style: "Regular"
             },
 
             AnchorPoint: {
@@ -727,18 +728,45 @@ function EncodeStr(String) {
     })
 }
 
+// Slightly modified from https://www.basedash.com/blog/javascript-string-to-bytes#:~:text=UTF%2D8%20TO%20BYTES%20MANUALLY
+function StringToUTF8(String) {
+    var NewString = "";
+
+    for (let i = 0; i < String.length; i++) {
+        let CodePoint = String.codePointAt(i);
+
+        if (!CodePoint) continue
+        else if (CodePoint < 0x80) {
+            if (CodePoint == 10) NewString += "\n";
+            else NewString += String.charAt(i);
+        } else if (CodePoint < 0x800) {
+            NewString += `&#${0xc0 | (CodePoint >> 6)};&#${0x80 | (CodePoint & 0x3f)};`;
+        } else if (CodePoint < 0x10000) {
+            NewString += `&#${0xe0 | (CodePoint >> 12)};&#${0x80 | ((CodePoint >> 6) & 0x3f)};&#${0x80 | (CodePoint & 0x3f)};`;
+        } else {
+            NewString += `&#${0xe0 | (CodePoint >> 18)};&#${0x80| ((CodePoint >> 12) & 0x3f)};&#${0x80 | ((CodePoint >> 6) & 0x3f)};&#${0x80 | (CodePoint & 0x3f)};`;
+        }
+    }
+
+    return NewString
+}
+
 const XMLTypes = {
     ["token"]: (Name, Value) => {
         return `<token name="${Name}">${Value}</token>`
     },
     ["content"]: (Name, Value) => {
-        //if (Value.match(/:\/\//g)) return `<Content name="${Name}"><url>${Value}</url</Content>`;
+        //if (Value.match(/:\/\//g)) return `<Content name="${Name}"><url>${Value}</url></Content>`;
 
         return `<Content name="${Name}"><url>${Value}</url></Content>`
     },
+    ["cdata"]: (Name, Value) => {
+        if (Value.match(/\n/g)) return `<string name="${Name}"><![CDATA[${Value.replace(/\]\]>/g, "]]]]><![CDATA[>")}]]></string>`;
+        return XMLTypes.string(Name, Value);
+    },
 
     ["string"]: (Name, Value) => {
-        return `<string name="${Name}">${EncodeStr(Value)}</string>`
+        return `<string name="${Name}">${StringToUTF8(EncodeStr(Value))}</string>`
     },
     ["number"]: (Name, Value, IsInteger, RoundTo) => {
         if (RoundTo) Value = Round(Value, RoundTo);
