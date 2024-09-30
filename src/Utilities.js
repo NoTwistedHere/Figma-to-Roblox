@@ -1,7 +1,7 @@
 var CurrentNotification;
 
 const Flags = {
-    UsePositionRelativeToScene: true, // True: Will use the (x,y) position of the Upmost Group(s) (should be no.1); False: Set the Upmost Group(s) Position to (0,0)
+    UsePositionRelativeToScene: false, // True: Will use the (x,y) position of the Upmost Group(s) (should be no.1); False: Set the Upmost Group(s) Position to (0,0)
     ForceUploadImages: false, // Skips image matching, upload is still overwritten by ImageUploadTesting
     ImageUploadTesting: false, 
     ImageUploadTestData: {

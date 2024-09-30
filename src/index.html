@@ -13,42 +13,57 @@
         <button id="convselect">Convert Selection</button>
         <div></div>
         
+        <h4>Image Upload Settings:</h4>
+        
+        <input type="checkbox" id="uploadimages" name="Upload Images" />
+        <label for="uploadimages">Upload Images</label>
+        <div></div>
+        
+        <input type="checkbox" id="isgroup" name="Is Group" />
+        <label for="isgroup">Upload To Group</label>
+        <div></div>
+        
         <label for="apikey">Cloud API Key (optional)</label>
-        <input type="text" id="apikey" placeholder="Cloud API Key" />
+        <input type="text" id="apikey" placeholder="XXXXXXXXXXXXXXXXXXXXXXXXXXX" />
         <div></div>
         
-        <label for="userid">User ID</label>
-        <input type="text" id="userid" placeholder="User ID" />
+        <label for="uploaderid">User/Group ID (optional)</label>
+        <input type="text" id="uploaderid" placeholder="xxxxxxxxxx" />
         <div></div>
         
-        <label for="userid">Custom Proxy</label>
+        <!-- <label for="prox">Custom Proxy</label>
         <input type="text" id="prox" placeholder="Proxy URL" />
-        <div></div>
+        <div></div> -->
         
-        <input type="checkbox" id="uploadImages" name="Upload Images" />
-        <label for="uploadImages">Upload Images</label>
-        <div></div>
-        
-        <input type="checkbox" id="exportImages" name="Export Images" />
-        <label for="exportImages">Export Images</label>
+        <!-- <input type="checkbox" id="exportImages" name="Export Images" />
+        <label for="exportImages">Export Images</label> -->
         
         <!-- Water CSS - Not required for the plugin to function -->
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/dark.css">
         <!-- Axios - Required for Uploading Images, but can be omitted otherwise -->
         <script src="https://unpkg.com/axios@1.4.0/dist/axios.min.js" integrity="sha384-I4Qw/vWb/sK/7VwepTtkaq636YLYClbEgEwKp3ueUCvjiLFrcoKUFAY5mOl40Fj3" crossorigin="anonymous" defer></script>
-        <!-- JSZip - Required for Downloading(/saving a local copy of every) Images, though not required for typical use -->
-        <script src="https://unpkg.com/jszip@3.7.1/dist/jszip.js" integrity="sha384-Lqk2um7o0W+Ke7IGh8Mk9EE7g2IrhepxXvttF/iw5hFqpMjFGKP4jcKYhNLAi/ZD" crossorigin="anonymous" defer></script>
+        <!-- JSZip - Required for Downloading(/saving a local copy of every) Images, though not required for typical use
+        <script src="https://unpkg.com/jszip@3.7.1/dist/jszip.js" integrity="sha384-Lqk2um7o0W+Ke7IGh8Mk9EE7g2IrhepxXvttF/iw5hFqpMjFGKP4jcKYhNLAi/ZD" crossorigin="anonymous" defer></script> -->
         <!--<script type="module" src="./main.js"></script> -->
         <script>
             var CloudApiKey = ""
-            var UserId = ""
+            var UploaderId = ""
             var GroupId = ""
             var Proxy = ""
-            var ExportImages = false
+            //var ExportImages = false
             var UploadImages = true
+            var UploadToGroup = false
 
             function PostMessage(Data) {
                 parent.postMessage({ pluginMessage: Data }, "*");
+            }
+
+            function UpdateSetting(Index, Value) {
+                PostMessage({
+                    type: "SetAsync",
+                    key: Index,
+                    value: Value
+                });
             }
 
             function Sleep(ms) {
@@ -57,6 +72,22 @@
 
             document.getElementById("convselect").onclick = () => {
                 PostMessage({ type: 'run' });
+            }
+            document.getElementById("apikey").onchange = (self) => {
+                CloudApiKey = self.target.value;
+                UpdateSetting("CloudApiKey", CloudApiKey);
+            }
+            document.getElementById("uploaderid").onchange = (self) => {
+                UploaderId = self.target.value;
+                UpdateSetting("UploaderId", UploaderId);
+            }
+            document.getElementById("isgroup").onchange = (self) => {
+                UploadToGroup = self.target.checked;
+                UpdateSetting("UploadToGroup", UploadToGroup);
+            }
+            document.getElementById("uploadimages").onchange = (self) => {
+                UploadImages = self.target.checked;
+                UpdateSetting("UploadImages", UploadImages);
             }
 
             const DownloadLink = document.getElementById("download");
@@ -117,7 +148,7 @@
 
                         if (ExportImages) Images.push(data);
                         if (!UploadImages) return;
-                        else if (CloudApiKey == "" || UserId == "") {
+                        else if (CloudApiKey == "" || UploaderId == "") {
                             console.warn("Cloud API Key is not set");
                             PostMessage({ type: 'image-upload-fail', data: "Cloud API Key is not set" })
                             return;
@@ -129,7 +160,7 @@
                             description: "Exported from Figma",
                             creationContext: {
                                 creator: {
-                                    userId: UserId ? parseFloat(UserId) : null,
+                                    userId: UploaderId ? parseFloat(UploaderId) : null,
                                     groupId: GroupId ? parseFloat(GroupId) : null,
                                 }
                             }
@@ -150,14 +181,16 @@
                             body: Form
                         }).then(res => res.json())
                         .then(async InitialResponse => {
+                            // Check if already done, and if so return upload response
                             if (InitialResponse.done) {
                                 PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status });
                                 return;
                             }
 
+                            // Update the origin node so if we fail to finish it can be recovered from the node's plugin properties
                             PostMessage({ type: "UpdateOperationId", id: data.Id, data: InitialResponse.operationId })
 
-                            console.log(InitialResponse)
+                            console.log("Initial response:", InitialResponse)
 
                             Sleep(500);
 
@@ -184,29 +217,43 @@
                         })
 
                         break;
-                    case "GetAsync":
-                        switch (data.key) {
-                            case "CloudApiKey":
-                                document.getElementById("apikey").value = data.value
-                                CloudApiKey = data.value
-                                break;
-                            case "UserId":
-                                document.getElementById("userid").value = data.value
-                                UserId = data.value
-                                break;
-                            case "ExportImages":
-                                document.getElementById("exportImages").checked = data.value
-                                ExportImages = data.value
-                                break;
-                            case "UploadImages":
-                                document.getElementById("uploadImages").checked = data.value
-                                UploadImages = data.value
-                                break;
-                            case "Proxy":
-                                document.getElementById("prox").value = data.value
-                                Proxy = data.value
-                                break;
-                        };
+                    // case "GetAsync":
+                    //     switch (data.key) {
+                    //         case "CloudApiKey":
+                    //             document.getElementById("apikey").value = data.value
+                    //             CloudApiKey = data.value
+                    //             break;
+                    //         case "UserId":
+                    //             document.getElementById("userid").value = data.value
+                    //             UserId = data.value
+                    //             break;
+                    //         case "ExportImages":
+                    //             document.getElementById("exportImages").checked = data.value
+                    //             ExportImages = data.value
+                    //             break;
+                    //         case "UploadImages":
+                    //             document.getElementById("uploadImages").checked = data.value
+                    //             UploadImages = data.value
+                    //             break;
+                    //         case "Proxy":
+                    //             document.getElementById("prox").value = data.value
+                    //             Proxy = data.value
+                    //             break;
+                    //     };
+
+                    //     break;
+
+                    case "LoadSettings":
+                        const Settings = event.data.pluginMessage.settings;
+
+                        CloudApiKey = Settings.CloudApiKey;
+                        UploaderId = Settings.UploaderId;
+                        UploadImages = Settings.UploadImages;
+                        UploadToGroup = Settings.UploadToGroup;
+                        document.getElementById("apikey").value = CloudApiKey || "";
+                        document.getElementById("uploaderid").value = UploaderId || "";
+                        document.getElementById("uploadimages").checked = UploadImages || false;
+                        document.getElementById("isgroup").checked = UploadToGroup || false;
 
                         break;
                 };

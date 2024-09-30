@@ -447,30 +447,34 @@ const PropertyTypes = {
         var Segments = Node.getStyledTextSegments(["fills", "fontSize", "fontWeight", "textDecoration", "textCase"]);
         var Text = "";
 
-        Segments.forEach(Segment => {
-            var NewText = ""
-
-            if (Segment.fills && Segment.fills.length === 1) {
-                var Fill = Segment.fills[0];
-                // TODO: Implement use of new funtion ConvertFill(Fill, Object?)
-
-                if (Fill.type == "SOLID") NewText += ` color="rgb(${Round(Fill.color.r * 255, 1) + "," + Round(Fill.color.g * 255, 1) + "," + Round(Fill.color.b * 255, 1)})"`
-                else console.warn(`Unsupported rich text fill type "${Fill.type}" on text Node`, Node)
-            };
-
-            if (!Object.TextSize || Segment.fontSize !== Object.TextSize) {
-                NewText += ` size="${Segment.fontSize}"`;
-            };
-
-            if (Object.FontFace && Segment.fontWeight !== Object.FontFace.Weight) {
-                NewText += ` weight="${Segment.fontWeight}"`;
-            };
-
-            if (NewText.length > 0) Text += `<font ${NewText}>${Segment.characters}</font>`; // We only want to add font tags if we have new data to add
-        })
-
-        Object.RichText = true;
-        Object.Text = Text;
+        if (Segments.length > 1) {
+            Segments.forEach(Segment => {
+                var NewText = ""
+    
+                if (Segment.fills && Segment.fills.length === 1) {
+                    var Fill = Segment.fills[0];
+                    // TODO: Implement use of new funtion ConvertFill(Fill, Object?)
+    
+                    if (Fill.type == "SOLID") NewText += ` color="rgb(${Round(Fill.color.r * 255, 1) + "," + Round(Fill.color.g * 255, 1) + "," + Round(Fill.color.b * 255, 1)})"`
+                    else console.warn(`Unsupported rich text fill type "${Fill.type}" on text Node`, Node)
+                };
+    
+                if (!Object.TextSize || Segment.fontSize !== Object.TextSize) {
+                    NewText += ` size="${Segment.fontSize + 4}"`; // Add 4 for better conversion >:)
+                };
+    
+                if (Object.FontFace && Segment.fontWeight !== Object.FontFace.Weight) {
+                    NewText += ` weight="${Segment.fontWeight}"`;
+                };
+    
+                // We only want to add font tags if we have new data to add
+                if (NewText.length > 0) Text += `<font ${NewText}>${Segment.characters}</font>`
+                else Text += Segment.characters;
+            })
+    
+            Object.RichText = true;
+            Object.Text = Text;
+        }
     },
     ["textDecoration"]: (Value, Object) => {
         if (Value === "UNDERLINE") Object.Text = `<u>${Object.Text}</u>`;
@@ -693,6 +697,8 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
     ["TEXT"]: (Node) => {
         var Font = Conversions.Fonts[Node.fontName.style];
 
+        console.log(Node);
+
         var Properties = {
             Class: "TextLabel",
             Name: Node.name,
@@ -706,7 +712,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             ZIndex: 1,
 
             Text: Node.characters,
-            TextSize: Node.fontSize !== figma.mixed ? Node.fontSize : 16,
+            TextSize: Node.fontSize !== figma.mixed ? Node.fontSize + 4 : 16, // Add 4 for better conversion >:)
             TextXAlignment: Conversions.TextXAlignments.indexOf(Node.textAlignHorizontal),
             TextYAlignment: Conversions.TextYAlignments.indexOf(Node.textAlignVertical),
             TextWrapped: true,
@@ -752,6 +758,8 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
                         return Text.charAt(0).toUpperCase() + Text.substr(1).toLowerCase();
                     })
         
+                    break;
+                case "ORIGINAL":
                     break;
             }
         }
@@ -925,7 +933,7 @@ module.exports = {
 var CurrentNotification;
 
 const Flags = {
-    RelativeToScene: true, // True: Will use the (x,y) position of the Upmost Group(s) (should be no.1); False: Set the Upmost Group(s) Position to (0,0)
+    UsePositionRelativeToScene: false, // True: Will use the (x,y) position of the Upmost Group(s) (should be no.1); False: Set the Upmost Group(s) Position to (0,0)
     ForceUploadImages: false, // Skips image matching, upload is still overwritten by ImageUploadTesting
     ImageUploadTesting: false, 
     ImageUploadTestData: {
@@ -1004,8 +1012,9 @@ module.exports = {
 
     TODO:
         Implement section support
-        Finish implementing Image uploading, Settings
-        Better ui
+        Implement Settings
+        Finish implementing Image uploading (DONE?)
+        Better ui (DONE?)
 */
 
 const { widget } = figma;
@@ -1098,7 +1107,7 @@ function LoopNodes(Nodes, ParentObject) {
 
         // Calculate Aspect Ratio and Scale
 
-        console.log("Node Properties:", Properties)
+        //console.log("Node Properties:", Properties)
 
         if (Settings.ApplyAspectRatio) {
             var AspectRatio = Math.round((Properties.Size.XO / Properties.Size.YO) * 1000) / 1000;
@@ -1181,9 +1190,10 @@ function LoopNodes(Nodes, ParentObject) {
             } else if (ParentObject._Transparency) { // Multiply Transparency with Parent Transparency/Pass through
                 Properties._Transparency = ParentObject._Transparency * Properties._Transparency
             }
-        } else if (!Flags.RelativeToScene) { // Set Position of upmost Element (most likely a Group) to (0,0)
-           Properties.Position.XO = 0;
-           Properties.Position.YO = 0;
+        } else if (!Flags.UsePositionRelativeToScene) {
+            // Set Position of upmost Element (most likely a Group) to (0,0)
+            Properties.Position.XO = 0;
+            Properties.Position.YO = 0;
         }
 
         FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n" + New;
@@ -1286,6 +1296,46 @@ figma.ui.onmessage = msg => {
                 }
             */
             break;
+        case "SetAsync":
+            //console.log("Set Setting", msg);
+            figma.clientStorage.setAsync(msg.key, msg.value);
+            break;
+        // case "FetchAsync":
+        //     const FetchPromise = new Promise((resolve, reject) => {
+        //         var Done = 0;
+        //         var Settings = {};
+                
+        //         figma.clientStorage.keysAsync().then(Keys => {
+        //             for (var i = 0; i < Keys.length; i++) {
+        //                 const Key = Keys[i];
+    
+        //                 figma.clientStorage.getAsync(Key).then(Value => {
+        //                     Settings[Key] = Value;
+        //                     Done += 1;
+                            
+        //                     if (Done == Keys.length) {
+        //                         resolve(Settings);
+        //                     }
+        //                 })
+        //             }
+        //         })
+        //     });
+
+        //     FetchPromise.then((Settings) => figma.ui.postMessage({
+        //         type: "LoadSettings",
+        //         settings: Settings
+        //     }));
+            
+        //     break;
+            // figma.clientStorage.keysAsync().then(Keys => {
+            //     for (var i = 0; i < Keys.length; i++) {
+            //         const Key = Keys[i];
+
+            //         figma.clientStorage.getAsync(Key).then(Value => figma.ui.postMessage({
+            //             type: "GetAsync",
+            //         }))
+            //     }
+            // })
     }
 }
 
@@ -1294,4 +1344,30 @@ figma.showUI(__html__, {
     height: 380,
     themeColors: true
 });
+
+const FetchPromise = new Promise((resolve, reject) => {    
+    figma.clientStorage.keysAsync().then(Keys => {
+        var Done = 0;
+        var Settings = {};
+        
+        for (var i = 0; i < Keys.length; i++) {
+            const Key = Keys[i];
+
+            figma.clientStorage.getAsync(Key).then(Value => {
+                Settings[Key] = Value;
+                Done += 1;
+                
+                if (Done == Keys.length) {
+                    Done = null;
+                    resolve(Settings);
+                }
+            })
+        }
+    })
+});
+
+FetchPromise.then((Settings) => figma.ui.postMessage({
+    type: "LoadSettings",
+    settings: Settings
+}));
 },{"./Conversions.js":1,"./Converters.js":2,"./Utilities.js":3}]},{},[4]);

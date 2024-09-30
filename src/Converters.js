@@ -311,30 +311,34 @@ const PropertyTypes = {
         var Segments = Node.getStyledTextSegments(["fills", "fontSize", "fontWeight", "textDecoration", "textCase"]);
         var Text = "";
 
-        Segments.forEach(Segment => {
-            var NewText = ""
-
-            if (Segment.fills && Segment.fills.length === 1) {
-                var Fill = Segment.fills[0];
-                // TODO: Implement use of new funtion ConvertFill(Fill, Object?)
-
-                if (Fill.type == "SOLID") NewText += ` color="rgb(${Round(Fill.color.r * 255, 1) + "," + Round(Fill.color.g * 255, 1) + "," + Round(Fill.color.b * 255, 1)})"`
-                else console.warn(`Unsupported rich text fill type "${Fill.type}" on text Node`, Node)
-            };
-
-            if (!Object.TextSize || Segment.fontSize !== Object.TextSize) {
-                NewText += ` size="${Segment.fontSize}"`;
-            };
-
-            if (Object.FontFace && Segment.fontWeight !== Object.FontFace.Weight) {
-                NewText += ` weight="${Segment.fontWeight}"`;
-            };
-
-            if (NewText.length > 0) Text += `<font ${NewText}>${Segment.characters}</font>`; // We only want to add font tags if we have new data to add
-        })
-
-        Object.RichText = true;
-        Object.Text = Text;
+        if (Segments.length > 1) {
+            Segments.forEach(Segment => {
+                var NewText = ""
+    
+                if (Segment.fills && Segment.fills.length === 1) {
+                    var Fill = Segment.fills[0];
+                    // TODO: Implement use of new funtion ConvertFill(Fill, Object?)
+    
+                    if (Fill.type == "SOLID") NewText += ` color="rgb(${Round(Fill.color.r * 255, 1) + "," + Round(Fill.color.g * 255, 1) + "," + Round(Fill.color.b * 255, 1)})"`
+                    else console.warn(`Unsupported rich text fill type "${Fill.type}" on text Node`, Node)
+                };
+    
+                if (!Object.TextSize || Segment.fontSize !== Object.TextSize) {
+                    NewText += ` size="${Segment.fontSize + 4}"`; // Add 4 for better conversion >:)
+                };
+    
+                if (Object.FontFace && Segment.fontWeight !== Object.FontFace.Weight) {
+                    NewText += ` weight="${Segment.fontWeight}"`;
+                };
+    
+                // We only want to add font tags if we have new data to add
+                if (NewText.length > 0) Text += `<font ${NewText}>${Segment.characters}</font>`
+                else Text += Segment.characters;
+            })
+    
+            Object.RichText = true;
+            Object.Text = Text;
+        }
     },
     ["textDecoration"]: (Value, Object) => {
         if (Value === "UNDERLINE") Object.Text = `<u>${Object.Text}</u>`;
@@ -557,6 +561,8 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
     ["TEXT"]: (Node) => {
         var Font = Conversions.Fonts[Node.fontName.style];
 
+        console.log(Node);
+
         var Properties = {
             Class: "TextLabel",
             Name: Node.name,
@@ -570,7 +576,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             ZIndex: 1,
 
             Text: Node.characters,
-            TextSize: Node.fontSize !== figma.mixed ? Node.fontSize : 16,
+            TextSize: Node.fontSize !== figma.mixed ? Node.fontSize + 4 : 16, // Add 4 for better conversion >:)
             TextXAlignment: Conversions.TextXAlignments.indexOf(Node.textAlignHorizontal),
             TextYAlignment: Conversions.TextYAlignments.indexOf(Node.textAlignVertical),
             TextWrapped: true,
@@ -616,6 +622,8 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
                         return Text.charAt(0).toUpperCase() + Text.substr(1).toLowerCase();
                     })
         
+                    break;
+                case "ORIGINAL":
                     break;
             }
         }

@@ -128,7 +128,7 @@ function LoopNodes(Nodes, ParentObject) {
 
         // Calculate Aspect Ratio and Scale
 
-        console.log("Node Properties:", Properties)
+        //console.log("Node Properties:", Properties)
 
         if (Settings.ApplyAspectRatio) {
             var AspectRatio = Math.round((Properties.Size.XO / Properties.Size.YO) * 1000) / 1000;
@@ -317,6 +317,46 @@ figma.ui.onmessage = msg => {
                 }
             */
             break;
+        case "SetAsync":
+            //console.log("Set Setting", msg);
+            figma.clientStorage.setAsync(msg.key, msg.value);
+            break;
+        // case "FetchAsync":
+        //     const FetchPromise = new Promise((resolve, reject) => {
+        //         var Done = 0;
+        //         var Settings = {};
+                
+        //         figma.clientStorage.keysAsync().then(Keys => {
+        //             for (var i = 0; i < Keys.length; i++) {
+        //                 const Key = Keys[i];
+    
+        //                 figma.clientStorage.getAsync(Key).then(Value => {
+        //                     Settings[Key] = Value;
+        //                     Done += 1;
+                            
+        //                     if (Done == Keys.length) {
+        //                         resolve(Settings);
+        //                     }
+        //                 })
+        //             }
+        //         })
+        //     });
+
+        //     FetchPromise.then((Settings) => figma.ui.postMessage({
+        //         type: "LoadSettings",
+        //         settings: Settings
+        //     }));
+            
+        //     break;
+            // figma.clientStorage.keysAsync().then(Keys => {
+            //     for (var i = 0; i < Keys.length; i++) {
+            //         const Key = Keys[i];
+
+            //         figma.clientStorage.getAsync(Key).then(Value => figma.ui.postMessage({
+            //             type: "GetAsync",
+            //         }))
+            //     }
+            // })
     }
 }
 
@@ -325,3 +365,29 @@ figma.showUI(__html__, {
     height: 380,
     themeColors: true
 });
+
+const FetchPromise = new Promise((resolve, reject) => {    
+    figma.clientStorage.keysAsync().then(Keys => {
+        var Done = 0;
+        var Settings = {};
+        
+        for (var i = 0; i < Keys.length; i++) {
+            const Key = Keys[i];
+
+            figma.clientStorage.getAsync(Key).then(Value => {
+                Settings[Key] = Value;
+                Done += 1;
+                
+                if (Done == Keys.length) {
+                    Done = null;
+                    resolve(Settings);
+                }
+            })
+        }
+    })
+});
+
+FetchPromise.then((Settings) => figma.ui.postMessage({
+    type: "LoadSettings",
+    settings: Settings
+}));
