@@ -4,7 +4,7 @@ const { Flags, QuickClose } = require("./Utilities");
 var ImagesRemaining = 0;
 var ImageExports = {};
 var Settings = {
-    ApiKey: "",
+    //ApiKey: "",
     DefaultExport: {
         format: "PNG",
         contentsOnly: true,
@@ -324,7 +324,7 @@ const PropertyTypes = {
                 };
     
                 if (!Object.TextSize || Segment.fontSize !== Object.TextSize) {
-                    NewText += ` size="${Segment.fontSize}"`;
+                    NewText += ` size="${Segment.fontSize + Math.round((Object.TextSize + 10) / 20)}"`;
                 };
     
                 if (Object.FontFace && Segment.fontWeight !== Object.FontFace.Weight) {
@@ -577,7 +577,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             ZIndex: 1,
 
             Text: Node.characters,
-            TextSize: Node.fontSize !== figma.mixed ? Node.fontSize : 16,
+            TextSize: Node.fontSize !== figma.mixed ? Node.fontSize + Math.round((Node.fontSize + 5) / 20) : 16,
             TextXAlignment: Conversions.TextXAlignments.indexOf(Node.textAlignHorizontal),
             TextYAlignment: Conversions.TextYAlignments.indexOf(Node.textAlignVertical),
             TextWrapped: true,
@@ -736,6 +736,7 @@ function StringToUTF8(String) {
         let CodePoint = String.codePointAt(i);
 
         if (!CodePoint) continue
+        else if (CodePoint == 8232) NewString += "\n";
         else if (CodePoint < 0x80) {
             if (CodePoint == 10) NewString += "\n";
             else NewString += String.charAt(i);

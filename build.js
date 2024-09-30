@@ -259,7 +259,7 @@ const { Flags, QuickClose } = require("./Utilities");
 var ImagesRemaining = 0;
 var ImageExports = {};
 var Settings = {
-    ApiKey: "",
+    //ApiKey: "",
     DefaultExport: {
         format: "PNG",
         contentsOnly: true,
@@ -579,7 +579,7 @@ const PropertyTypes = {
                 };
     
                 if (!Object.TextSize || Segment.fontSize !== Object.TextSize) {
-                    NewText += ` size="${Segment.fontSize}"`;
+                    NewText += ` size="${Segment.fontSize + Math.round((Object.TextSize + 10) / 20)}"`;
                 };
     
                 if (Object.FontFace && Segment.fontWeight !== Object.FontFace.Weight) {
@@ -832,7 +832,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             ZIndex: 1,
 
             Text: Node.characters,
-            TextSize: Node.fontSize !== figma.mixed ? Node.fontSize : 16,
+            TextSize: Node.fontSize !== figma.mixed ? Node.fontSize + Math.round((Node.fontSize + 5) / 20) : 16,
             TextXAlignment: Conversions.TextXAlignments.indexOf(Node.textAlignHorizontal),
             TextYAlignment: Conversions.TextYAlignments.indexOf(Node.textAlignVertical),
             TextWrapped: true,
@@ -983,46 +983,15 @@ function EncodeStr(String) {
     })
 }
 
-// Stolen from https://www.basedash.com/blog/javascript-string-to-bytes#:~:text=UTF%2D8%20TO%20BYTES%20MANUALLY
-// function stringToUtf8Bytes(str) {
-//     const bytes = [];
-  
-//     for (let i = 0; i < str.length; i++) {
-//         let codePoint = str.codePointAt(i);
-    
-//         if (codePoint < 0x80) {
-//             bytes.push(codePoint);
-//         } else if (codePoint < 0x800) {
-//             bytes.push(0xc0 | (codePoint >> 6), 0x80 | (codePoint & 0x3f));
-//         } else if (codePoint < 0x10000) {
-//             bytes.push(
-//             0xe0 | (codePoint >> 12),
-//             0x80 | ((codePoint >> 6) & 0x3f),
-//             0x80 | (codePoint & 0x3f)
-//             );
-//         } else {
-//             i++; // skip one iteration since we have a surrogate pair
-//             bytes.push(
-//             0xf0 | (codePoint >> 18),
-//             0x80 | ((codePoint >> 12) & 0x3f),
-//             0x80 | ((codePoint >> 6) & 0x3f),
-//             0x80 | (codePoint & 0x3f)
-//             );
-//         }
-//     }
-//     return bytes;
-// }
-
 // Slightly modified from https://www.basedash.com/blog/javascript-string-to-bytes#:~:text=UTF%2D8%20TO%20BYTES%20MANUALLY
 function StringToUTF8(String) {
-    //let i = String.length;
     var NewString = "";
 
-    //while (i--)
     for (let i = 0; i < String.length; i++) {
         let CodePoint = String.codePointAt(i);
 
         if (!CodePoint) continue
+        else if (CodePoint == 8232) NewString += "\n";
         else if (CodePoint < 0x80) {
             if (CodePoint == 10) NewString += "\n";
             else NewString += String.charAt(i);
@@ -1031,7 +1000,6 @@ function StringToUTF8(String) {
         } else if (CodePoint < 0x10000) {
             NewString += `&#${0xe0 | (CodePoint >> 12)};&#${0x80 | ((CodePoint >> 6) & 0x3f)};&#${0x80 | (CodePoint & 0x3f)};`;
         } else {
-            //console.log("bad", CodePoint, String.charAt(i));
             NewString += `&#${0xe0 | (CodePoint >> 18)};&#${0x80| ((CodePoint >> 12) & 0x3f)};&#${0x80 | ((CodePoint >> 6) & 0x3f)};&#${0x80 | (CodePoint & 0x3f)};`;
         }
     }
@@ -1044,7 +1012,7 @@ const XMLTypes = {
         return `<token name="${Name}">${Value}</token>`
     },
     ["content"]: (Name, Value) => {
-        //if (Value.match(/:\/\//g)) return `<Content name="${Name}"><url>${Value}</url</Content>`;
+        //if (Value.match(/:\/\//g)) return `<Content name="${Name}"><url>${Value}</url></Content>`;
 
         return `<Content name="${Name}"><url>${Value}</url></Content>`
     },
@@ -1290,7 +1258,7 @@ function LoopNodes(Nodes, ParentObject) {
 
         // Calculate Aspect Ratio and Scale
 
-        //console.log("Node Properties:", Properties)
+        console.log("Node Properties:", Properties)
 
         if (Settings.ApplyAspectRatio) {
             var AspectRatio = Math.round((Properties.Size.XO / Properties.Size.YO) * 1000) / 1000;
@@ -1320,6 +1288,25 @@ function LoopNodes(Nodes, ParentObject) {
 
             Properties.Position.XO = CX - Properties.Size.XO / 2;
             Properties.Position.YO = CY - Properties.Size.YO / 2;
+        }
+
+        if (Properties.Name == "Background" && ParentObject) {
+            console.log("Got Background with ParentObject which is a Group", Properties, ParentObject);
+
+            ParentObject.BackgroundColor3 = Properties.BackgroundColor3;
+            ParentObject.BackgroundTransparency = Properties.BackgroundTransparency;
+            ParentObject.BorderSizePixel = Properties.BorderSizePixel;
+            ParentObject.Rotation = Properties.Rotation;
+            
+            if (Properties.Children) {  
+                Properties.Children.forEach(Child => {
+                    var XMLProperties = ConvertObject(Child, Properties);
+                    
+                    FileContent += `<Item class="${Child.Class}" referent="RBX0">\n${Child.Children ? LoopChildren(Child.Children) : ""}<Properties>\n${XMLProperties}\n</Properties></Item>\n`
+                });
+            }
+
+            continue;
         }
 
         

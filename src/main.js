@@ -163,6 +163,25 @@ function LoopNodes(Nodes, ParentObject) {
             Properties.Position.YO = CY - Properties.Size.YO / 2;
         }
 
+        if (Properties.Name == "Background" && ParentObject) {
+            console.log("Got Background with ParentObject which is a Group", Properties, ParentObject);
+
+            ParentObject.BackgroundColor3 = Properties.BackgroundColor3;
+            ParentObject.BackgroundTransparency = Properties.BackgroundTransparency;
+            ParentObject.BorderSizePixel = Properties.BorderSizePixel;
+            ParentObject.Rotation = Properties.Rotation;
+            
+            if (Properties.Children) {  
+                Properties.Children.forEach(Child => {
+                    var XMLProperties = ConvertObject(Child, Properties);
+                    
+                    FileContent += `<Item class="${Child.Class}" referent="RBX0">\n${Child.Children ? LoopChildren(Child.Children) : ""}<Properties>\n${XMLProperties}\n</Properties></Item>\n`
+                });
+            }
+
+            continue;
+        }
+
         
         // Convert to scale? (WIP)
         
