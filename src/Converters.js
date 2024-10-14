@@ -13,9 +13,9 @@ var Settings = {
             value: 2
         }
     },
-    ApplyAspectRatio: false,
-    ExportVectors: true,
-    ApplyZIndex: true,
+    //ApplyAspectRatio: false, // Changed to Flag (/Utilities.js)
+    //ExportVectors: true, // Changed to Flag (/Utilities.js)
+    ApplyZIndex: true, // Not implemented?
 };
 
 function ConvertFill(Fill, Object) {
@@ -79,9 +79,11 @@ async function ExportImage(Node, Properties, CustomExport) {
     if (!Flags.ForceUploadImages) {
         if (AssetId) {
 
-            // Check if image hashes match?
+            // Check if image hashes match
 
-            if (Node.getPluginData("ImageHash") == Properties._ImageHash) {
+            console.log("Stored ImageHash vs ImageHash", Node.getPluginData("ImageHash"), Properties._ImageHash)
+
+            if (Node.getPluginData("ImageHash") === Properties._ImageHash) {
                 console.log("Image has not changed, using Image:", AssetId)
 
                 Properties.Image = `rbxassetid://${AssetId}`
@@ -166,9 +168,9 @@ function UpdateImage(msg) {
         figma.notify(`Unable to find Image Node "${msg.id}" (check console for more info)`);
         console.warn(`Failed to find Image Node "${msg.id}":`, msg);
         return;
-    } else if (typeof(msg.data) == "string") {
+    } else if (typeof(msg.data) === "string") { // Image uploaded
         //ImageInfo.Node.setPluginData("OperationId", "");
-        figma.notify(`Failed to upload Image Node "${msg.id}": ${msg.data}`);
+        //figma.notify(`Failed to upload Image Node "${msg.id}": ${msg.data}`);
         console.warn(`Failed to upload Image Node "${msg.id}":`, msg);
         return;
     }
@@ -176,7 +178,6 @@ function UpdateImage(msg) {
     let ModerationResult = msg.data.moderationResult
 
     if (ModerationResult && (ModerationResult.moderationState != "Approved" && ModerationResult.moderationState != "MODERATION_STATE_APPROVED")) {
-        ImageInfo.Node.setPluginData("OperationId", "");
         figma.notify(`Image Element ${msg.id} failed moderation (check console for more info)`);
         console.warn(`Image Element ${msg.id} failed moderation:`, ModerationResult);
         return;
@@ -208,7 +209,7 @@ function GetImageFromOperation(OperationId) {
 }
 
 function IsDone() {
-    return ImagesRemaining == 0
+    return ImagesRemaining === 0
 }
 
 const PropertyTypes = {
@@ -216,7 +217,7 @@ const PropertyTypes = {
         if (Value.length > 1 || Value == figma.mixed) {
             return console.warn(`Frame ${Object.Name} cannot have more than 1 fill`);
         } else if (Value.length === 0) {
-            Object.BackgroundTransparency = 1;
+            Object.BackgroundTransparency = 0;
             return;
         }
 
@@ -228,7 +229,7 @@ const PropertyTypes = {
             2: Purple Fill 20% transparency      ImageColor3 = Purple (hue at 80%?)
         */
 
-        if (Fill.type == "IMAGE") {
+        if (Fill.type === "IMAGE") {
             // TODO: Implement better fill support
             // if (Node.getPluginData("ImageHash") === Fill.imageHash) {
             //     Object.Class = "ImageLabel"
@@ -240,6 +241,7 @@ const PropertyTypes = {
 
             Object._ImageHash = Fill.imageHash
             Object.Class = "ImageLabel" // or ImageButton?!
+            Object.BackgroundTransparency = 0 // Images can't have backgrounds from what I can tell
 
             ExportImage(Node, Object)
 
@@ -248,7 +250,7 @@ const PropertyTypes = {
 
         var [Color3, Transparency] = ConvertFill(Fill, Object);
 
-        if (Object.Class == "TextLabel") {
+        if (Object.Class === "TextLabel") {
             Object.TextColor3 = Color3;
             Object.TextTransparency = Transparency;
         } else {
@@ -267,6 +269,27 @@ const PropertyTypes = {
                 }
             })
         }
+    },
+    ["effects"]: (Value, Object, Node) => {
+        Value.forEach(Effect => {
+            switch (Effect.type) {
+                case "DROP_SHADOW":
+                    // do something
+                    // 
+                    // IDEA:
+                    //      Create a Clone with of the same Size, Offset by some px / AnchorPoint
+                    //      ^ Would have to be an ImageLabel for the same effect, however I haven't thought of attemtping it
+                    //      and it's probably still better to export/upload Rectangles as an image, but Groups and Frames could work
+                    
+                    // Object.Children.push({
+                    //     Class: "ImageLabel",
+                    //     Name: "DropShadow",
+                    //     BackgroundTransparency: 
+                    // })
+
+                    break;
+            }
+        })
     },
     ["strokes"]: (Value, Object, Node) => {
         if (Value.length > 1) return console.warn(`Frame ${Object.Name} cannot have more than 1 stroke`);
@@ -318,8 +341,9 @@ const PropertyTypes = {
                 if (Segment.fills && Segment.fills.length === 1) {
                     var Fill = Segment.fills[0];
                     // TODO: Implement use of new funtion ConvertFill(Fill, Object?)
+                    // ^ no, only SOLID colours can be supported with richtext
     
-                    if (Fill.type == "SOLID") NewText += ` color="rgb(${Round(Fill.color.r * 255, 1) + "," + Round(Fill.color.g * 255, 1) + "," + Round(Fill.color.b * 255, 1)})"`
+                    if (Fill.type === "SOLID") NewText += ` color="rgb(${Round(Fill.color.r * 255, 1) + "," + Round(Fill.color.g * 255, 1) + "," + Round(Fill.color.b * 255, 1)})"`
                     else console.warn(`Unsupported rich text fill type "${Fill.type}" on text Node`, Node)
                 };
     
@@ -350,40 +374,58 @@ const PropertyTypes = {
         /*
             TODO: Support reverse ZIndex
         */
+
+        if (Value === "NONE") return;
        
         const FillDirection = Conversions.FillDirection.indexOf(Value);
         const IsHorizontal = FillDirection === 0;
 
-        // Get Padding and Alignment Offset
+        // Get Alignment, Padding and Size Offset
+        
+        const HorizontalAlignment = IsHorizontal ? Node.primaryAxisAlignItems : Node.counterAxisAlignItems || Node.primaryAxisAlignItems;
+        const VerticalAlignment = !IsHorizontal ? Node.primaryAxisAlignItems : Node.counterAxisAlignItems || Node.primaryAxisAlignItems;
 
         const HorizontalCellPadding = IsHorizontal ? Node.itemSpacing : Node.counterAxisSpacing || Node.itemSpacing;
         const VerticalCellPadding = !IsHorizontal ? Node.itemSpacing : Node.counterAxisSpacing || Node.itemSpacing;
 
-        const HorizontalAlignment = IsHorizontal ? Node.primaryAxisAlignItems : Node.counterAxisAlignItems || Node.primaryAxisAlignItems;
-        const VerticalAlignment = !IsHorizontal ? Node.primaryAxisAlignItems : Node.counterAxisAlignItems || Node.primaryAxisAlignItems;
-
-        // Get Size Offset
-        //
-        // It's annoying roblox enforces all children to be uniform in size
-        // Could add a setting to toggle this on/off depending on what's needed
         const HorizontalCellSize = Node.children[0] ? Node.children[0].width : 100;
         const VerticalCellSize = Node.children[0] ? Node.children[0].height : 100;
 
+        // TODO Come back to rn!
+        const CellPadding = {
+            XS: 0,
+            XO: HorizontalCellPadding,
+            YS: 0,
+            YO: VerticalCellPadding,
+        }
+
+        const CellSize = {
+            XS: 0,
+            XO: HorizontalCellSize,
+            YS: 0,
+            YO: VerticalCellSize,
+        }
+
+        if (Flags.ConvertOffsetToScale) {
+            const SX = Object.Size.XO;
+            const SY = Object.Size.YO;
+            
+            CellPadding.XS = CellPadding.XO / SX;
+            CellPadding.YS = CellPadding.YO / SY;
+            CellSize.XS = CellSize.XO / SX;
+            CellSize.YS = CellSize.YO / SY;
+            
+            CellPadding.XO = 0;
+            CellPadding.YO = 0;
+            CellSize.XO = 0;
+            CellSize.YO = 0;
+        }
+        
         Object.Children.push({
             Class: "UIGridLayout",
             Name: "UIGridLayout",
-            CellPadding: {
-                XS: 0,
-                XO: HorizontalCellPadding || 0,
-                YS: 0,
-                YO: VerticalCellPadding || 0,
-            },
-            CellSize: {
-                XS: 0,
-                XO: HorizontalCellSize,
-                YS: 0,
-                YO: VerticalCellSize,
-            },
+            CellPadding: CellPadding,
+            CellSize: CellSize,
             FillDirection: FillDirection,
             SortOrder: 0,
 
@@ -446,7 +488,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             Name: Node.name,
             Active: true,
             Visible: Node.visible,
-            BackgroundTransparency: Node.opacity,
+            BackgroundTransparency: 1,
             _Transparency: Node.opacity,
             BorderSizePixel: 0,
 
@@ -634,7 +676,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
     ["VECTOR"]: (Node, Settings) => {
         // Calculate how many rectangles fit into the area
 
-        if (!Settings.ExportVectors) {
+        if (!Flags.ExportVectors) {
             return;
         }
 

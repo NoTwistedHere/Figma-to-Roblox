@@ -85,8 +85,6 @@ fetch("https://apis.roblox.com/toolbox-service/v1/marketplace/73?limit=800&inclu
         });
 
         var Fonts = "";
-
-        console.log("Aquire Info URL:", "https://apis.roblox.com/toolbox-service/v1/items/details?assetIds=" + AssetIds.join(","));
     
         fetch("https://apis.roblox.com/toolbox-service/v1/items/details?assetIds=" + AssetIds.join(","))
             .then(res => res.json())
@@ -268,9 +266,9 @@ var Settings = {
             value: 2
         }
     },
-    ApplyAspectRatio: false,
-    ExportVectors: true,
-    ApplyZIndex: true,
+    //ApplyAspectRatio: false, // Changed to Flag (/Utilities.js)
+    //ExportVectors: true, // Changed to Flag (/Utilities.js)
+    ApplyZIndex: true, // Not implemented?
 };
 
 function ConvertFill(Fill, Object) {
@@ -334,9 +332,11 @@ async function ExportImage(Node, Properties, CustomExport) {
     if (!Flags.ForceUploadImages) {
         if (AssetId) {
 
-            // Check if image hashes match?
+            // Check if image hashes match
 
-            if (Node.getPluginData("ImageHash") == Properties._ImageHash) {
+            console.log("Stored ImageHash vs ImageHash", Node.getPluginData("ImageHash"), Properties._ImageHash)
+
+            if (Node.getPluginData("ImageHash") === Properties._ImageHash) {
                 console.log("Image has not changed, using Image:", AssetId)
 
                 Properties.Image = `rbxassetid://${AssetId}`
@@ -421,9 +421,9 @@ function UpdateImage(msg) {
         figma.notify(`Unable to find Image Node "${msg.id}" (check console for more info)`);
         console.warn(`Failed to find Image Node "${msg.id}":`, msg);
         return;
-    } else if (typeof(msg.data) == "string") {
+    } else if (typeof(msg.data) === "string") { // Image uploaded
         //ImageInfo.Node.setPluginData("OperationId", "");
-        figma.notify(`Failed to upload Image Node "${msg.id}": ${msg.data}`);
+        //figma.notify(`Failed to upload Image Node "${msg.id}": ${msg.data}`);
         console.warn(`Failed to upload Image Node "${msg.id}":`, msg);
         return;
     }
@@ -431,7 +431,6 @@ function UpdateImage(msg) {
     let ModerationResult = msg.data.moderationResult
 
     if (ModerationResult && (ModerationResult.moderationState != "Approved" && ModerationResult.moderationState != "MODERATION_STATE_APPROVED")) {
-        ImageInfo.Node.setPluginData("OperationId", "");
         figma.notify(`Image Element ${msg.id} failed moderation (check console for more info)`);
         console.warn(`Image Element ${msg.id} failed moderation:`, ModerationResult);
         return;
@@ -463,7 +462,7 @@ function GetImageFromOperation(OperationId) {
 }
 
 function IsDone() {
-    return ImagesRemaining == 0
+    return ImagesRemaining === 0
 }
 
 const PropertyTypes = {
@@ -471,7 +470,7 @@ const PropertyTypes = {
         if (Value.length > 1 || Value == figma.mixed) {
             return console.warn(`Frame ${Object.Name} cannot have more than 1 fill`);
         } else if (Value.length === 0) {
-            Object.BackgroundTransparency = 1;
+            Object.BackgroundTransparency = 0;
             return;
         }
 
@@ -483,7 +482,7 @@ const PropertyTypes = {
             2: Purple Fill 20% transparency      ImageColor3 = Purple (hue at 80%?)
         */
 
-        if (Fill.type == "IMAGE") {
+        if (Fill.type === "IMAGE") {
             // TODO: Implement better fill support
             // if (Node.getPluginData("ImageHash") === Fill.imageHash) {
             //     Object.Class = "ImageLabel"
@@ -495,6 +494,7 @@ const PropertyTypes = {
 
             Object._ImageHash = Fill.imageHash
             Object.Class = "ImageLabel" // or ImageButton?!
+            Object.BackgroundTransparency = 0 // Images can't have backgrounds from what I can tell
 
             ExportImage(Node, Object)
 
@@ -503,7 +503,7 @@ const PropertyTypes = {
 
         var [Color3, Transparency] = ConvertFill(Fill, Object);
 
-        if (Object.Class == "TextLabel") {
+        if (Object.Class === "TextLabel") {
             Object.TextColor3 = Color3;
             Object.TextTransparency = Transparency;
         } else {
@@ -522,6 +522,27 @@ const PropertyTypes = {
                 }
             })
         }
+    },
+    ["effects"]: (Value, Object, Node) => {
+        Value.forEach(Effect => {
+            switch (Effect.type) {
+                case "DROP_SHADOW":
+                    // do something
+                    // 
+                    // IDEA:
+                    //      Create a Clone with of the same Size, Offset by some px / AnchorPoint
+                    //      ^ Would have to be an ImageLabel for the same effect, however I haven't thought of attemtping it
+                    //      and it's probably still better to export/upload Rectangles as an image, but Groups and Frames could work
+                    
+                    // Object.Children.push({
+                    //     Class: "ImageLabel",
+                    //     Name: "DropShadow",
+                    //     BackgroundTransparency: 
+                    // })
+
+                    break;
+            }
+        })
     },
     ["strokes"]: (Value, Object, Node) => {
         if (Value.length > 1) return console.warn(`Frame ${Object.Name} cannot have more than 1 stroke`);
@@ -573,8 +594,9 @@ const PropertyTypes = {
                 if (Segment.fills && Segment.fills.length === 1) {
                     var Fill = Segment.fills[0];
                     // TODO: Implement use of new funtion ConvertFill(Fill, Object?)
+                    // ^ no, only SOLID colours can be supported with richtext
     
-                    if (Fill.type == "SOLID") NewText += ` color="rgb(${Round(Fill.color.r * 255, 1) + "," + Round(Fill.color.g * 255, 1) + "," + Round(Fill.color.b * 255, 1)})"`
+                    if (Fill.type === "SOLID") NewText += ` color="rgb(${Round(Fill.color.r * 255, 1) + "," + Round(Fill.color.g * 255, 1) + "," + Round(Fill.color.b * 255, 1)})"`
                     else console.warn(`Unsupported rich text fill type "${Fill.type}" on text Node`, Node)
                 };
     
@@ -605,40 +627,58 @@ const PropertyTypes = {
         /*
             TODO: Support reverse ZIndex
         */
+
+        if (Value === "NONE") return;
        
         const FillDirection = Conversions.FillDirection.indexOf(Value);
         const IsHorizontal = FillDirection === 0;
 
-        // Get Padding and Alignment Offset
+        // Get Alignment, Padding and Size Offset
+        
+        const HorizontalAlignment = IsHorizontal ? Node.primaryAxisAlignItems : Node.counterAxisAlignItems || Node.primaryAxisAlignItems;
+        const VerticalAlignment = !IsHorizontal ? Node.primaryAxisAlignItems : Node.counterAxisAlignItems || Node.primaryAxisAlignItems;
 
         const HorizontalCellPadding = IsHorizontal ? Node.itemSpacing : Node.counterAxisSpacing || Node.itemSpacing;
         const VerticalCellPadding = !IsHorizontal ? Node.itemSpacing : Node.counterAxisSpacing || Node.itemSpacing;
 
-        const HorizontalAlignment = IsHorizontal ? Node.primaryAxisAlignItems : Node.counterAxisAlignItems || Node.primaryAxisAlignItems;
-        const VerticalAlignment = !IsHorizontal ? Node.primaryAxisAlignItems : Node.counterAxisAlignItems || Node.primaryAxisAlignItems;
-
-        // Get Size Offset
-        //
-        // It's annoying roblox enforces all children to be uniform in size
-        // Could add a setting to toggle this on/off depending on what's needed
         const HorizontalCellSize = Node.children[0] ? Node.children[0].width : 100;
         const VerticalCellSize = Node.children[0] ? Node.children[0].height : 100;
 
+        // TODO Come back to rn!
+        const CellPadding = {
+            XS: 0,
+            XO: HorizontalCellPadding,
+            YS: 0,
+            YO: VerticalCellPadding,
+        }
+
+        const CellSize = {
+            XS: 0,
+            XO: HorizontalCellSize,
+            YS: 0,
+            YO: VerticalCellSize,
+        }
+
+        if (Flags.ConvertOffsetToScale) {
+            const SX = Object.Size.XO;
+            const SY = Object.Size.YO;
+            
+            CellPadding.XS = CellPadding.XO / SX;
+            CellPadding.YS = CellPadding.YO / SY;
+            CellSize.XS = CellSize.XO / SX;
+            CellSize.YS = CellSize.YO / SY;
+            
+            CellPadding.XO = 0;
+            CellPadding.YO = 0;
+            CellSize.XO = 0;
+            CellSize.YO = 0;
+        }
+        
         Object.Children.push({
             Class: "UIGridLayout",
             Name: "UIGridLayout",
-            CellPadding: {
-                XS: 0,
-                XO: HorizontalCellPadding || 0,
-                YS: 0,
-                YO: VerticalCellPadding || 0,
-            },
-            CellSize: {
-                XS: 0,
-                XO: HorizontalCellSize,
-                YS: 0,
-                YO: VerticalCellSize,
-            },
+            CellPadding: CellPadding,
+            CellSize: CellSize,
             FillDirection: FillDirection,
             SortOrder: 0,
 
@@ -701,7 +741,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             Name: Node.name,
             Active: true,
             Visible: Node.visible,
-            BackgroundTransparency: Node.opacity,
+            BackgroundTransparency: 1,
             _Transparency: Node.opacity,
             BorderSizePixel: 0,
 
@@ -889,7 +929,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
     ["VECTOR"]: (Node, Settings) => {
         // Calculate how many rectangles fit into the area
 
-        if (!Settings.ExportVectors) {
+        if (!Flags.ExportVectors) {
             return;
         }
 
@@ -1081,7 +1121,10 @@ module.exports = {
 var CurrentNotification;
 
 const Flags = {
-    UsePositionRelativeToScene: false, // True: Will use the (x,y) position of the Upmost Group(s) (should be no.1); False: Set the Upmost Group(s) Position to (0,0)
+    ApplyAspectRatio: true, // True: Adds UIAspectRatioConstraint to Frames
+    ExportVectors: true, // True: Attempts to export vectors
+    ConvertOffsetToScale: true, // True: Converts Position Offset of all Child elements to Scale
+    UseSelectionPositionRelativeToScene: false, // True: Will use the (x,y) position of the Upmost Group(s) (should be no.1); False: Set the Upmost Group(s) Position to (0,0)
     ForceUploadImages: false, // Skips image matching, upload is still overwritten by ImageUploadTesting
     ImageUploadTesting: false, 
     ImageUploadTestData: {
@@ -1107,7 +1150,8 @@ const Flags = {
 function QuickClose(Message) {
     if (CurrentNotification) CurrentNotification.cancel();
 
-    figma.notify(`Error: ` + Message, {timeout: 10000});
+    figma.warn("Closing Plugin:", Message)
+    figma.notify(`Error: ` + Message, {timeout: 5000});
     figma.closePlugin();
 
     throw new Error(Message);
@@ -1230,6 +1274,18 @@ function ConvertObject(Properties, ParentObject) {
     return XML
 }
 
+function LoopChildren(Children, ParentObject) {
+    var New2 = "";
+    
+    Children.forEach(Child => {
+        var XMLProperties = ConvertObject(Child, ParentObject);
+        
+        New2 += `<Item class="${Child.Class}" referent="RBX0">\n${Child.Children ? LoopChildren(Child.Children) : ""}<Properties>\n${XMLProperties}\n</Properties></Item>\n`
+    });
+    
+    return New2
+}
+
 function LoopNodes(Nodes, ParentObject) {
     var FileContent = "";
 
@@ -1238,31 +1294,32 @@ function LoopNodes(Nodes, ParentObject) {
         const Node = Nodes[i];
         const NodeData = Node.getPluginDataKeys();
 
-        // Check for a previous export
+        // TODO Check for a previous export
         if (NodeData.ImageId) {
             
         }
 
+        
         var Properties = NodeTypes[Node.type || "OTHER"](Node, Settings); // Can't name it Object because of below v
-
+        
         if (!Properties) continue;
-
+        
         // Loop Node properties
         var NodeProperties = Object.getOwnPropertyNames(Object.getPrototypeOf(Node));
-
+        
         NodeProperties.forEach((i) => {
             if (PropertyTypes[i]) {
                 PropertyTypes[i](Node[i], Properties, Node);
             }
         });
-
+        
         // Calculate Aspect Ratio and Scale
-
-        console.log("Node Properties:", Properties)
-
-        if (Settings.ApplyAspectRatio) {
+        
+        //console.log("Node Properties:", Properties)
+        
+        if (Flags.ApplyAspectRatio && (Node.type == "GROUP" || Node.Type == "FRAME")) {
             var AspectRatio = Math.round((Properties.Size.XO / Properties.Size.YO) * 1000) / 1000;
-
+            
             if (Node.width != 0 && Node.height != 0 && AspectRatio) {
                 Properties.Children.push({
                     Class: "UIAspectRatioConstraint",
@@ -1272,16 +1329,18 @@ function LoopNodes(Nodes, ParentObject) {
                 })
             }
         }
-
+        
         //
-
+        
+        
+        Properties._OriginalPosition = Properties.Position;
+        Properties._OriginalSize = Properties.Size;
         //Properties.Position.XO -= some math //*= Scale.X
         //Properties.Position.YO //*= Scale.Y
         //Properties.Size.XO *= Scale.X
         //Properties.Size.YO *= Scale.Y
-
-        if (Properties.Rotation && Properties.Rotation != 0) {
-            var BoundingBox = Node.absoluteBoundingBox;
+        if (Properties.Rotation && Properties.Rotation !== 0) {
+            const BoundingBox = Node.absoluteBoundingBox;
 
             var CX = BoundingBox.x + BoundingBox.width / 2;
             var CY = BoundingBox.y + BoundingBox.height / 2;
@@ -1289,87 +1348,89 @@ function LoopNodes(Nodes, ParentObject) {
             Properties.Position.XO = CX - Properties.Size.XO / 2;
             Properties.Position.YO = CY - Properties.Size.YO / 2;
         }
+        
 
+        //console.log("Props:", Properties, "Parent:", ParentObject)
+        //console.log("Node:", Node);
+        
+        if (Node.type === "BOOLEAN_OPERATION") { // No ~Temp added as a NodeType & create as if a group
+            figma.notify("Boolean Operations might give undesired results", {timeout: 1800})
+            // Booleans are treated as groups
+            // FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
+            // FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n" + LoopNodes(Node.children, Properties);
+            // FileContent += "</Item>\n";
+        }
+        
         if (Properties.Name == "Background" && ParentObject) {
             console.log("Got Background with ParentObject which is a Group", Properties, ParentObject);
 
             ParentObject.BackgroundColor3 = Properties.BackgroundColor3;
             ParentObject.BackgroundTransparency = Properties.BackgroundTransparency;
             ParentObject.BorderSizePixel = Properties.BorderSizePixel;
-            ParentObject.Rotation = Properties.Rotation;
+            //ParentObject.Rotation = Properties.Rotation; // this now looks like a bad idea
             
-            if (Properties.Children) {  
-                Properties.Children.forEach(Child => {
-                    var XMLProperties = ConvertObject(Child, Properties);
+            if (Properties.Children) {
+                FileContent += LoopChildren(Properties.Children, Properties)
+
+                // Properties.Children.forEach(Child => {
+                //     var XMLProperties = ConvertObject(Child, Properties);
                     
-                    FileContent += `<Item class="${Child.Class}" referent="RBX0">\n${Child.Children ? LoopChildren(Child.Children) : ""}<Properties>\n${XMLProperties}\n</Properties></Item>\n`
-                });
+                //     FileContent += `<Item class="${Child.Class}" referent="RBX0">\n${Child.Children ? LoopChildren(Child.Children) : ""}<Properties>\n${XMLProperties}\n</Properties></Item>\n`
+                // });
             }
 
             continue;
         }
 
-        
-        // Convert to scale? (WIP)
-        
-        var SX, SY = ParentObject ? (ParentObject.Size.XO, ParentObject.Size.YO) : (1920, 1080);
-        
-        // Properties.Position.XS = Properties.Position.XO / SX;
-        // Properties.Position.YS = Properties.Position.YO / SY;
-        // Properties.Size.XS = Properties.Size.XO / SX;
-        // Properties.Size.YS = Properties.Size.YO / SY;
-        
-        // Properties.Position.XO = 0;
-        // Properties.Position.YO = 0;
-        // Properties.Size.XO = 0;
-        // Properties.Size.YO = 0;
-        
-        //
-        // Create Item element, loop children (if applicable)
-        
-        FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
-        
-        var New = "";
-        
-        //FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n"
-        
-        if (Properties.Children) {
-            function LoopChildren(Children) {
-                var New2 = "";
-                
-                Children.forEach(Child => {
-                    var XMLProperties = ConvertObject(Child, Properties);
-                    
-                    New2 += `<Item class="${Child.Class}" referent="RBX0">\n${Child.Children ? LoopChildren(Child.Children) : ""}<Properties>\n${XMLProperties}\n</Properties></Item>\n`
-                });
-                
-                return New2
-            }
-            
-            New += LoopChildren(Properties.Children);
-        }
-
-        if (Node.children) New += LoopNodes(Node.children, Properties);
-
         // Finish up and Convert Properties
         
+        //
+        // Create Item element, loop/add children (if applicable)
+        
+        FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
+        var New = "";
+        
+        if (Properties.Children) {
+            New += LoopChildren(Properties.Children, ParentObject);
+        }
+        if (Node.children) New += LoopNodes(Node.children, Properties);
+        
         if (ParentObject) {
-            if (ParentObject.Position) { // Get Position relative to Parent
-                Properties.Position.XO -= ParentObject.Position.XO;
-                Properties.Position.YO -= ParentObject.Position.YO;
-            } else if (ParentObject._Transparency) { // Multiply Transparency with Parent Transparency/Pass through
+            // Get Position relative to Parent
+            Properties.Position.XO -= ParentObject._OriginalPosition.XO;
+            Properties.Position.YO -= ParentObject._OriginalPosition.YO;
+            
+            if (ParentObject._Transparency) { // Multiply Transparency with Parent Transparency/Pass through
                 Properties._Transparency = ParentObject._Transparency * Properties._Transparency
             }
-        } else if (!Flags.UsePositionRelativeToScene) {
+            
+            // Convert Offset (Pixels) to Scale
+            // What am I going to do about anchor points :()
+            // ^^ I do actually have 2 potential ideas
+            
+            if (Flags.ConvertOffsetToScale) {
+                const SX = ParentObject._OriginalSize.XO;
+                const SY = ParentObject._OriginalSize.YO;
+                
+                Properties.Position.XS = Properties.Position.XO / SX;
+                Properties.Position.YS = Properties.Position.YO / SY;
+                Properties.Size.XS = Properties._OriginalSize.XO / SX;
+                Properties.Size.YS = Properties._OriginalSize.YO / SY;
+                
+                Properties.Position.XO = 0;
+                Properties.Position.YO = 0;
+                Properties.Size.XO = 0;
+                Properties.Size.YO = 0;
+            }
+        } else if (!Flags.UseSelectionPositionRelativeToScene) {
             // Set Position of upmost Element (most likely a Group) to (0,0)
             Properties.Position.XO = 0;
             Properties.Position.YO = 0;
         }
-
+        
         FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n" + New;
-
+        
         FileContent += "</Item>\n";
-        Properties = null;
         New = null;
     }
 
@@ -1391,7 +1452,7 @@ async function ConvertNodes() {
         FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
     })*/
 
-    const a = await new Promise((resolve, reject) => {
+    await new Promise((resolve, reject) => {
         function Timeout() {
             if (IsDone()) return resolve();
 
@@ -1420,11 +1481,70 @@ async function ConvertNodes() {
         data: FileContent
     });
 
+
     //console.log(FileContent);
 
     Notify("Successfully exported")
 
     return true
+}
+
+function CreateFrame() {
+    const CenterOfScreen = figma.viewport.center;
+    const SizeX = 1920;
+    const SizeY = 1080;
+    
+    // const Background = figma.createRectangle();
+    // Background.x = CenterOfScreen.x - SizeX / 2;
+    // Background.y = CenterOfScreen.y - SizeY / 2;
+
+    // Background.name = "Background";
+    // Background.resize(SizeX, SizeY);
+    // Background.fills = [{ type: "SOLID", color: { r: 0.2, g: 0.2, b: 0.2 } }];
+    
+    // const Group = figma.group([Background], figma.currentPage);
+    // Group.name = "HD (4:9)"
+
+    //
+
+    const Frame = figma.createFrame();
+    Frame.x = CenterOfScreen.x - SizeX / 2;
+    Frame.y = CenterOfScreen.y - SizeY / 2;
+
+    Frame.resize(SizeX, SizeY);
+    Frame.fills = [{ type: "SOLID", color: { r: 0.2, g: 0.2, b: 0.2 } }];
+    Frame.name = "HD (4:9)"
+}
+
+function CreatePreset(Preset) {
+    const CenterOfScreen = figma.viewport.center;
+    var SizeX;
+    var SizeY;
+    
+    switch (Preset) {
+        case "Full HD":
+            SizeX = 1920;
+            SizeY = 1080;
+            break;
+        case "2K":
+            SizeX = 2048;
+            SizeY = 1080;
+            break;
+        case "4K":
+            SizeX = 3840;
+            SizeY = 2160;
+            break;
+        default: 
+            return QuickClose("Preset doesn't exist");
+    }
+
+    const Frame = figma.createFrame();
+    Frame.x = CenterOfScreen.x - SizeX / 2;
+    Frame.y = CenterOfScreen.y - SizeY / 2;
+
+    Frame.resize(SizeX, SizeY);
+    Frame.fills = [{ type: "SOLID", color: { r: 0.2, g: 0.2, b: 0.2 } }];
+    Frame.name = `${Preset} (${SizeX}x${SizeY})`
 }
 
 //ConvertNodes();
@@ -1469,6 +1589,10 @@ figma.ui.onmessage = msg => {
         case "SetAsync":
             //console.log("Set Setting", msg);
             figma.clientStorage.setAsync(msg.key, msg.value);
+            break;
+        case "CreatePreset":
+            console.log("Creating Preset:", msg.preset);
+            CreatePreset(msg.preset);
             break;
         // case "FetchAsync":
         //     const FetchPromise = new Promise((resolve, reject) => {

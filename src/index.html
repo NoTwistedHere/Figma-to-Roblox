@@ -11,6 +11,13 @@
         </style>
         <a id="download" href="#" download="export.rbxmx" style="display:none;">Download</a>
         <button id="convselect">Convert Selection</button>
+        <label for="presets">Presets (WIP)</label>
+        <select name="presets" id="presets">
+            <option value="Full HD">Full HD (1920x1080 4:9)</option>
+            <option value="2K">2K (2048x1080 4:9)</option>
+            <option value="4K">4K (3840x2160 16:9)</option>
+        </select>
+        <button id="createpreset">Create Preset</button>
         <div></div>
         
         <h4>Image Upload Settings:</h4>
@@ -72,6 +79,9 @@
 
             document.getElementById("convselect").onclick = () => {
                 PostMessage({ type: 'run' });
+            }
+            document.getElementById("createpreset").onclick = () => {
+                PostMessage({ type: 'CreatePreset', preset: document.getElementById("presets").value });
             }
             document.getElementById("apikey").onchange = (self) => {
                 CloudApiKey = self.target.value;
@@ -138,8 +148,8 @@
 
                         console.log("got Operation Response:", UploadResponse);
 
-                        //if (UploadResponse.done)
-                        //    PostMessage({ type: "image-" })
+                        if (UploadResponse.done)
+                            PostMessage({ type: "image-" })
 
                         break;
                     case "UploadImage":
@@ -160,8 +170,8 @@
                             description: "Exported from Figma",
                             creationContext: {
                                 creator: {
-                                    userId: UploaderId ? parseFloat(UploaderId) : null,
-                                    groupId: GroupId ? parseFloat(GroupId) : null,
+                                    userId: UploaderId ? parseFloat(UploaderId) : undefined,
+                                    groupId: GroupId ? parseFloat(GroupId) : undefined,
                                 }
                             }
                         }));
@@ -172,7 +182,7 @@
                             method: "POST",
                             headers: {
                                 ["Origin"]: "FigmaToRoblox",
-                                ["Content-Type"]: "multipart/form-data; boundary=-16300",
+                                //["Content-Type"]: "multipart/form-data; boundary=-16300",
                                 //["Accept"]: "multipart/form-data",
                                 //["Accept"]: "data/json",
                                 //["Content-Language"]: "en-US",
@@ -182,8 +192,11 @@
                         }).then(res => res.json())
                         .then(async InitialResponse => {
                             // Check if already done, and if so return upload response
-                            if (InitialResponse.done) {
+                            if (InitialResponse.done == true) {
                                 PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status });
+                                return;
+                            } else if (InitialResponse.errors) {
+                                console.error(`Image POST returned ${InitialResponse.status} "${InitialResponse.title}", errors:`, InitialResponse.errors[""])
                                 return;
                             }
 
@@ -207,7 +220,7 @@
 
                                 console.log("got Status Response:", UploadResponse);
 
-                                if (UploadResponse.done) {
+                                if (UploadResponse.done == true) {
                                     PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status })
                                     break;
                                 }

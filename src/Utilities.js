@@ -1,7 +1,10 @@
 var CurrentNotification;
 
 const Flags = {
-    UsePositionRelativeToScene: false, // True: Will use the (x,y) position of the Upmost Group(s) (should be no.1); False: Set the Upmost Group(s) Position to (0,0)
+    ApplyAspectRatio: true, // True: Adds UIAspectRatioConstraint to Frames
+    ExportVectors: true, // True: Attempts to export vectors
+    ConvertOffsetToScale: true, // True: Converts Position Offset of all Child elements to Scale
+    UseSelectionPositionRelativeToScene: false, // True: Will use the (x,y) position of the Upmost Group(s) (should be no.1); False: Set the Upmost Group(s) Position to (0,0)
     ForceUploadImages: false, // Skips image matching, upload is still overwritten by ImageUploadTesting
     ImageUploadTesting: false, 
     ImageUploadTestData: {
@@ -27,7 +30,8 @@ const Flags = {
 function QuickClose(Message) {
     if (CurrentNotification) CurrentNotification.cancel();
 
-    figma.notify(`Error: ` + Message, {timeout: 10000});
+    figma.warn("Closing Plugin:", Message)
+    figma.notify(`Error: ` + Message, {timeout: 5000});
     figma.closePlugin();
 
     throw new Error(Message);

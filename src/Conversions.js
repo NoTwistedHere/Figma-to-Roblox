@@ -84,8 +84,6 @@ fetch("https://apis.roblox.com/toolbox-service/v1/marketplace/73?limit=800&inclu
         });
 
         var Fonts = "";
-
-        console.log("Aquire Info URL:", "https://apis.roblox.com/toolbox-service/v1/items/details?assetIds=" + AssetIds.join(","));
     
         fetch("https://apis.roblox.com/toolbox-service/v1/items/details?assetIds=" + AssetIds.join(","))
             .then(res => res.json())

@@ -103,6 +103,18 @@ function ConvertObject(Properties, ParentObject) {
     return XML
 }
 
+function LoopChildren(Children, ParentObject) {
+    var New2 = "";
+    
+    Children.forEach(Child => {
+        var XMLProperties = ConvertObject(Child, ParentObject);
+        
+        New2 += `<Item class="${Child.Class}" referent="RBX0">\n${Child.Children ? LoopChildren(Child.Children) : ""}<Properties>\n${XMLProperties}\n</Properties></Item>\n`
+    });
+    
+    return New2
+}
+
 function LoopNodes(Nodes, ParentObject) {
     var FileContent = "";
 
@@ -111,31 +123,32 @@ function LoopNodes(Nodes, ParentObject) {
         const Node = Nodes[i];
         const NodeData = Node.getPluginDataKeys();
 
-        // Check for a previous export
+        // TODO Check for a previous export
         if (NodeData.ImageId) {
             
         }
 
+        
         var Properties = NodeTypes[Node.type || "OTHER"](Node, Settings); // Can't name it Object because of below v
-
+        
         if (!Properties) continue;
-
+        
         // Loop Node properties
         var NodeProperties = Object.getOwnPropertyNames(Object.getPrototypeOf(Node));
-
+        
         NodeProperties.forEach((i) => {
             if (PropertyTypes[i]) {
                 PropertyTypes[i](Node[i], Properties, Node);
             }
         });
-
+        
         // Calculate Aspect Ratio and Scale
-
+        
         //console.log("Node Properties:", Properties)
-
-        if (Settings.ApplyAspectRatio) {
+        
+        if (Flags.ApplyAspectRatio && (Node.type == "GROUP" || Node.Type == "FRAME")) {
             var AspectRatio = Math.round((Properties.Size.XO / Properties.Size.YO) * 1000) / 1000;
-
+            
             if (Node.width != 0 && Node.height != 0 && AspectRatio) {
                 Properties.Children.push({
                     Class: "UIAspectRatioConstraint",
@@ -145,16 +158,18 @@ function LoopNodes(Nodes, ParentObject) {
                 })
             }
         }
-
+        
         //
-
+        
+        
+        Properties._OriginalPosition = Properties.Position;
+        Properties._OriginalSize = Properties.Size;
         //Properties.Position.XO -= some math //*= Scale.X
         //Properties.Position.YO //*= Scale.Y
         //Properties.Size.XO *= Scale.X
         //Properties.Size.YO *= Scale.Y
-
-        if (Properties.Rotation && Properties.Rotation != 0) {
-            var BoundingBox = Node.absoluteBoundingBox;
+        if (Properties.Rotation && Properties.Rotation !== 0) {
+            const BoundingBox = Node.absoluteBoundingBox;
 
             var CX = BoundingBox.x + BoundingBox.width / 2;
             var CY = BoundingBox.y + BoundingBox.height / 2;
@@ -162,87 +177,89 @@ function LoopNodes(Nodes, ParentObject) {
             Properties.Position.XO = CX - Properties.Size.XO / 2;
             Properties.Position.YO = CY - Properties.Size.YO / 2;
         }
+        
 
+        //console.log("Props:", Properties, "Parent:", ParentObject)
+        //console.log("Node:", Node);
+        
+        if (Node.type === "BOOLEAN_OPERATION") { // No ~Temp added as a NodeType & create as if a group
+            figma.notify("Boolean Operations might give undesired results", {timeout: 1800})
+            // Booleans are treated as groups
+            // FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
+            // FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n" + LoopNodes(Node.children, Properties);
+            // FileContent += "</Item>\n";
+        }
+        
         if (Properties.Name == "Background" && ParentObject) {
             console.log("Got Background with ParentObject which is a Group", Properties, ParentObject);
 
             ParentObject.BackgroundColor3 = Properties.BackgroundColor3;
             ParentObject.BackgroundTransparency = Properties.BackgroundTransparency;
             ParentObject.BorderSizePixel = Properties.BorderSizePixel;
-            ParentObject.Rotation = Properties.Rotation;
+            //ParentObject.Rotation = Properties.Rotation; // this now looks like a bad idea
             
-            if (Properties.Children) {  
-                Properties.Children.forEach(Child => {
-                    var XMLProperties = ConvertObject(Child, Properties);
+            if (Properties.Children) {
+                FileContent += LoopChildren(Properties.Children, Properties)
+
+                // Properties.Children.forEach(Child => {
+                //     var XMLProperties = ConvertObject(Child, Properties);
                     
-                    FileContent += `<Item class="${Child.Class}" referent="RBX0">\n${Child.Children ? LoopChildren(Child.Children) : ""}<Properties>\n${XMLProperties}\n</Properties></Item>\n`
-                });
+                //     FileContent += `<Item class="${Child.Class}" referent="RBX0">\n${Child.Children ? LoopChildren(Child.Children) : ""}<Properties>\n${XMLProperties}\n</Properties></Item>\n`
+                // });
             }
 
             continue;
         }
 
-        
-        // Convert to scale? (WIP)
-        
-        var SX, SY = ParentObject ? (ParentObject.Size.XO, ParentObject.Size.YO) : (1920, 1080);
-        
-        // Properties.Position.XS = Properties.Position.XO / SX;
-        // Properties.Position.YS = Properties.Position.YO / SY;
-        // Properties.Size.XS = Properties.Size.XO / SX;
-        // Properties.Size.YS = Properties.Size.YO / SY;
-        
-        // Properties.Position.XO = 0;
-        // Properties.Position.YO = 0;
-        // Properties.Size.XO = 0;
-        // Properties.Size.YO = 0;
-        
-        //
-        // Create Item element, loop children (if applicable)
-        
-        FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
-        
-        var New = "";
-        
-        //FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n"
-        
-        if (Properties.Children) {
-            function LoopChildren(Children) {
-                var New2 = "";
-                
-                Children.forEach(Child => {
-                    var XMLProperties = ConvertObject(Child, Properties);
-                    
-                    New2 += `<Item class="${Child.Class}" referent="RBX0">\n${Child.Children ? LoopChildren(Child.Children) : ""}<Properties>\n${XMLProperties}\n</Properties></Item>\n`
-                });
-                
-                return New2
-            }
-            
-            New += LoopChildren(Properties.Children);
-        }
-
-        if (Node.children) New += LoopNodes(Node.children, Properties);
-
         // Finish up and Convert Properties
         
+        //
+        // Create Item element, loop/add children (if applicable)
+        
+        FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
+        var New = "";
+        
+        if (Properties.Children) {
+            New += LoopChildren(Properties.Children, ParentObject);
+        }
+        if (Node.children) New += LoopNodes(Node.children, Properties);
+        
         if (ParentObject) {
-            if (ParentObject.Position) { // Get Position relative to Parent
-                Properties.Position.XO -= ParentObject.Position.XO;
-                Properties.Position.YO -= ParentObject.Position.YO;
-            } else if (ParentObject._Transparency) { // Multiply Transparency with Parent Transparency/Pass through
+            // Get Position relative to Parent
+            Properties.Position.XO -= ParentObject._OriginalPosition.XO;
+            Properties.Position.YO -= ParentObject._OriginalPosition.YO;
+            
+            if (ParentObject._Transparency) { // Multiply Transparency with Parent Transparency/Pass through
                 Properties._Transparency = ParentObject._Transparency * Properties._Transparency
             }
-        } else if (!Flags.UsePositionRelativeToScene) {
+            
+            // Convert Offset (Pixels) to Scale
+            // What am I going to do about anchor points :()
+            // ^^ I do actually have 2 potential ideas
+            
+            if (Flags.ConvertOffsetToScale) {
+                const SX = ParentObject._OriginalSize.XO;
+                const SY = ParentObject._OriginalSize.YO;
+                
+                Properties.Position.XS = Properties.Position.XO / SX;
+                Properties.Position.YS = Properties.Position.YO / SY;
+                Properties.Size.XS = Properties._OriginalSize.XO / SX;
+                Properties.Size.YS = Properties._OriginalSize.YO / SY;
+                
+                Properties.Position.XO = 0;
+                Properties.Position.YO = 0;
+                Properties.Size.XO = 0;
+                Properties.Size.YO = 0;
+            }
+        } else if (!Flags.UseSelectionPositionRelativeToScene) {
             // Set Position of upmost Element (most likely a Group) to (0,0)
             Properties.Position.XO = 0;
             Properties.Position.YO = 0;
         }
-
+        
         FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n" + New;
-
+        
         FileContent += "</Item>\n";
-        Properties = null;
         New = null;
     }
 
@@ -264,7 +281,7 @@ async function ConvertNodes() {
         FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
     })*/
 
-    const a = await new Promise((resolve, reject) => {
+    await new Promise((resolve, reject) => {
         function Timeout() {
             if (IsDone()) return resolve();
 
@@ -293,11 +310,70 @@ async function ConvertNodes() {
         data: FileContent
     });
 
+
     //console.log(FileContent);
 
     Notify("Successfully exported")
 
     return true
+}
+
+function CreateFrame() {
+    const CenterOfScreen = figma.viewport.center;
+    const SizeX = 1920;
+    const SizeY = 1080;
+    
+    // const Background = figma.createRectangle();
+    // Background.x = CenterOfScreen.x - SizeX / 2;
+    // Background.y = CenterOfScreen.y - SizeY / 2;
+
+    // Background.name = "Background";
+    // Background.resize(SizeX, SizeY);
+    // Background.fills = [{ type: "SOLID", color: { r: 0.2, g: 0.2, b: 0.2 } }];
+    
+    // const Group = figma.group([Background], figma.currentPage);
+    // Group.name = "HD (4:9)"
+
+    //
+
+    const Frame = figma.createFrame();
+    Frame.x = CenterOfScreen.x - SizeX / 2;
+    Frame.y = CenterOfScreen.y - SizeY / 2;
+
+    Frame.resize(SizeX, SizeY);
+    Frame.fills = [{ type: "SOLID", color: { r: 0.2, g: 0.2, b: 0.2 } }];
+    Frame.name = "HD (4:9)"
+}
+
+function CreatePreset(Preset) {
+    const CenterOfScreen = figma.viewport.center;
+    var SizeX;
+    var SizeY;
+    
+    switch (Preset) {
+        case "Full HD":
+            SizeX = 1920;
+            SizeY = 1080;
+            break;
+        case "2K":
+            SizeX = 2048;
+            SizeY = 1080;
+            break;
+        case "4K":
+            SizeX = 3840;
+            SizeY = 2160;
+            break;
+        default: 
+            return QuickClose("Preset doesn't exist");
+    }
+
+    const Frame = figma.createFrame();
+    Frame.x = CenterOfScreen.x - SizeX / 2;
+    Frame.y = CenterOfScreen.y - SizeY / 2;
+
+    Frame.resize(SizeX, SizeY);
+    Frame.fills = [{ type: "SOLID", color: { r: 0.2, g: 0.2, b: 0.2 } }];
+    Frame.name = `${Preset} (${SizeX}x${SizeY})`
 }
 
 //ConvertNodes();
@@ -342,6 +418,10 @@ figma.ui.onmessage = msg => {
         case "SetAsync":
             //console.log("Set Setting", msg);
             figma.clientStorage.setAsync(msg.key, msg.value);
+            break;
+        case "CreatePreset":
+            console.log("Creating Preset:", msg.preset);
+            CreatePreset(msg.preset);
             break;
         // case "FetchAsync":
         //     const FetchPromise = new Promise((resolve, reject) => {
