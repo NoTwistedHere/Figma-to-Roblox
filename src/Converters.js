@@ -1,9 +1,11 @@
 const Conversions = require("./Conversions");
 const { Flags, QuickClose } = require("./Utilities");
+const createHash = require("create-hash/browser");
 
 var ImagesRemaining = 0;
-var ImageExports = {};
-var Settings = {
+const ImageExports = {};
+const ImageUploads = [];
+const Settings = {
     //ApiKey: "",
     DefaultExport: {
         format: "PNG",
@@ -19,7 +21,9 @@ var Settings = {
 };
 
 function ConvertFill(Fill, Object) {
-    var Transparency = 0;
+    if (Fill.visible === false) return [{}, 0]
+    
+    var Transparency = Fill.opacity;
     var Color3 = {};
 
     switch (Fill.type) {
@@ -36,6 +40,9 @@ function ConvertFill(Fill, Object) {
             Transparency = Fill.opacity;
             Color3 = { R: 1, G: 1, B: 1 };
 
+            console.warn("Node has LINEAR GRADIENT!", Object)
+
+            Object._HasGradient = true;
             Object.Children.push({
                 Class: "UIGradient",
                 Enabled: Fill.visible,
@@ -73,6 +80,7 @@ async function ExportImage(Node, Properties, CustomExport) {
 
     console.log("exporting image");
 
+    //let AssetContent = Node.getPluginData("AssetContent");
     let AssetId = Node.getPluginData("AssetId");
     var UploadId = Node.getPluginData("OperationId");
 
@@ -90,36 +98,66 @@ async function ExportImage(Node, Properties, CustomExport) {
 
                 return;
             }
-        } else if (UploadId) {
+        } /*else if (AssetContent) {
+            Properties.Image = AssetContent
+        }*/ else if (UploadId) {
             // try fetching before attempting to re-upload
 
-            console.log("Image was uploaded, checking Operation:", UploadId)
+            console.log("Stored ImageHash vs ImageHash", Node.getPluginData("ImageHash"), Properties._ImageHash)
 
-            figma.ui.postMessage({
-                type: "CheckOperation",
-                data: {
-                    Id: UploadId
+            if (Node.getPluginData("ImageHash") === Properties._ImageHash) {
+                console.log("Image was uploaded, checking Operation (Id):", UploadId);
+
+                ImagesRemaining += 1;
+                Properties.Image = `{OP-${UploadId}}`
+                if (Properties._ImageHash) Node.setPluginData("ImageHash", Properties._ImageHash);
+    
+                ImageExports[UploadId] = {
+                    Node: Node,
+                    Properties: Properties,
+                    UploadId: UploadId
                 }
-            })
-
-            return UploadId
+    
+                figma.ui.postMessage({
+                    type: "CheckOperation",
+                    data: {
+                        Id: UploadId
+                    }
+                })
+    
+    
+                return UploadId
+            } else console.warn("Operation exists but Hashes don't match, uploading..")
         }
     }
 
-    console.log(AssetId, UploadId)
+    //console.log(AssetId, UploadId)
 
-    UploadId = Node.id // yes dw this is meant to be above the check
+    if (Node.vectorPaths) { // hash vector, Flags.ExportVectorsAsImage should be true if we get here
+        var CombinedVecPaths = "";
 
-    if (!UploadId) QuickClose("Node has no id!?")
+        Node.vectorPaths.forEach(vectorPath => CombinedVecPaths = CombinedVecPaths + vectorPath.data + vectorPath.windingRule);
+
+        UploadId = createHash("sha256").update(CombinedVecPaths).digest("hex");
+        Settings._ImageHash = UploadId;
+    }
+
+    UploadId = UploadId || Properties._ImageHash //Node.id
+
+    if (!UploadId || UploadId.length < 2) QuickClose("Node has no id!?")
 
     Node.setPluginData("AssetId", "");
     Node.setPluginData("OperationId", "");
 
     //Properties.UploadId = UploadId;
 
-    ImagesRemaining += 1
     Properties.Image = `{OP-${UploadId}}`
     if (Properties._ImageHash) Node.setPluginData("ImageHash", Properties._ImageHash);
+    if (ImageUploads.find((id) => id === UploadId)) return UploadId;
+
+    ImageUploads.push(UploadId)
+
+    ImagesRemaining += 1
 
     Node.exportAsync(CustomExport || Settings.DefaultExport).then(Bytes => {
         const Format = (CustomExport ? CustomExport.format : "PNG").toLowerCase();
@@ -141,12 +179,10 @@ async function ExportImage(Node, Properties, CustomExport) {
             }
         }
 
-        console.log("Exported Image bytes:", Bytes, UploadId);
-
-        if (Flags.ImageUploadTesting) {
-            // Test post image upload with template data
-            UpdateImage({id: UploadId, data: Flags.ImageUploadBoilerplate});
-        } else if (!IgnoreUpload) figma.ui.postMessage({
+        // Test post image upload with template data
+        if (Flags.ImageUploadTesting) UpdateImage({id: UploadId, data: Flags.ImageUploadBoilerplate});
+        // Upload Image
+        else if (!IgnoreUpload) figma.ui.postMessage({
             type: "UploadImage",
             data: {
                 Data: Bytes,
@@ -172,6 +208,7 @@ function UpdateImage(msg) {
         //ImageInfo.Node.setPluginData("OperationId", "");
         //figma.notify(`Failed to upload Image Node "${msg.id}": ${msg.data}`);
         console.warn(`Failed to upload Image Node "${msg.id}":`, msg);
+        ImagesRemaining -= 1
         return;
     }
     
@@ -183,8 +220,13 @@ function UpdateImage(msg) {
         return;
     }
 
-    ImageInfo.Node.setPluginData("AssetId", msg.data.assetId);
-    ImageInfo.Properties.Image = "rbxassetid://" + msg.data.assetId;
+    if (msg.data.imageContent) {
+        //ImageInfo.Node.setPluginData("AssetContent", msg.data.imageContent);
+        ImageInfo.Properties.Image = msg.data.imageContent;
+    } else {
+        ImageInfo.Node.setPluginData("AssetId", msg.data.assetId);
+        ImageInfo.Properties.Image = "rbxassetid://" + msg.data.assetId;
+    }
 
     ImagesRemaining -= 1
     console.log("Updating Image:", ImageInfo);
@@ -213,14 +255,20 @@ function IsDone() {
 }
 
 const PropertyTypes = {
+    ["clipsContent"]: (Value, Object, Node) => {
+        Object.ClipsDescendants = Value;
+    },
     ["fills"]: (Value, Object, Node) => {
-        if (Value.length > 1 || Value == figma.mixed) {
+        if (/*Value.length > 1 ||*/ Value == figma.mixed) {
             return console.warn(`Frame ${Object.Name} cannot have more than 1 fill`);
         } else if (Value.length === 0) {
             Object.BackgroundTransparency = 0;
             return;
         }
 
+        
+        console.log("update Node fill");
+        
         const Fill = Value[0];
 
         /*
@@ -228,9 +276,12 @@ const PropertyTypes = {
             1: Image 50% Transparency           Image = Image; ImageTransparency = 0.5
             2: Purple Fill 20% transparency      ImageColor3 = Purple (hue at 80%?)
         */
+       
+        //Object.Visible = Node.type === "GROUP" ? true : Fill.visible; // ensure a boolean, and always enable groups
+        //Object.Visible = Fill.visible !== false; // ensure a boolean - REMOVED as a better way would be to set the opacity to 0
 
         if (Fill.type === "IMAGE") {
-            // TODO: Implement better fill support
+            // TODO: Implement better fill support (DONE within ExportImage)
             // if (Node.getPluginData("ImageHash") === Fill.imageHash) {
             //     Object.Class = "ImageLabel"
             //     Object.Image = Node.getPluginData("ImageId")
@@ -241,21 +292,26 @@ const PropertyTypes = {
 
             Object._ImageHash = Fill.imageHash
             Object.Class = "ImageLabel" // or ImageButton?!
-            Object.BackgroundTransparency = 0 // Images can't have backgrounds from what I can tell
+            //Object.BackgroundTransparency = 0 // Images can't have backgrounds from what I can tell (in figma)
 
             ExportImage(Node, Object)
 
-            return;
-        }
+            if (Value[1] && Value[1].type === "GRADIENT_LINEAR") ConvertFill(Value[1], Object);
+        } else if (Value.length > 1) return console.warn(`Frame ${Object.Name} cannot have more than 1 fill`);
 
         var [Color3, Transparency] = ConvertFill(Fill, Object);
 
-        if (Object.Class === "TextLabel") {
+        if (Object.Class === "TextLabel" || Object.Class === "TextButton") {
             Object.TextColor3 = Color3;
-            Object.TextTransparency = Transparency;
+            Object.TextTransparency = Transparency; // we do TextTransparency * _Transparency in main.js - ConvertObject()
+            if (Object.Class === "TextLabel") Object.BackgroundTransparency = 0;
+        } else if (Object.Class === "ImageLabel" || Object.Class === "ImageButton") {
+            Object.ImageColor3 = Color3;
+            Object.ImageTransparency = Transparency; // we do TextTransparency * _Transparency in main.js - ConvertObject()
+            if (Object.Class === "ImageLabel") Object.BackgroundTransparency = 0;
         } else {
             Object.BackgroundColor3 = Color3;
-            Object.BackgroundTransparency *= Transparency;
+            Object.BackgroundTransparency = Transparency;
         }
     },
     ["cornerRadius"]: (Value, Object) => {
@@ -299,8 +355,6 @@ const PropertyTypes = {
 
         var Stroke = Value[0];
 
-        console.log(Stroke, Value);
-
         var StrokeObject = {
             Class: "UIStroke",
             Name: "UIStroke",
@@ -318,13 +372,13 @@ const PropertyTypes = {
             LineJoinMode: Conversions.LineJoinModes.indexOf(Node.strokeJoin),
             Thickness: Node.strokeWeight,
             Transparency: Stroke.opacity,
+            _Transparency: Object._Transparency,
 
             Children: [],
         }
 
         var [Colour, Transparency] = ConvertFill(Stroke, StrokeObject);
 
-        console.log(Object, Colour, Transparency);
         StrokeObject.Color = Colour;
         StrokeObject.Transparency *= Transparency;
 
@@ -335,29 +389,87 @@ const PropertyTypes = {
         var Text = "";
 
         if (Segments.length > 1) {
+            const TextCase = Node.textCase
+
             Segments.forEach(Segment => {
                 var NewText = ""
     
-                if (Segment.fills && Segment.fills.length === 1) {
-                    var Fill = Segment.fills[0];
+                if (Segment.fills && Segment.fills.length !== 0) {
                     // TODO: Implement use of new funtion ConvertFill(Fill, Object?)
                     // ^ no, only SOLID colours can be supported with richtext
-    
-                    if (Fill.type === "SOLID") NewText += ` color="rgb(${Round(Fill.color.r * 255, 1) + "," + Round(Fill.color.g * 255, 1) + "," + Round(Fill.color.b * 255, 1)})"`
-                    else console.warn(`Unsupported rich text fill type "${Fill.type}" on text Node`, Node)
+                    const Colour = {R: 1, G: 1, B: 1, A: 1}; // get the latest (a combination of all would be good)
+
+                    if (Segment.fills[0].type !== "SOLID") console.warn(`Unsupported rich text base fill type "${Fill.type}" on text Node`, Node, "text segment:", Segment)
+
+                    /*const MainFillColour = Segment.fills[0].color
+
+                    console.log(MainFillColour);
+
+                    Colour.R = MainFillColour.r
+                    Colour.G = MainFillColour.g
+                    Colour.B = MainFillColour.b
+
+                    {
+                        Segment.fills.forEach(Fill => {
+                            if (Fill.type !== "SOLID") return console.warn(`Unsupported rich text fill type "${Fill.type}" on text Node`, Node, "text segment:", Segment);
+
+                            console.log(Fill);
+
+                            Colour.R *= Fill.color.r
+                            Colour.G *= Fill.color.g
+                            Colour.B *= Fill.color.b
+                        })
+                    }*/
+
+                    Segment.fills.forEach(Fill => {
+                        if (Fill.type !== "SOLID") return console.warn(`Unsupported rich text fill type "${Fill.type}" on text Node`, Node, "text segment:", Segment);
+
+                        Colour.R *= Fill.color.r
+                        Colour.G *= Fill.color.g
+                        Colour.B *= Fill.color.b
+                        Colour.A *= Fill.opacity
+                    })
+
+                    console.log(Colour);
+
+                    NewText += ` color="rgb(${Round(Colour.R * 255, 1) + "," + Round(Colour.G * 255, 1) + "," + Round(Colour.B * 255, 1)})"`
+
+                    if (Colour.A !== 1) NewText += ` transparency="${Round(1 - Colour.A, 4)}"`
                 };
     
-                if (!Object.TextSize || Segment.fontSize !== Object.TextSize) {
-                    NewText += ` size="${Segment.fontSize + Math.round((Object.TextSize + 10) / 20)}"`;
+                if (Object.TextSize == undefined || Segment.fontSize !== Object.TextSize) {
+                    NewText += ` size="${Segment.fontSize * Flags.TextSizeAdjustment}"`;
                 };
     
                 if (Object.FontFace && Segment.fontWeight !== Object.FontFace.Weight) {
                     NewText += ` weight="${Segment.fontWeight}"`;
                 };
+
+                var Characters = Segment.characters;
+
+                if (TextCase) {
+                    switch (TextCase) {
+                        case "UPPER": 
+                            Characters = Characters.toUpperCase();
+                            break;
+                        case "LOWER": 
+                            Characters = Characters.toLowerCase();
+                            break;
+                        case "TITLE":
+                            Characters = Characters.replace(/\w\S*/g, function(Text) {
+                                return Text.charAt(0).toUpperCase() + Text.substr(1).toLowerCase();
+                            })
+                
+                            break;
+                        case "ORIGINAL":
+                        default:
+                            break;
+                    }
+                }
     
                 // We only want to add font tags if we have new data to add
-                if (NewText.length > 0) Text += `<font ${NewText}>${Segment.characters}</font>`
-                else Text += Segment.characters;
+                if (NewText.length > 0) Text += `<font ${NewText}>${Characters}</font>`
+                else Text += Characters;
             })
     
             Object.RichText = true;
@@ -382,31 +494,53 @@ const PropertyTypes = {
 
         // Get Alignment, Padding and Size Offset
         
-        const HorizontalAlignment = IsHorizontal ? Node.primaryAxisAlignItems : Node.counterAxisAlignItems || Node.primaryAxisAlignItems;
-        const VerticalAlignment = !IsHorizontal ? Node.primaryAxisAlignItems : Node.counterAxisAlignItems || Node.primaryAxisAlignItems;
+        const HorizontalAlignment = IsHorizontal ? Node.primaryAxisAlignItems : Node.counterAxisAlignItems || 0;
+        const VerticalAlignment = !IsHorizontal ? Node.primaryAxisAlignItems : Node.counterAxisAlignItems || 0;
 
-        const HorizontalCellPadding = IsHorizontal ? Node.itemSpacing : Node.counterAxisSpacing || Node.itemSpacing;
-        const VerticalCellPadding = !IsHorizontal ? Node.itemSpacing : Node.counterAxisSpacing || Node.itemSpacing;
+        const HorizontalCellPadding = IsHorizontal ? Node.itemSpacing : Node.counterAxisSpacing || 0;
+        const VerticalCellPadding = !IsHorizontal ? Node.itemSpacing : Node.counterAxisSpacing || 0;
 
         const HorizontalCellSize = Node.children[0] ? Node.children[0].width : 100;
         const VerticalCellSize = Node.children[0] ? Node.children[0].height : 100;
 
-        // TODO Come back to rn!
+        //console.print(`Vertical Cell Padding has ${IsHorizontal ? "Horizontal, " : "Vertical, "} padding (X,Y in px): ${HorizontalCellPadding}, ${VerticalCellPadding} Dominant Axis Padding: ${IsHorizontal ? HorizontalCellPadding : VerticalCellPadding}`)
+
+        if (Node.layoutWrap !== "WRAP") {
+            // LIst Layout
+
+            Object.Children.push({
+                Class: "UIListLayout",
+                Name: "UIListLayout",
+                Padding: {S: 0, O: IsHorizontal ? HorizontalCellPadding : VerticalCellPadding},
+                FillDirection: FillDirection,
+                SortOrder: 0,
+                Wraps: false, // both can be true in roblox, but not in Figma to my knowledge (only vertical wrap)
+    
+                HorizontalAlignment: Conversions.HorizontalAlignment.indexOf(HorizontalAlignment),
+                VerticalAlignment: Conversions.VerticalAlignment.indexOf(VerticalAlignment),
+            })
+
+            return;
+        }
+
+        // Cell Layout
+
         const CellPadding = {
             XS: 0,
             XO: HorizontalCellPadding,
             YS: 0,
             YO: VerticalCellPadding,
         }
-
+        
         const CellSize = {
             XS: 0,
             XO: HorizontalCellSize,
             YS: 0,
             YO: VerticalCellSize,
         }
-
+        
         if (Flags.ConvertOffsetToScale) {
+            // now that I think about it doesn't really serve much use in a grid, but good for Rows?
             const SX = Object.Size.XO;
             const SY = Object.Size.YO;
             
@@ -420,7 +554,9 @@ const PropertyTypes = {
             CellSize.XO = 0;
             CellSize.YO = 0;
         }
-        
+
+        // TODO: Finish support for UIListLayout (padding not working)
+
         Object.Children.push({
             Class: "UIGridLayout",
             Name: "UIGridLayout",
@@ -435,15 +571,25 @@ const PropertyTypes = {
     }
 }
 
-function CalculateAngle(P1, P2, P3) { // https://stackoverflow.com/a/39673693
-    const Numerator = P2.x * (P1.x - P3.x) + P1.y * (P3.x - P2.x) + P3.y * (P2.x - P1.x);
-    const Denominator = (P2.x - P1.x) * (P1.x - P3.x) + (P2.y - P1.y) * (P1.y - P3.y);
+function CalculateAngle(P0, P1, P2) { // https://stackoverflow.com/a/39673693
+    var Numerator = P1.x * (P0.x - P2.x) + P0.y * (P2.x - P1.x) + P2.y * (P1.x - P0.x);
+    var Denominator = (P1.x - P0.x) * (P0.x - P2.x) + (P1.y - P0.y) * (P0.y - P2.y);
     
+    console.log("Number, Denom:", Numerator, Denominator)
+
     // Calculate angle in radians and convert it to degrees
-    const AngleDeg = (Math.atan(Numerator / Denominator) * 180) / Math.PI;
+    var AngleDeg = (Math.atan(Numerator / Denominator) * 180) / Math.PI;
 
     return AngleDeg < 0 ? AngleDeg + 180 : AngleDeg;
 }
+
+// function CalculateAngle(P0, P1, P2) { // https://stackoverflow.com/a/17763495 // https://phrogz.net/angle-between-three-points
+//     var a = Math.sqrt(Math.pow(P1.x - P0.x, 2) + Math.pow(P1.Y - P0.Y, 2));
+//     var b = Math.sqrt(Math.pow(P1.X - P2.X, 2) + Math.pow(P1.Y - P2.Y, 2));
+//     var c = Math.sqrt(Math.pow(P2.X - P0.X, 2) + Math.pow(P2.Y - P0.Y, 2));
+
+//     return Math.acos((b * b + a * a - c * c) / (2 * b * a));
+// }
 
 const NodeTypes = { // Is this really needed? I could probably make it less repetative
     ["GROUP"]: (Node) => {
@@ -519,6 +665,114 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
 
         return Properties
     },
+    ["COMPONENT"]: (Node) => {
+        var Properties = {
+            Class: "Frame",
+            Name: Node.name,
+            Active: true,
+            Visible: Node.visible,
+            BackgroundTransparency: 1,
+            _Transparency: Node.opacity,
+            BorderSizePixel: 0,
+
+            Rotation: -Node.rotation,
+            ZIndex: 1,
+
+            AnchorPoint: {
+                X: 0,
+                Y: 0,
+            },
+            Position: {
+                XS: 0,
+                XO: Node.x,
+                YS: 0,
+                YO: Node.y
+            },
+            Size: {
+                XS: 0,
+                XO: Node.width,
+                YS: 0,
+                YO: Node.height
+            },
+
+            Children: [],
+            Node: Node,
+        }
+
+        return Properties
+    },
+    ["INSTANCE"]: (Node) => {
+        var Properties = {
+            Class: "Frame",
+            Name: Node.name,
+            Active: true,
+            Visible: Node.visible,
+            BackgroundTransparency: 0,
+            _Transparency: Node.opacity,
+            BorderSizePixel: 0,
+
+            Rotation: -Node.rotation,
+            ZIndex: 1,
+
+            AnchorPoint: {
+                X: 0,
+                Y: 0,
+            },
+            Position: {
+                XS: 0,
+                XO: Node.x,
+                YS: 0,
+                YO: Node.y
+            },
+            Size: {
+                XS: 0,
+                XO: Node.width,
+                YS: 0,
+                YO: Node.height
+            },
+
+            Children: [],
+            Node: Node,
+        }
+
+        return Properties
+    },
+    /*["LINE"]: (Node) => { // TODO: Better support
+        var Properties = {
+            Class: "Frame",
+            Name: Node.name,
+            Active: true,
+            Visible: Node.visible,
+            BackgroundTransparency: Node.opacity,
+            _Transparency: Node.opacity,
+            BorderSizePixel: 0,
+
+            Rotation: -Node.rotation,
+            ZIndex: 1,
+
+            AnchorPoint: {
+                X: 0,
+                Y: 0,
+            },
+            Position: {
+                XS: 0,
+                XO: Node.x,
+                YS: 0,
+                YO: Node.y
+            },
+            Size: {
+                XS: 0,
+                XO: Node.width,
+                YS: 0,
+                YO: Node.height
+            },
+
+            Children: [],
+            Node: Node,
+        }
+
+        return Properties
+    },*/
     ["RECTANGLE"]: (Node) => {
         var Properties = {
             Class: "Frame",
@@ -619,10 +873,10 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             ZIndex: 1,
 
             Text: Node.characters,
-            TextSize: Node.fontSize !== figma.mixed ? Node.fontSize + Math.round((Node.fontSize + 5) / 20) : 16,
+            TextSize: Node.fontSize !== figma.mixed ? Node.fontSize : undefined,
             TextXAlignment: Conversions.TextXAlignments.indexOf(Node.textAlignHorizontal),
             TextYAlignment: Conversions.TextYAlignments.indexOf(Node.textAlignVertical),
-            TextWrapped: true,
+            TextWrapped: true, // hmmm
             TextTruncate: Conversions.TextTruncate.indexOf(Node.textTruncation),
 
             FontFace: {
@@ -671,19 +925,76 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             }
         }
 
+        // TODO: a much better solution is needed for release
+        if (Flags.TextScaled) {
+            console.warn("!!WARNING!! TextScaled is not ready for release");
+
+            // Not always wanted
+            Properties.TextScaled = true;
+
+            // (WIP) exactly what it says vv
+            // const RenderBounds = Node.absoluteRenderBounds
+            
+            // Properties.Position.XO = Math.round(RenderBounds.x - 4);
+            // Properties.Position.YO = Math.round(RenderBounds.y - 4);
+            // Properties.Size.XO = Math.round(RenderBounds.width + 8);
+            // Properties.Size.YO = Math.round(RenderBounds.height + 8);
+        }
+
         return Properties;
     },
     ["VECTOR"]: (Node, Settings) => {
         // Calculate how many rectangles fit into the area
 
-        if (!Flags.ExportVectors) {
+        if (Flags.ExportVectorsAsImage) {
+            const Properties = {
+                Class: "ImageLabel",
+                Name: Node.name,
+                Active: true,
+                Visible: Node.visible,
+                BackgroundTransparency: 0.0,
+                ImageTransparency: 0.0,
+                _Transparency: Node.opacity,
+                BorderSizePixel: 0,
+
+                Rotation: -Node.rotation,
+                ZIndex: 1,
+
+                AnchorPoint: {
+                    X: 0,
+                    Y: 0,
+                },
+                Position: {
+                    XS: 0,
+                    XO: Node.x,
+                    YS: 0,
+                    YO: Node.y
+                },
+                Size: {
+                    XS: 0,
+                    XO: Node.width,
+                    YS: 0,
+                    YO: Node.height
+                },
+
+                Children: [],
+                Node: Node,
+            }
+
+            ExportImage(Node, Properties)
+            return Properties;
+        } else if (!Flags.ExportVectors) {
             return;
         }
 
-        const VectorNetwork = Node.vectorNetwork;
+        console.warn("Exporting Vectors as non-images is not supported")
+        return;
+        /*const VectorNetwork = Node.vectorNetwork;
         const Vertices = VectorNetwork.vertices;
 
         var Checked = {};
+
+        console.log("Exporting Vector")
 
         for (var i = 0; i < Vertices.length; i++) {
             for (var i2 = 0; i2 < Vertices.length; i2++) {
@@ -694,6 +1005,8 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
 
                     var Angle = CalculateAngle(Vertices[i], Vertices[i2], Vertices[i3]);
                     
+                    console.log(`verts ${i}, ${i2}, ${i3} angle: ${Angle}`)
+
                     if (Angle < 90) {
                         console.warn("Cannot convert acute angle to quad", Angle, i, i2, i3);
                     } else if (Angle == 90) {
@@ -734,7 +1047,59 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
 
             Children: [],
             Node: Node,
+        }*/
+    },
+    ["BOOLEAN_OPERATION"]: (Node, Settings) => { // Basically emulating a group
+        if (Node.booleanOperation !== "UNION") {
+            // TODO: Upload & Export as Image
+            figma.notify("Only \"UNION\" Boolean operations can somehwat be converted") // ", exporting as image.."
+            return;
         }
+
+        // figma.notify("Booleans may not look the same in Roblox", {
+        //     timeout: 2000,
+        //     button: {
+        //         text: "Goto Boolean",
+        //         action: () => {
+        //             figma.currentPage.selection = [Node];
+        //         }
+        //     }
+        // })
+
+        var Properties = {
+            Class: "Frame",
+            Name: Node.name,
+            Active: true,
+            Visible: Node.visible,
+            BackgroundTransparency: 0,
+            _Transparency: Node.opacity,
+            BorderSizePixel: 0,
+
+            Rotation: -Node.rotation,
+            ZIndex: 1,
+
+            AnchorPoint: {
+                X: 0,
+                Y: 0,
+            },
+            Position: {
+                XS: 0,
+                XO: Node.x,
+                YS: 0,
+                YO: Node.y
+            },
+            Size: {
+                XS: 0,
+                XO: Node.width,
+                YS: 0,
+                YO: Node.height
+            },
+
+            Children: [],
+            Node: Node,
+        }
+
+        return Properties
     },
 
     ["OTHER"]: (Node) => {
@@ -751,6 +1116,7 @@ function LoopTable(TObject) {
 
     for (var [Key, Value] of Object.entries(TObject)) {
         if (Key === "XO" || Key === "YO") Xml += `<${Key}>${Round(Value, 1)}</${Key}>`; // UDim(2) Offset is an int
+        if (Key === "XS" || Key === "YS") Xml += `<${Key}>${Round(Value, 100000)}</${Key}>`; // UDim(2) Offset is an int
         else if (typeof(Value) === "number") Xml += `<${Key}>${Round(Value, 1000)}</${Key}>`;
         else Xml += `<${Key}>${Value}</${Key}>`;
     }

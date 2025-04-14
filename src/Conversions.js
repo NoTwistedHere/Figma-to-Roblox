@@ -189,48 +189,6 @@ const MarketplaceFonts = {
     ["Builder Sans"]: 16658221428
 };
 
-const LineJoinModes = [
-    "ROUND",
-    "BEVEL",
-    "MITER"
-]
-
-const TextXAlignments = [
-    "LEFT",
-    "RIGHT",
-    "CENTER",
-]
-
-const TextYAlignments = [
-    "TOP",
-    "CENTER",
-    "BOTTOM",
-]
-
-const TextTruncate = [
-    // There is 3 options in roblox but only 2 in figma
-    "NONE",
-    "", // This is the Ending option in roblox
-    "ENDING" // This is the Split Word option in roblox
-]
-
-const FillDirection = [
-    "HORIZONTAL",
-    "VERTICAL"
-]
-
-const HorizontalAlignment = [
-    "CENTER",
-    "LEFT",
-    "RIGHT"
-]
-
-const VerticalAlignment = [
-    "CENTER",
-    "TOP",
-    "BOTTOM"
-]
-
 function getGradientRotation(gradientTransform) {
     const angle = Math.atan2(gradientTransform[0][0], gradientTransform[0][1]) * 180 / Math.PI;
 
@@ -239,13 +197,59 @@ function getGradientRotation(gradientTransform) {
 
 module.exports = {
     getGradientRotation: getGradientRotation,
-    TextXAlignments: TextXAlignments,
-    TextYAlignments: TextYAlignments,
-    LineJoinModes: LineJoinModes,
-    TextTruncate: TextTruncate,
-    FillDirection: FillDirection,
-    HorizontalAlignment: HorizontalAlignment,
-    VerticalAlignment: VerticalAlignment,
+    // Enums
     FontStyle: FontStyle,
-    MarketplaceFonts: MarketplaceFonts
+    MarketplaceFonts: MarketplaceFonts,
+
+    TextXAlignments: [
+        "LEFT",
+        "RIGHT",
+        "CENTER",
+    ],
+    TextYAlignments: [
+        "TOP",
+        "CENTER",
+        "BOTTOM",
+    ],
+    LineJoinModes: [
+        "ROUND",
+        "BEVEL",
+        "MITER"
+    ],
+    TextTruncate: [
+        // There is 3 options in roblox but only 2 in figma
+        "NONE",
+        "", // This is the Ending option in roblox
+        "ENDING" // This is the Split Word option in roblox
+    ],
+    FillDirection: [
+        "HORIZONTAL",
+        "VERTICAL"
+    ],
+    HorizontalAlignment: [
+        "CENTER",
+        "LEFT",
+        "RIGHT"
+    ],
+    VerticalAlignment: [
+        "CENTER",
+        "TOP",
+        "BOTTOM"
+    ],
+    AutomaticCanvasSize: [
+        "NONE",
+        "X",
+        "Y",
+        "XY",
+    ],
+    ScrollingDirection: [
+        "NONE",
+        "X",
+        "Y"
+    ],
+    ScrollBarInset: [
+        "NONE",
+        "SCROLLBAR",
+        "ALWAYS"
+    ],
 }

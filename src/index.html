@@ -1,50 +1,5 @@
 <html>
-    <body style="width: 200px">
-        <style>
-            :root {
-                --background: var(--figma-color-bg);
-                --background-body: var(--figma-color-bg-secondary);
-                --button: var(--figma-color-bg-selected);
-                --button-hover: var(--figma-color-bg-selected-hover);
-                --text-main: var(--figma-color-text);
-            }
-        </style>
-        <a id="download" href="#" download="export.rbxmx" style="display:none;">Download</a>
-        <button id="convselect">Convert Selection</button>
-        <label for="presets">Presets (WIP)</label>
-        <select name="presets" id="presets">
-            <option value="Full HD">Full HD (1920x1080 4:9)</option>
-            <option value="2K">2K (2048x1080 4:9)</option>
-            <option value="4K">4K (3840x2160 16:9)</option>
-        </select>
-        <button id="createpreset">Create Preset</button>
-        <div></div>
-        
-        <h4>Image Upload Settings:</h4>
-        
-        <input type="checkbox" id="uploadimages" name="Upload Images" />
-        <label for="uploadimages">Upload Images</label>
-        <div></div>
-        
-        <input type="checkbox" id="isgroup" name="Is Group" />
-        <label for="isgroup">Upload To Group</label>
-        <div></div>
-        
-        <label for="apikey">Cloud API Key (optional)</label>
-        <input type="text" id="apikey" placeholder="XXXXXXXXXXXXXXXXXXXXXXXXXXX" />
-        <div></div>
-        
-        <label for="uploaderid">User/Group ID (optional)</label>
-        <input type="text" id="uploaderid" placeholder="xxxxxxxxxx" />
-        <div></div>
-        
-        <!-- <label for="prox">Custom Proxy</label>
-        <input type="text" id="prox" placeholder="Proxy URL" />
-        <div></div> -->
-        
-        <!-- <input type="checkbox" id="exportImages" name="Export Images" />
-        <label for="exportImages">Export Images</label> -->
-        
+    <body>
         <!-- Water CSS - Not required for the plugin to function -->
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/dark.css">
         <!-- Axios - Required for Uploading Images, but can be omitted otherwise -->
@@ -52,6 +7,102 @@
         <!-- JSZip - Required for Downloading(/saving a local copy of every) Images, though not required for typical use
         <script src="https://unpkg.com/jszip@3.7.1/dist/jszip.js" integrity="sha384-Lqk2um7o0W+Ke7IGh8Mk9EE7g2IrhepxXvttF/iw5hFqpMjFGKP4jcKYhNLAi/ZD" crossorigin="anonymous" defer></script> -->
         <!--<script type="module" src="./main.js"></script> -->
+
+        <style>
+            :root {
+                width: 300px;
+                --background: var(--figma-color-bg-secondary) !important;
+                --background-body: var(--figma-color-bg) !important;
+                --button-base: var(--figma-color-bg-secondary) !important;
+                --button-hover: var(--figma-color-bg-tertiary) !important;
+                --text-main: var(--figma-color-text) !important;
+            }
+            input {
+                accent-color: var(--background) !important;
+            }
+        </style>
+
+        <a id="download" href="#" download="export.rbxmx" style="display:none;">Download</a>
+        
+        <div>
+            <button id="convselect">Convert Selection</button>
+            <div>
+                <select name="presets" id="presets">
+                    <option value="Full HD">Full HD (1920x1080 16:9)</option>
+                    <option value="2K">2K (2048x1440 4:3)</option>
+                    <option value="1440p">1440p (2560x1440 16:9)</option>
+                    <option value="4K">4K (3840x2160 16:9)</option>
+                </select>
+                <button id="createpreset">Create Preset</button>
+            </div>
+        </div>
+        
+        <br>
+
+        <div>
+            <input type="checkbox" id="ApplyAspectRatio" name="Apply AspectRatioConstraint" />
+            <label for="ApplyAspectRatio">Apply AspectRatioConstraint</label>
+            <div></div>
+
+            <label for="ConvertOffsetToScale">
+                <input type="checkbox" id="ConvertOffsetToScale" name="Convert to Scale" />
+                Convert to Scale
+            </label>
+            <div></div>
+            
+            <label for="Recentre">
+                <input type="checkbox" id="Recentre" name="Recentre" />
+                Recentre
+            </label>
+            <div></div>
+
+            <label for="DetectAnchorPoint">
+                <input type="checkbox" id="DetectAnchorPoint" name="Detect AnchorPoint" />
+                Detect AnchorPoint (WIP)
+            </label>
+            <div></div>
+            
+            <label for="IgnoreInvisible">
+                <input type="checkbox" id="IgnoreInvisible" name="Ignore Invisible" />
+                Ignore Invisible Elements
+            </label>
+            <div></div>
+
+            <label for="ScaleScrollFramesDominantAxis">
+                <input type="checkbox" id="ScaleScrollFramesDominantAxis" name="Ignore Invisible" />
+                Only Scale Scroll Elements' Dominant Axis
+            </label>
+        </div>
+
+        <div>
+            <h4>Image Upload Settings:</h4>
+            
+            <input type="checkbox" id="uploadimages" name="Upload Images" />
+            <label for="uploadimages">Upload Images</label>
+            <div></div>
+            
+            <input type="checkbox" id="isgroup" name="Is Group" />
+            <label for="isgroup">Upload To Group</label>
+            <div></div>
+            
+            <label for="apikey">Cloud API Key (optional)</label>
+            <input type="text" id="apikey" placeholder="XXXXXXXXXXXXXXXXXXXXXXXXXXX" />
+            <div></div>
+            
+            <label for="uploaderid">User/Group ID (optional)</label>
+            <input type="text" id="uploaderid" placeholder="xxxxxxxxxx" />
+            <div></div>
+            
+            <!-- <label for="prox">Custom Proxy</label>
+            <input type="text" id="prox" placeholder="Proxy URL" />
+            <div></div> -->
+            
+            <!-- <input type="checkbox" id="exportImages" name="Export Images" />
+            <label for="exportImages">Export Images</label> -->
+        </div>
+
+        <!--  -->
+
         <script>
             var CloudApiKey = ""
             var UploaderId = ""
@@ -65,39 +116,60 @@
                 parent.postMessage({ pluginMessage: Data }, "*");
             }
 
-            function UpdateSetting(Index, Value) {
+            function UpdateSetting(Index, Value, Check) {
+                if (Check !== undefined) {
+                    console.assert(Value, "No HTML Element passed")
+                    if (!Value) return; //Value = document.getElementById(Index);
+                    Value = Value.type === "text" ? Value.value : Value.checked;
+
+                    if (Check === false) Value = !Value;
+                    Check = null;
+                }
+
                 PostMessage({
                     type: "SetAsync",
                     key: Index,
                     value: Value
                 });
+
+                if (Check === 1) return Value;
+
+                Index = null;
+                Value = null
             }
 
             function Sleep(ms) {
                 return new Promise(res => setTimeout(res, ms));
             }
 
+            const apikey = document.getElementById("apikey");
+            const uploaderid = document.getElementById("uploaderid");
+            const isgroup = document.getElementById("isgroup");
+            const uploadimages = document.getElementById("uploadimages");
+            const ApplyAspectRatio = document.getElementById("ApplyAspectRatio");
+            const ConvertOffsetToScale = document.getElementById("ConvertOffsetToScale");
+            const Recentre = document.getElementById("Recentre");
+            const DetectAnchorPoint = document.getElementById("DetectAnchorPoint");
+            const IgnoreInvisible = document.getElementById("IgnoreInvisible");
+            const ScaleScrollFramesDominantAxis = document.getElementById("ScaleScrollFramesDominantAxis")
+
             document.getElementById("convselect").onclick = () => {
+                // cover your eyes
+                CloudApiKey = UpdateSetting("CloudApiKey", apikey, 1);
+                UploaderId = UpdateSetting("UploaderId", uploaderid, 1);
+                UploadToGroup = UpdateSetting("UploadToGroup", isgroup, 1);
+                UploadImages = UpdateSetting("UploadImages", uploadimages, 1);
+                UpdateSetting("ApplyAspectRatio", ApplyAspectRatio, true);
+                UpdateSetting("ConvertOffsetToScale", ConvertOffsetToScale, true);
+                UpdateSetting("UseSelectionPositionRelativeToScene", Recentre, false);
+                UpdateSetting("DetectAnchorPoint", DetectAnchorPoint, true);
+                UpdateSetting("IgnoreInvisible", IgnoreInvisible, true);
+                UpdateSetting("ScrollFrame_ScaleDominantAxis", ScaleScrollFramesDominantAxis, true)
+
                 PostMessage({ type: 'run' });
             }
             document.getElementById("createpreset").onclick = () => {
                 PostMessage({ type: 'CreatePreset', preset: document.getElementById("presets").value });
-            }
-            document.getElementById("apikey").onchange = (self) => {
-                CloudApiKey = self.target.value;
-                UpdateSetting("CloudApiKey", CloudApiKey);
-            }
-            document.getElementById("uploaderid").onchange = (self) => {
-                UploaderId = self.target.value;
-                UpdateSetting("UploaderId", UploaderId);
-            }
-            document.getElementById("isgroup").onchange = (self) => {
-                UploadToGroup = self.target.checked;
-                UpdateSetting("UploadToGroup", UploadToGroup);
-            }
-            document.getElementById("uploadimages").onchange = (self) => {
-                UploadImages = self.target.checked;
-                UpdateSetting("UploadImages", UploadImages);
             }
 
             const DownloadLink = document.getElementById("download");
@@ -138,9 +210,10 @@
                     case "CheckOperation":
                         const UploadResponse = await (await fetch(`https://apis.roblox.com/assets/v1/operations/${data.Id}`, {
                             method: "GET",
-                            mode: "no-cors",
+                            //mode: "no-cors",
                             headers: {
-                                ["Content-Type"]: "text/plain",
+                                ["Origin"]: "FigmaToRoblox",
+                                //["Content-Type"]: "text/plain",
                                 //["Content-Language"]: "en-US",
                                 ["x-api-key"]: CloudApiKey
                             }
@@ -149,7 +222,7 @@
                         console.log("got Operation Response:", UploadResponse);
 
                         if (UploadResponse.done)
-                            PostMessage({ type: "image-" })
+                            PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status });
 
                         break;
                     case "UploadImage":
@@ -157,8 +230,12 @@
                         const blob = new Blob([data.Data.buffer], { type: "image/" + data.Format });
 
                         //if (ExportImages) Images.push(data);
-                        if (!UploadImages) return;
-                        else if (CloudApiKey == "" || UploaderId == "") {
+                        if (!UploadImages) {
+                            PostMessage({ type: "ImageUploaded", id: data.Id, data: {
+                                imageContent: "rbxasset://textures/StudioSharedUI/TransparentWhiteImagePlaceholder.png"
+                            } });
+                            return;
+                        } else if (!CloudApiKey || !UploaderId || CloudApiKey == "" || UploaderId == "") {
                             console.warn("Cloud API Key is not set");
                             PostMessage({ type: 'image-upload-fail', data: "Cloud API Key is not set" })
                             return;
@@ -176,6 +253,20 @@
                             }
                         }));
                         Form.append("fileContent", blob, data.Name + "." + data.Format);
+                        
+                        // console.log("Image Blob:", blob);
+
+                        // var FormLog = {
+                        //     fileContent: Form.get("fileContent"),
+                        //     request: JSON.parse(Form.get("request")),
+                        // };
+
+                        // for (var Pair of Form.entries()) {
+                        //     FormLog[Pair[0]] = Pair[1]
+                        // }
+
+                        // console.log("Form:", FormLog);
+
 
                         fetch("https://apis.roblox.com/assets/v1/assets", {
                             //mode: "no-cors",
@@ -205,7 +296,9 @@
 
                             console.log("Initial response:", InitialResponse)
 
-                            Sleep(500);
+                            //var ModerationReviewing = false;
+
+                            Sleep(750);
 
                             for (var i = 0; i < 20; i++) {
                                 const UploadResponse = await (await fetch(`https://apis.roblox.com/assets/v1/${InitialResponse.path}`, {
@@ -221,6 +314,14 @@
                                 console.log("got Status Response:", UploadResponse);
 
                                 if (UploadResponse.done == true) {
+                                    if (UploadResponse.response && UploadResponse.response.moderationResult && UploadResponse.response.moderationResult.moderationState === "Revewing") {
+                                        // This should be ran every time the image is still for review
+                                        //ModerationReviewing = true;
+                                        console.log("Image is being reviewed");
+                                        Sleep(2000);
+                                        continue;
+                                    }
+
                                     PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status })
                                     break;
                                 }
@@ -242,6 +343,12 @@
                         document.getElementById("uploaderid").value = UploaderId || "";
                         document.getElementById("uploadimages").checked = UploadImages || false;
                         document.getElementById("isgroup").checked = UploadToGroup || false;
+                        document.getElementById("ApplyAspectRatio").checked = Settings.ApplyAspectRatio || false;
+                        document.getElementById("ConvertOffsetToScale").checked = Settings.ConvertOffsetToScale || false;
+                        document.getElementById("Recentre").checked = !(Settings.UseSelectionPositionRelativeToScene);
+                        document.getElementById("DetectAnchorPoint").checked = Settings.DetectAnchorPoint || false;
+                        document.getElementById("IgnoreInvisible").checked = Settings.IgnoreInvisible || false;
+                        document.getElementById("ScaleScrollFramesDominantAxis").checked = Settings.ScrollFrame_ScaleDominantAxis || false;
 
                         break;
                 };

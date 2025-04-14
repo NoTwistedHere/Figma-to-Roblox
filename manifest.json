@@ -15,5 +15,11 @@
         ]
     },
     "documentAccess": "dynamic-page",
-    "ui": "src/index.html"
+    "ui": "src/index.html",
+    "relaunchButtons": [
+        {
+            "command": "export",
+            "name": "Export to Roblox"
+        }
+    ]
 }
