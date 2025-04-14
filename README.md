@@ -16,7 +16,7 @@ Build with node: `npm run build`, or yarn: `yarn run build`
 ## Uploading Images:
 1) Navigate to your [Open Cloud API Keys](https://create.roblox.com/dashboard/credentials?activeTab=ApiKeysTab) and create a new API Key, or edit an existing one
 2) **Access Permission**: Add permission "assets" with Read & Write access
-3) **Security**: Add **your** ip address to the allow list
+3) **Security**: Add **your** ip address to the allow list, you can otherwise add `0.0.0.0/0` to allow all IPs however this is **not reccomended** unless you have a dynamic ip and consistently running into issues
 4) Copy your api key and enter it into the `Cloud API Key` field, along with your UserId in the next field (or GroupId, toggle with `Upload to Group`)
 2) Enable `Upload Images` and you should be good to go
 
@@ -85,14 +85,13 @@ NOTE: This might be missing some things
 ![ImageButton example](https://cdn.thisstuff.xyz/Uploads/Figma-ImageButton-Example.png)
 
 ### Scrolling Frame
-    have "Scroll" or "SCRL" in the name
+    have "Scroll" or "SCRL" in the name, not case sensitive
     List Layouts are supported
 
 ### UI List & UI Grids
 
 <br>
 
-## [[ REMOVE ]]
 ## General guidance:
 
 ### Creating Frames
@@ -108,23 +107,3 @@ There are two ways to create a Roblox Frame
 > NOTE: Currently this means it is expected the Background & Group to be the same size
 
 !["Background" Frame and Image grouped inside of Group](https://cdn.thisstuff.xyz/Uploads/Figma-FHD-Group-Example.png)
-
-
-<br>
-<br>
-<br>
-<br>
-<br>
-<br>
-
-## Designing for Scale
-
-To keep your design accurate and consistent after scale conversion, try positioning and sizing your elements based on your resolution
-
-e.g. for 1920 multiples of 0.025 scale give nice whole pixels (multiples of 48)
-
-Scale to Pixels:
-`Scale * SizePixels = Pixels`
-
-Pixels to Scale:
-`Pixels / SizePixels = Scale`

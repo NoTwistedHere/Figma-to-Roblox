@@ -265,9 +265,6 @@ const PropertyTypes = {
             Object.BackgroundTransparency = 0;
             return;
         }
-
-        
-        console.log("update Node fill");
         
         const Fill = Value[0];
 
@@ -428,9 +425,7 @@ const PropertyTypes = {
                         Colour.G *= Fill.color.g
                         Colour.B *= Fill.color.b
                         Colour.A *= Fill.opacity
-                    })
-
-                    console.log(Colour);
+                    });
 
                     NewText += ` color="rgb(${Round(Colour.R * 255, 1) + "," + Round(Colour.G * 255, 1) + "," + Round(Colour.B * 255, 1)})"`
 

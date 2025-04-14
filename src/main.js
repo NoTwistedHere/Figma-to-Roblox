@@ -227,9 +227,6 @@ function LoopNodes(Nodes, ParentObject) {
         const removeNameAbriv = lowercaseName.match("btn") || lowercaseName.match("scrl");
 
         if (lowercaseName == "background" && ParentObject) {
-            // todo: check if parent is a text label/button
-            console.log("Got Background with ParentObject which is a Group", Properties, ParentObject);
-
             ParentObject._HasGradient = Properties._HasGradient;
             ParentObject.BackgroundColor3 = Properties.BackgroundColor3;
             ParentObject.BackgroundTransparency = Properties.BackgroundTransparency;
@@ -237,13 +234,7 @@ function LoopNodes(Nodes, ParentObject) {
             //ParentObject.Rotation = Properties.Rotation; // this now looks like a bad idea
             
             if (Properties.Children) {
-                FileContent += LoopChildren(Properties.Children, Properties)
-
-                // Properties.Children.forEach(Child => {
-                //     var XMLProperties = ConvertObject(Child, Properties);
-                    
-                //     FileContent += `<Item class="${Child.Class}" referent="RBX0">\n${Child.Children ? LoopChildren(Child.Children) : ""}<Properties>\n${XMLProperties}\n</Properties></Item>\n`
-                // });
+                FileContent += LoopChildren(Properties.Children, Properties);
             }
 
             continue;
@@ -345,9 +336,6 @@ function LoopNodes(Nodes, ParentObject) {
         if (Node.children) New += LoopNodes(Node.children, Properties);
         
         // Calculate Aspect Ratio and Scale
-        
-        //console.log("Node Properties:", Properties)
-        
         if (Flags.ApplyAspectRatio) {
             if (Properties.Class === "ScrollingFrame") console.warn("Cannot Apply UIAspectRatioConstraint to a ScrollingFrame that scrolls")
             else {
@@ -542,10 +530,7 @@ async function ConvertNodes() {
 
     var Nodes = LoopNodes(SelectedNodes);
 
-    /*(Nodes.forEach((Properties) => {
-        FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
-    })*/
-
+    // wait for all images to be uploaded
     await new Promise((resolve, reject) => {
         function Timeout() {
             if (IsDone()) return resolve();
@@ -648,30 +633,6 @@ figma.ui.onmessage = msg => {
             break;
         case "ImageUploaded":
             UpdateImage(msg);
-
-            /*
-            {
-                "id": "167:3",
-                "type": "ImageUploaded",
-                "data": {
-                    "path": "assets/18355966113",
-                    "revisionId": "1",
-                    "revisionCreateTime": "2024-07-06T04:49:52.260972600Z",
-                    "assetId": "18355966113",
-                    "displayName": "280271241_999080940999673_786787218521993595_n 1",
-                    "description": "Exported from Figma",
-                    "assetType": "Image",
-                    "creationContext": {
-                        "creator": {
-                            "userId": "7020899714"
-                        }
-                    },
-                    "moderationResult": {
-                        "moderationState": "Approved"
-                    },
-                    "state": "Active"
-                }
-            */
             break;
         case "SetAsync":
             if (Settings[msg.key] !== undefined) Settings[msg.key] = msg.value;
@@ -683,42 +644,6 @@ figma.ui.onmessage = msg => {
         case "CreatePreset":
             CreatePreset(msg.preset);
             break;
-        // case "FetchAsync":
-        //     const FetchPromise = new Promise((resolve, reject) => {
-        //         var Done = 0;
-        //         var Settings = {};
-                
-        //         figma.clientStorage.keysAsync().then(Keys => {
-        //             for (var i = 0; i < Keys.length; i++) {
-        //                 const Key = Keys[i];
-    
-        //                 figma.clientStorage.getAsync(Key).then(Value => {
-        //                     Settings[Key] = Value;
-        //                     Done += 1;
-                            
-        //                     if (Done == Keys.length) {
-        //                         resolve(Settings);
-        //                     }
-        //                 })
-        //             }
-        //         })
-        //     });
-
-        //     FetchPromise.then((Settings) => figma.ui.postMessage({
-        //         type: "LoadSettings",
-        //         settings: Settings
-        //     }));
-            
-        //     break;
-            // figma.clientStorage.keysAsync().then(Keys => {
-            //     for (var i = 0; i < Keys.length; i++) {
-            //         const Key = Keys[i];
-
-            //         figma.clientStorage.getAsync(Key).then(Value => figma.ui.postMessage({
-            //             type: "GetAsync",
-            //         }))
-            //     }
-            // })
     }
 }
 
@@ -758,6 +683,7 @@ FetchPromise.then((StoredSettings) => figma.ui.postMessage({
     settings: StoredSettings
 }));
 
+// TODO: Visualise Buttons & Scrolling frames? I can't believe annotations are paid :(
 // figma.on("close", () => {
 //     Visualisers.forEach(Node => Node.remove())
 // })
