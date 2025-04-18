@@ -75,7 +75,7 @@
         </div>
 
         <div>
-            <h4>Image Upload Settings:</h4>
+            <h4>Image Uploading (optional):</h4>
             
             <input type="checkbox" id="uploadimages" name="Upload Images" />
             <label for="uploadimages">Upload Images</label>
@@ -84,12 +84,16 @@
             <input type="checkbox" id="isgroup" name="Is Group" />
             <label for="isgroup">Upload To Group</label>
             <div></div>
+
+            <input type="checkbox" id="forcereupload" name="Force Reupload Images" />
+            <label for="forcereupload">Force Reupload Images</label>
+            <div></div>
             
-            <label for="apikey">Cloud API Key (optional)</label>
+            <label for="apikey">Cloud API Key</label>
             <input type="text" id="apikey" placeholder="XXXXXXXXXXXXXXXXXXXXXXXXXXX" />
             <div></div>
             
-            <label for="uploaderid">User/Group ID (optional)</label>
+            <label for="uploaderid">User/Group ID</label>
             <input type="text" id="uploaderid" placeholder="xxxxxxxxxx" />
             <div></div>
             
@@ -110,67 +114,99 @@
         </h5>
 
         <script>
-            var CloudApiKey = ""
-            var UploaderId = ""
-            var GroupId = ""
-            var Proxy = ""
-            //var ExportImages = false
-            var UploadImages = true
-            var UploadToGroup = false
+            var Settings = {};
+            const Options = [
+                {
+                    name: "UploadImages",
+                    id: "uploadimages",
+                    type: "checkbox",
+                },
+                {
+                    name: "ForceUploadImages",
+                    id: "forcereupload",
+                    type: "checkbox",
+                },
+                {
+                    name: "CloudApiKey",
+                    id: "apikey",
+                    type: "text",
+                    placeholder: "XXXXXXXXXXXXXXXXXXXXXXXXXXX",
+                },
+                {
+                    name: "UploaderId",
+                    id: "uploaderid",
+                    type: "text",
+                    placeholder: "xxxxxxxxxx",
+                },
+                {
+                    name: "UploadToGroup",
+                    id: "isgroup",
+                    type: "checkbox",
+                },
+                
+                {
+                    name: "UseSelectionPositionRelativeToScene",
+                    id: "Recentre",
+                    type: "checkbox",
+                    flipped: true
+                },
+                {
+                    name: "ApplyAspectRatio",
+                    id: "ApplyAspectRatio",
+                    type: "checkbox",
+                },
+                {
+                    name: "ConvertOffsetToScale",
+                    id: "ConvertOffsetToScale",
+                    type: "checkbox",
+                },
+                // {
+                //     name: "DetectAnchorPoint",
+                //     id: "DetectAnchorPoint",
+                //     type: "checkbox",
+                // },
+                {
+                    name: "IgnoreInvisible",
+                    id: "IgnoreInvisible",
+                    type: "checkbox",
+                },
+                {
+                    name: "ScaleScrollFramesDominantAxis",
+                    id: "ScaleScrollFramesDominantAxis",
+                    type: "checkbox",
+                },
+            ]
 
             function PostMessage(Data) {
                 parent.postMessage({ pluginMessage: Data }, "*");
-            }
-
-            function UpdateSetting(Index, Value, Check) {
-                if (Check !== undefined) {
-                    console.assert(Value, "No HTML Element passed")
-                    if (!Value) return; //Value = document.getElementById(Index);
-                    Value = Value.type === "text" ? Value.value : Value.checked;
-
-                    if (Check === false) Value = !Value;
-                    Check = null;
-                }
-
-                PostMessage({
-                    type: "SetAsync",
-                    key: Index,
-                    value: Value
-                });
-
-                if (Check === 1) return Value;
-
-                Index = null;
-                Value = null
             }
 
             function Sleep(ms) {
                 return new Promise(res => setTimeout(res, ms));
             }
 
-            const apikey = document.getElementById("apikey");
-            const uploaderid = document.getElementById("uploaderid");
-            const isgroup = document.getElementById("isgroup");
-            const uploadimages = document.getElementById("uploadimages");
-            const ApplyAspectRatio = document.getElementById("ApplyAspectRatio");
-            const ConvertOffsetToScale = document.getElementById("ConvertOffsetToScale");
-            const Recentre = document.getElementById("Recentre");
-            const DetectAnchorPoint = document.getElementById("DetectAnchorPoint");
-            const IgnoreInvisible = document.getElementById("IgnoreInvisible");
-            const ScaleScrollFramesDominantAxis = document.getElementById("ScaleScrollFramesDominantAxis")
-
             document.getElementById("convselect").onclick = () => {
-                // cover your eyes
-                CloudApiKey = UpdateSetting("CloudApiKey", apikey, 1);
-                UploaderId = UpdateSetting("UploaderId", uploaderid, 1);
-                UploadToGroup = UpdateSetting("UploadToGroup", isgroup, 1);
-                UploadImages = UpdateSetting("UploadImages", uploadimages, 1);
-                UpdateSetting("ApplyAspectRatio", ApplyAspectRatio, true);
-                UpdateSetting("ConvertOffsetToScale", ConvertOffsetToScale, true);
-                UpdateSetting("UseSelectionPositionRelativeToScene", Recentre, false);
-                UpdateSetting("DetectAnchorPoint", DetectAnchorPoint, true);
-                UpdateSetting("IgnoreInvisible", IgnoreInvisible, true);
-                UpdateSetting("ScrollFrame_ScaleDominantAxis", ScaleScrollFramesDominantAxis, true)
+                Options.forEach(Option => {
+                    const Element = document.getElementById(Option.id);
+                    if (!Element) return;
+                    var Value;
+                    
+                    // ik I could use switch but is it really needed?
+                    if (Option.type === "text") Value = Element.value
+                    else if (Option.type === "checkbox") {
+                        Value = Element.checked;
+                        
+                        if (Option.flipped) Value = !Value
+                    };
+
+                    if (Value !== undefined && Settings[Option.name] !== Value) {
+                        PostMessage({
+                            type: "SetAsync",
+                            key: Option.name,
+                            value: Value
+                        });
+                    }
+                });
 
                 PostMessage({ type: 'run' });
             }
@@ -208,7 +244,7 @@
                 switch (type) {
                     case "Download":
                         DownloadLink.href = "data:text/xml;charset=utf-8," + encodeURIComponent(data);
-                        DownloadLink.download = "export.rbxmx";
+                        DownloadLink.download = (data.name || "export") + ".rbxmx";
                         DownloadLink.click();
 
                         //DownloadImages();
@@ -221,31 +257,30 @@
                                 ["Origin"]: "FigmaToRoblox",
                                 //["Content-Type"]: "text/plain",
                                 //["Content-Language"]: "en-US",
-                                ["x-api-key"]: CloudApiKey
+                                ["x-api-key"]: Settings.CloudApiKey
                             }
                         })).json();
 
-                        console.log("got Operation Response:", UploadResponse);
-
-                        if (UploadResponse.done)
-                            PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status });
+                        if (UploadResponse.done) PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status })
+                        else console.warn("Image operation not complete:", UploadResponse)
 
                         break;
                     case "UploadImage":
-                        const Form = new FormData();
-                        const blob = new Blob([data.Data.buffer], { type: "image/" + data.Format });
-
                         //if (ExportImages) Images.push(data);
-                        if (!UploadImages) {
+                        if (!Settings.UploadImages) {
+                            console.warn("[Figma to Roblox] Tried exporting Image, but Upload Images is disabled")
                             PostMessage({ type: "ImageUploaded", id: data.Id, data: {
                                 imageContent: "rbxasset://textures/StudioSharedUI/TransparentWhiteImagePlaceholder.png"
                             } });
                             return;
-                        } else if (!CloudApiKey || !UploaderId || CloudApiKey == "" || UploaderId == "") {
+                        } else if (!Settings.CloudApiKey || !Settings.UploaderId || Settings.CloudApiKey == "" || Settings.UploaderId == "") {
                             console.warn("Cloud API Key is not set");
                             PostMessage({ type: 'image-upload-fail', data: "Cloud API Key is not set" })
                             return;
                         }
+
+                        const Form = new FormData();
+                        const blob = new Blob([data.Data.buffer], { type: "image/" + data.Format });
 
                         Form.append("request", JSON.stringify({
                             assetType: "Image",
@@ -253,26 +288,12 @@
                             description: "Exported from Figma",
                             creationContext: {
                                 creator: {
-                                    userId: UploaderId ? parseFloat(UploaderId) : undefined,
-                                    groupId: GroupId ? parseFloat(GroupId) : undefined,
+                                    userId: !Settings.UploadToGroup ? parseFloat(Settings.UploaderId) : undefined,
+                                    groupId: Settings.UploadToGroup ? parseFloat(Settings.UploaderId) : undefined,
                                 }
                             }
                         }));
                         Form.append("fileContent", blob, data.Name + "." + data.Format);
-                        
-                        // console.log("Image Blob:", blob);
-
-                        // var FormLog = {
-                        //     fileContent: Form.get("fileContent"),
-                        //     request: JSON.parse(Form.get("request")),
-                        // };
-
-                        // for (var Pair of Form.entries()) {
-                        //     FormLog[Pair[0]] = Pair[1]
-                        // }
-
-                        // console.log("Form:", FormLog);
-
 
                         fetch("https://apis.roblox.com/assets/v1/assets", {
                             //mode: "no-cors",
@@ -283,7 +304,7 @@
                                 //["Accept"]: "multipart/form-data",
                                 //["Accept"]: "data/json",
                                 //["Content-Language"]: "en-US",
-                                ["x-api-key"]: CloudApiKey,
+                                ["x-api-key"]: Settings.CloudApiKey,
                             },
                             body: Form
                         }).then(res => res.json())
@@ -293,14 +314,14 @@
                                 PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status });
                                 return;
                             } else if (InitialResponse.errors) {
-                                console.error(`Image POST returned ${InitialResponse.status} "${InitialResponse.title}", errors:`, InitialResponse.errors[""])
+                                console.log("POST Response:", InitialResponse)
+                                if (InitialResponse.status) console.error(`Image POST returned status ${InitialResponse.status}, "${InitialResponse.title}", errors:`, InitialResponse.errors[""] || InitialResponse.errors.map(err => err.message).join(", "))
+                                else console.error(`Image POST returned errors:`, InitialResponse.errors.map(err => err.message).join(", "));
                                 return;
                             }
 
                             // Update the origin node so if we fail to finish it can be recovered from the node's plugin properties
-                            PostMessage({ type: "UpdateOperationId", id: data.Id, data: InitialResponse.operationId })
-
-                            console.log("Initial response:", InitialResponse)
+                            PostMessage({ type: "UpdateOperationId", id: data.Id, data: InitialResponse.operationId });
 
                             //var ModerationReviewing = false;
 
@@ -313,7 +334,7 @@
                                     headers: {
                                         ["Accept"]: "data/json",
                                         ["Content-Language"]: "en-US",
-                                        ["x-api-key"]: CloudApiKey
+                                        ["x-api-key"]: Settings.CloudApiKey
                                     }
                                 })).json();
 
@@ -339,22 +360,23 @@
                         break;
 
                     case "LoadSettings":
-                        const Settings = event.data.pluginMessage.settings;
+                        Settings = event.data.pluginMessage.settings;
 
-                        CloudApiKey = Settings.CloudApiKey;
-                        UploaderId = Settings.UploaderId;
-                        UploadImages = Settings.UploadImages;
-                        UploadToGroup = Settings.UploadToGroup;
-                        document.getElementById("apikey").value = CloudApiKey || "";
-                        document.getElementById("uploaderid").value = UploaderId || "";
-                        document.getElementById("uploadimages").checked = UploadImages || false;
-                        document.getElementById("isgroup").checked = UploadToGroup || false;
-                        document.getElementById("ApplyAspectRatio").checked = Settings.ApplyAspectRatio || false;
-                        document.getElementById("ConvertOffsetToScale").checked = Settings.ConvertOffsetToScale || false;
-                        document.getElementById("Recentre").checked = !(Settings.UseSelectionPositionRelativeToScene);
-                        document.getElementById("DetectAnchorPoint").checked = Settings.DetectAnchorPoint || false;
-                        document.getElementById("IgnoreInvisible").checked = Settings.IgnoreInvisible || false;
-                        document.getElementById("ScaleScrollFramesDominantAxis").checked = Settings.ScrollFrame_ScaleDominantAxis || false;
+                        Options.forEach(Option => {
+                            const Element = document.getElementById(Option.id);
+
+                            if (Element) {
+                                const Value = Settings[Option.name];
+
+                                // ik I could use switch but is it really needed?
+                                if (Option.type === "text") Element.value = Value || "" 
+                                else if (Option.type === "checkbox") {
+                                    Element.checked = Value || false;
+
+                                    if (Option.flipped) Element.checked = !Element.checked
+                                };
+                            }
+                        });
 
                         break;
                 };

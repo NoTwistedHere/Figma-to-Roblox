@@ -24,7 +24,7 @@ function ConvertFill(Fill, Object) {
     if (Fill.visible === false) return [{}, 0]
     
     var Transparency = Fill.opacity;
-    var Color3 = {};
+    var Color3 = {R: 255, G: 255, B: 255};
 
     switch (Fill.type) {
         case "SOLID":
@@ -78,39 +78,35 @@ function ConvertFill(Fill, Object) {
 async function ExportImage(Node, Properties, CustomExport) {
     const Name = Node.name;
 
-    console.log("exporting image");
-
-    //let AssetContent = Node.getPluginData("AssetContent");
     let AssetId = Node.getPluginData("AssetId");
     var UploadId = Node.getPluginData("OperationId");
 
+    if (Node.vectorPaths) { // hash vector, Flags.ExportVectorsAsImage should be true if we get here
+        var CombinedVecPaths = "";
+
+        Node.vectorPaths.forEach(vectorPath => CombinedVecPaths = CombinedVecPaths + vectorPath.data + vectorPath.windingRule);
+        Properties._ImageHash = createHash("sha256").update(CombinedVecPaths).digest("hex");
+    }
+
     if (!Flags.ForceUploadImages) {
         if (AssetId) {
-
             // Check if image hashes match
-
-            console.log("Stored ImageHash vs ImageHash", Node.getPluginData("ImageHash"), Properties._ImageHash)
 
             if (Node.getPluginData("ImageHash") === Properties._ImageHash) {
                 console.log("Image has not changed, using Image:", AssetId)
-
                 Properties.Image = `rbxassetid://${AssetId}`
 
                 return;
             }
-        } /*else if (AssetContent) {
-            Properties.Image = AssetContent
-        }*/ else if (UploadId) {
+        } else if (UploadId) {
             // try fetching before attempting to re-upload
-
-            console.log("Stored ImageHash vs ImageHash", Node.getPluginData("ImageHash"), Properties._ImageHash)
 
             if (Node.getPluginData("ImageHash") === Properties._ImageHash) {
                 console.log("Image was uploaded, checking Operation (Id):", UploadId);
 
                 ImagesRemaining += 1;
                 Properties.Image = `{OP-${UploadId}}`
-                if (Properties._ImageHash) Node.setPluginData("ImageHash", Properties._ImageHash);
+                Node.setPluginData("ImageHash", Properties._ImageHash);
     
                 ImageExports[UploadId] = {
                     Node: Node,
@@ -129,17 +125,6 @@ async function ExportImage(Node, Properties, CustomExport) {
                 return UploadId
             } else console.warn("Operation exists but Hashes don't match, uploading..")
         }
-    }
-
-    //console.log(AssetId, UploadId)
-
-    if (Node.vectorPaths) { // hash vector, Flags.ExportVectorsAsImage should be true if we get here
-        var CombinedVecPaths = "";
-
-        Node.vectorPaths.forEach(vectorPath => CombinedVecPaths = CombinedVecPaths + vectorPath.data + vectorPath.windingRule);
-
-        UploadId = createHash("sha256").update(CombinedVecPaths).digest("hex");
-        Settings._ImageHash = UploadId;
     }
 
     UploadId = UploadId || Properties._ImageHash //Node.id
@@ -197,7 +182,6 @@ async function ExportImage(Node, Properties, CustomExport) {
 }
 
 function UpdateImage(msg) {
-    console.log("Got Uploaded Image:", msg)
     var ImageInfo = ImageExports[msg.id];
 
     if (!ImageInfo) {
@@ -215,26 +199,29 @@ function UpdateImage(msg) {
     let ModerationResult = msg.data.moderationResult
 
     if (ModerationResult && (ModerationResult.moderationState != "Approved" && ModerationResult.moderationState != "MODERATION_STATE_APPROVED")) {
-        figma.notify(`Image Element ${msg.id} failed moderation (check console for more info)`);
-        console.warn(`Image Element ${msg.id} failed moderation:`, ModerationResult);
+        if (ModerationResult.moderationState === "Reviewing") {
+            figma.notify(`Image Element ${msg.id} took too long to pass moderation, Image Id: ${msg.data.assetId || msg.data.path}`)
+            console.warn(`Image Element ${msg.id} took too long to pass moderation:`, ModerationResult, msg);
+        } else {
+            figma.notify(`Image Element ${msg.id} failed moderation (check console for more info)`);
+            console.warn(`Image Element ${msg.id} failed moderation:`, ModerationResult, msg);
+        }
         return;
     }
 
     if (msg.data.imageContent) {
-        //ImageInfo.Node.setPluginData("AssetContent", msg.data.imageContent);
+        ImageInfo.Node.setPluginData("AssetId", msg.data.imageContent);
         ImageInfo.Properties.Image = msg.data.imageContent;
     } else {
         ImageInfo.Node.setPluginData("AssetId", msg.data.assetId);
         ImageInfo.Properties.Image = "rbxassetid://" + msg.data.assetId;
     }
 
-    ImagesRemaining -= 1
-    console.log("Updating Image:", ImageInfo);
+    ImagesRemaining -= 1;
     console.log("Images Remaning:", ImagesRemaining);
 }
 
 function UpdateOperationId(msg) {
-    console.log("Got Image retreived:", msg);
     var ImageInfo = ImageExports[msg.id];
 
     if (!ImageInfo) {
@@ -254,7 +241,7 @@ function IsDone() {
     return ImagesRemaining === 0
 }
 
-const PropertyTypes = {
+const PropertyTypes = {// the only return value should be nothing or an object containing properties to update
     ["clipsContent"]: (Value, Object, Node) => {
         Object.ClipsDescendants = Value;
     },
@@ -287,11 +274,12 @@ const PropertyTypes = {
 
             // Export image
 
-            Object._ImageHash = Fill.imageHash
-            Object.Class = "ImageLabel" // or ImageButton?!
-            //Object.BackgroundTransparency = 0 // Images can't have backgrounds from what I can tell (in figma)
+            Object._ImageHash = Fill.imageHash;
+            Object.Class = "ImageLabel"; // or ImageButton?!
+            Object.ImageColor3 = {R: 255, G: 255, B: 255};
+            //Object.BackgroundTransparency = 0; // Images can't have backgrounds from what I can tell (in figma)
 
-            ExportImage(Node, Object)
+            ExportImage(Node, Object);
 
             if (Value[1] && Value[1].type === "GRADIENT_LINEAR") ConvertFill(Value[1], Object);
         } else if (Value.length > 1) return console.warn(`Frame ${Object.Name} cannot have more than 1 fill`);
@@ -313,6 +301,7 @@ const PropertyTypes = {
     },
     ["cornerRadius"]: (Value, Object) => {
         if (Value !== 0) {
+            Object._HasCorners = true;
             Object.Children.push({
                 Class: "UICorner",
                 Type: "UICorner",
@@ -320,7 +309,7 @@ const PropertyTypes = {
                     S: 0,
                     O: Value,
                 }
-            })
+            });
         }
     },
     ["effects"]: (Value, Object, Node) => {
@@ -355,7 +344,7 @@ const PropertyTypes = {
         var StrokeObject = {
             Class: "UIStroke",
             Name: "UIStroke",
-            ApplyStrokeMode: "Contextual",
+            ApplyStrokeMode: Conversions.ApplyStrokeMode.indexOf(Object.Class === "TextLabel" ? "Contextual" : "Border"),
             // Color: {
             //     R: Stroke.color.r,
             //     G: Stroke.color.g,
@@ -366,7 +355,7 @@ const PropertyTypes = {
                 G: 0,
                 B: 1
             },
-            LineJoinMode: Conversions.LineJoinModes.indexOf(Node.strokeJoin),
+            LineJoinMode: Conversions.LineJoinModes.indexOf(Object._HasCorners ? "ROUND" : Node.strokeJoin),
             Thickness: Node.strokeWeight,
             Transparency: Stroke.opacity,
             _Transparency: Object._Transparency,
@@ -375,10 +364,11 @@ const PropertyTypes = {
         }
 
         var [Colour, Transparency] = ConvertFill(Stroke, StrokeObject);
-
+        
         StrokeObject.Color = Colour;
         StrokeObject.Transparency *= Transparency;
-
+        
+        //Object._HasStroke = true;
         Object.Children.push(StrokeObject);
     },
     ["characters"]: (Value, Object, Node) => {
@@ -566,17 +556,17 @@ const PropertyTypes = {
     }
 }
 
-function CalculateAngle(P0, P1, P2) { // https://stackoverflow.com/a/39673693
-    var Numerator = P1.x * (P0.x - P2.x) + P0.y * (P2.x - P1.x) + P2.y * (P1.x - P0.x);
-    var Denominator = (P1.x - P0.x) * (P0.x - P2.x) + (P1.y - P0.y) * (P0.y - P2.y);
+// function CalculateAngle(P0, P1, P2) { // https://stackoverflow.com/a/39673693
+//     var Numerator = P1.x * (P0.x - P2.x) + P0.y * (P2.x - P1.x) + P2.y * (P1.x - P0.x);
+//     var Denominator = (P1.x - P0.x) * (P0.x - P2.x) + (P1.y - P0.y) * (P0.y - P2.y);
     
-    console.log("Number, Denom:", Numerator, Denominator)
+//     console.log("Number, Denom:", Numerator, Denominator)
 
-    // Calculate angle in radians and convert it to degrees
-    var AngleDeg = (Math.atan(Numerator / Denominator) * 180) / Math.PI;
+//     // Calculate angle in radians and convert it to degrees
+//     var AngleDeg = (Math.atan(Numerator / Denominator) * 180) / Math.PI;
 
-    return AngleDeg < 0 ? AngleDeg + 180 : AngleDeg;
-}
+//     return AngleDeg < 0 ? AngleDeg + 180 : AngleDeg;
+// }
 
 // function CalculateAngle(P0, P1, P2) { // https://stackoverflow.com/a/17763495 // https://phrogz.net/angle-between-three-points
 //     var a = Math.sqrt(Math.pow(P1.x - P0.x, 2) + Math.pow(P1.Y - P0.Y, 2));
@@ -588,7 +578,7 @@ function CalculateAngle(P0, P1, P2) { // https://stackoverflow.com/a/39673693
 
 const NodeTypes = { // Is this really needed? I could probably make it less repetative
     ["GROUP"]: (Node) => {
-        var Properties = {
+        let Properties = {
             Class: "Frame",
             Name: Node.name,
             Active: true,
@@ -624,7 +614,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
         return Properties
     },
     ["FRAME"]: (Node) => {
-        var Properties = {
+        let Properties = {
             Class: "Frame",
             Name: Node.name,
             Active: true,
@@ -661,7 +651,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
         return Properties
     },
     ["COMPONENT"]: (Node) => {
-        var Properties = {
+        let Properties = {
             Class: "Frame",
             Name: Node.name,
             Active: true,
@@ -697,7 +687,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
         return Properties
     },
     ["INSTANCE"]: (Node) => {
-        var Properties = {
+        let Properties = {
             Class: "Frame",
             Name: Node.name,
             Active: true,
@@ -733,7 +723,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
         return Properties
     },
     /*["LINE"]: (Node) => { // TODO: Better support
-        var Properties = {
+        let Properties = {
             Class: "Frame",
             Name: Node.name,
             Active: true,
@@ -769,7 +759,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
         return Properties
     },*/
     ["RECTANGLE"]: (Node) => {
-        var Properties = {
+        let Properties = {
             Class: "Frame",
             Name: Node.name,
             Active: true,
@@ -838,6 +828,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
                 YO: Size
             },
 
+            _HasCorners: true,
             Children: [
                 {
                     Class: "UICorner",
@@ -855,7 +846,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
         const FontStyle = Conversions.FontStyle[Node.fontName.style];
         const FontFamily = Node.fontName !== figma.mixed && Conversions.MarketplaceFonts[Node.fontName.family];
 
-        var Properties = {
+        let Properties = {
             Class: "TextLabel",
             Name: Node.name,
             Active: true,
@@ -942,13 +933,14 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
         // Calculate how many rectangles fit into the area
 
         if (Flags.ExportVectorsAsImage) {
-            const Properties = {
+            let Properties = {
                 Class: "ImageLabel",
                 Name: Node.name,
                 Active: true,
                 Visible: Node.visible,
                 BackgroundTransparency: 0.0,
-                ImageTransparency: 0.0,
+                ImageTransparency: 1 - Node.opacity,
+                ImageColor3: {R: 255, G: 255, B: 255},
                 _Transparency: Node.opacity,
                 BorderSizePixel: 0,
 
@@ -976,7 +968,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
                 Node: Node,
             }
 
-            ExportImage(Node, Properties)
+            ExportImage(Node, Properties);
             return Properties;
         } else if (!Flags.ExportVectors) {
             return;
@@ -1061,7 +1053,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
         //     }
         // })
 
-        var Properties = {
+        const Properties = {
             Class: "Frame",
             Name: Node.name,
             Active: true,
@@ -1211,13 +1203,93 @@ const XMLTypes = {
             return `<NumberSequence name="${Name}">${Sequence}</NumberSequence>`
         } else if (Value.Family) {
             return `<Font name="${Name}">${LoopTable(Value)}</Font>`
+        } else {
+            console.error("[Figma to Roblox] Failed to sanitise table for property:" + Name, Value);
+            return "";
         }
     }
 }
 
+function GetNodeProperties(Node, Settings, ParentObject) {
+    const Properties = NodeTypes[Node.type || "OTHER"](Node, Settings);
+
+    if (!Properties) return;
+    if (Properties._Transparency === 0) Properties.Visible = false;
+    if (ParentObject) {
+        if (ParentObject._Transparency) { // Multiply Transparency with Parent Transparency/Pass through
+            Properties._Transparency = ParentObject._Transparency * Properties._Transparency
+        };
+
+       /* Properties._OriginalPosition = {
+            XS: Properties.Position.YS,
+            XO: Properties.Position.XO,
+            YS: Properties.Position.YS,
+            YO: Properties.Position.YO,
+        };*/
+    }/*else if (!ParentObject && Node.type == "FRAME") Properties._OriginalPosition = {
+        XS: 0,
+        XO: 0,
+        YS: 0,
+        YO: 0,
+    };*/
+
+    //const BoundingBox = Node.absoluteBoundingBox // DO NOT RE-IMPLEMENT WITHOUT RE-ARRANGING
+    // Properties.Position = {
+    //     XS: 0,
+    //     XO: BoundingBox.x,
+    //     YS: 0,
+    //     YO: BoundingBox.y,
+    // }
+    // Properties.Size = {
+    //     XS: 0,
+    //     XO: BoundingBox.width,
+    //     YS: 0,
+    //     YO: BoundingBox.height,
+    // }
+    
+    // Loop Node properties
+    Object.getOwnPropertyNames(Object.getPrototypeOf(Node)).forEach((i) => {
+        if (PropertyTypes[i]) {
+            PropertyTypes[i](Node[i], Properties, Node);
+        }
+    });
+    // for (const [propkey, propvalue] of Object.entries(Node)) {
+    //     if (PropertyTypes[propkey]) {
+    //         console.log(propkey, propvalue);
+    //         PropertyTypes[propkey](propvalue, Properties, Node);
+    //     }
+    // }
+
+    //PropertyTypes["strokes"](Node["strokes"], Properties, Node);
+    //console.log(Properties)
+    
+    Properties._OriginalPosition = Properties.Position;
+    Properties._OriginalSize = Properties.Size;
+    //Properties._OriginalSize = Properties.Size;
+    //Properties.Position.XO -= some math //*= Scale.X
+    //Properties.Position.YO //*= Scale.Y
+    //Properties.Size.XO *= Scale.X
+    //Properties.Size.YO *= Scale.Y
+    if (Properties.Rotation && Properties.Rotation !== 0 /*&& Properties.Size.XO !== 0 && Properties.Size.YO !== 0*/) {
+        const BoundingBox = Node.absoluteBoundingBox;
+
+        if (Properties.Size.XO !== 0) {
+            var CX = BoundingBox.x + BoundingBox.width / 2;
+            Properties.Position.XO = CX - Properties.Size.XO / 2;
+            
+        }
+        
+        if (Properties.Size.YO !== 0) {
+            var CY = BoundingBox.y + BoundingBox.height / 2;
+            Properties.Position.YO = CY - Properties.Size.YO / 2;
+        }
+    }
+
+    return Properties;
+}
+
 module.exports = {
-    PropertyTypes,
-    NodeTypes,
+    GetNodeProperties,
     XMLTypes,
     Settings,
     UpdateImage,

@@ -252,4 +252,8 @@ module.exports = {
         "SCROLLBAR",
         "ALWAYS"
     ],
+    ApplyStrokeMode: [
+        "Contextual",
+        "Border"
+    ]
 }

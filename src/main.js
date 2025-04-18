@@ -33,16 +33,16 @@
 
     TODO:
         Implement section support
-        Implement Settings (kinda reversed that in recent updates)
         Finish implementing Image uploading (DONE?)
         Better ui (DONE?)
         Update that damn README
         Remove the old/unneeded todos
+        [Clip] Masks (i.e. VECTOR masks - liklely requires being converted to an img)
 */
 
 const Conversions = require('./Conversions.js');
 const { Flags, QuickClose, Notify } = require('./Utilities.js');
-const { PropertyTypes, NodeTypes, XMLTypes, Settings, UpdateImage, UpdateOperationId, GetImageFromOperation, IsDone } = require('./Converters.js');
+const { GetNodeProperties, XMLTypes, Settings, UpdateImage, UpdateOperationId, GetImageFromOperation, IsDone } = require('./Converters.js');
 
 var RunDebounce = false;
 
@@ -82,6 +82,7 @@ function ConvertObject(Properties, ParentObject) {
             case "Transparency":
             case "TextStrokeTransparency":
             case "TextTransparency":
+            case "ImageTransparency":
                 // Should always be parented to a group as only groups and sections allow children
                 Value = Properties._Transparency * Value;
 
@@ -130,7 +131,7 @@ function LoopNodes(Nodes, ParentObject) {
         for (var i = 0; i < Nodes.length; i++) {
             const Node = Nodes[i];
     
-            if (Node.name === "Background") {
+            if (Node.name.toLowerCase() === Flags.GroupBackgroundFrameName) {
                 SortedNodes[i] = SortedNodes[0];
                 SortedNodes[0] = Node;
             } else SortedNodes[i] = Node;
@@ -143,76 +144,11 @@ function LoopNodes(Nodes, ParentObject) {
 
         if (Flags.IgnoreInvisible && !Node.visible) continue;
         
-        const Properties = NodeTypes[Node.type || "OTHER"](Node, Settings); // Can't name it Object because of below v
-        
-        if (!Properties) continue;
-        if (Properties._Transparency === 0) Properties.Visible = false;
-        if (ParentObject) {
-            if (ParentObject._Transparency) { // Multiply Transparency with Parent Transparency/Pass through
-                Properties._Transparency = ParentObject._Transparency * Properties._Transparency
-            };
-
-           /* Properties._OriginalPosition = {
-                XS: Properties.Position.YS,
-                XO: Properties.Position.XO,
-                YS: Properties.Position.YS,
-                YO: Properties.Position.YO,
-            };*/
-        }/*else if (!ParentObject && Node.type == "FRAME") Properties._OriginalPosition = {
-            XS: 0,
-            XO: 0,
-            YS: 0,
-            YO: 0,
-        };*/
-
-        //const BoundingBox = Node.absoluteBoundingBox // DO NOT RE-IMPLEMENT WITHOUT RE-ARRANGING
-        // Properties.Position = {
-        //     XS: 0,
-        //     XO: BoundingBox.x,
-        //     YS: 0,
-        //     YO: BoundingBox.y,
-        // }
-        // Properties.Size = {
-        //     XS: 0,
-        //     XO: BoundingBox.width,
-        //     YS: 0,
-        //     YO: BoundingBox.height,
-        // }
-        
-        // Loop Node properties
-        var NodeProperties = Object.getOwnPropertyNames(Object.getPrototypeOf(Node));
-        
-        NodeProperties.forEach((i) => {
-            if (PropertyTypes[i]) {
-                PropertyTypes[i](Node[i], Properties, Node);
-            }
-        });
-        
-        Properties._OriginalPosition = Properties.Position;
-        Properties._OriginalSize = Properties.Size;
-        //Properties._OriginalSize = Properties.Size;
-        //Properties.Position.XO -= some math //*= Scale.X
-        //Properties.Position.YO //*= Scale.Y
-        //Properties.Size.XO *= Scale.X
-        //Properties.Size.YO *= Scale.Y
-        if (Properties.Rotation && Properties.Rotation !== 0 /*&& Properties.Size.XO !== 0 && Properties.Size.YO !== 0*/) {
-            const BoundingBox = Node.absoluteBoundingBox;
-
-            if (Properties.Size.XO !== 0) {
-                var CX = BoundingBox.x + BoundingBox.width / 2;
-                Properties.Position.XO = CX - Properties.Size.XO / 2;
-                
-            }
-            
-            if (Properties.Size.YO !== 0) {
-                var CY = BoundingBox.y + BoundingBox.height / 2;
-                Properties.Position.YO = CY - Properties.Size.YO / 2;
-            }
-        }
-        
+        const Properties = GetNodeProperties(Node, Settings, ParentObject); // Can't name it Object because of below v
 
         //console.log("Props:", Properties, "Parent:", ParentObject)
         //console.log("Node:", Node);
+        if (!Properties) continue;
         
         if (Node.type === "BOOLEAN_OPERATION") { // No ~Temp added as a NodeType & create as if a group
             figma.notify("Boolean Operations may give undesired results", {timeout: 1800})
@@ -226,12 +162,13 @@ function LoopNodes(Nodes, ParentObject) {
         const lowercaseName = Properties.Name.toLowerCase();
         const removeNameAbriv = lowercaseName.match("btn") || lowercaseName.match("scrl");
 
-        if (lowercaseName == "background" && ParentObject) {
+        if (lowercaseName == Flags.GroupBackgroundFrameName && ParentObject) {
             ParentObject._HasGradient = Properties._HasGradient;
             ParentObject.BackgroundColor3 = Properties.BackgroundColor3;
             ParentObject.BackgroundTransparency = Properties.BackgroundTransparency;
             ParentObject.BorderSizePixel = Properties.BorderSizePixel;
             //ParentObject.Rotation = Properties.Rotation; // this now looks like a bad idea
+            ParentObject.Class = Properties.Class;
             
             if (Properties.Children) {
                 FileContent += LoopChildren(Properties.Children, Properties);
@@ -248,8 +185,14 @@ function LoopNodes(Nodes, ParentObject) {
                     // Must be TextButton
                     
                     if (Properties._HasGradient !== true && ParentObject._HasGradient !== true) {
-                        console.log("update TextButton Text", Properties)
                         ParentObject.Class = "TextButton"
+
+                        // if the text button (background) has a stroke, it cadnnot be Contextual otherwise it will apply to the text
+                        ParentObject.Children.forEach(Child => {
+                            if (Child.Class === "UIStroke") {
+                                Child.ApplyStrokeMode = Conversions.indexOf("Border");
+                            }
+                        })
     
                         Object.entries(Properties).forEach(([key, value]) => {
                             if (key.match("^Text")) ParentObject[key] = value
@@ -269,7 +212,6 @@ function LoopNodes(Nodes, ParentObject) {
                     }
                 } else if (Properties.Class === "ImageLabel") {
                     if (Properties._HasGradient !== true && ParentObject._HasGradient !== true) {
-                        console.log("update ImageButton Image", Properties)
                         ParentObject.Class = "ImageButton"
     
                         Object.entries(Properties).forEach(([key, value]) => {
@@ -542,16 +484,9 @@ async function ConvertNodes() {
     })
 
     const ImageOperations = Nodes.replace(/{OP-([0-9a-zA-Z-:]+)}/g, (_, Id) => {
-        console.log("Found operationId:", Id)
-
-        var ExportedImage = GetImageFromOperation(Id)
-
-        console.log("Got Exported Image:", ExportedImage)
-
-        return ExportedImage.Properties.Image
-    })
-
-    //console.log("Result:", ImageOperations);
+        var ExportedImage = GetImageFromOperation(Id);
+        return ExportedImage.Properties.Image;
+    });
 
     FileContent += ImageOperations + "</roblox>";
 
@@ -559,9 +494,6 @@ async function ConvertNodes() {
         type: "Download",
         data: FileContent
     });
-
-
-    //console.log(FileContent);
 
     Notify("Successfully exported")
 

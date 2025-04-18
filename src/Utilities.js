@@ -13,9 +13,10 @@ var Flags = {
     GeneratePaths: false, // !! TODO !! Not Implemented Yet - Creates a ModuleScript with all Prefixed elements (WIP)
     IgnoreInvisible: true, // Will skip over (/ignore) invisible elements
     OffsetFromScale: false, // Allows for example, a frame in the bottom right of the screen to have a UDim2 Scale + Offset Position of (1, -25, 1, -25)
+    GroupBackgroundFrameName: "background", // The name to look for to convert Groups into Frames
 
     // Debugging
-    ForceUploadImages: false, // Skips image matching, upload is still overwritten by ImageUploadTesting
+    ForceUploadImages: false, // Skips image matching (ignoring cached ids), upload is still overwritten by ImageUploadTesting
     ImageUploadTesting: false, 
     ImageUploadTestData: {
         "path": "assets/18355701361",
