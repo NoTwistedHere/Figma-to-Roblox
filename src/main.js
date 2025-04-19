@@ -38,6 +38,8 @@
         Update that damn README
         Remove the old/unneeded todos
         [Clip] Masks (i.e. VECTOR masks - liklely requires being converted to an img)
+        Add a help page in the plugin, containing tips & guidance
+        Look into automatically converting layout mode into scrolling frames?
 */
 
 const Conversions = require('./Conversions.js');
@@ -56,6 +58,8 @@ function ConvertObject(Properties, ParentObject) {
             case "Class":
             case "_IsButton":
             case "_HasGradient":
+            case "_HasCorners":
+            case "_HasStroke":
                 break;
             case "DominantAxis":
             case "AspectType":
@@ -223,13 +227,19 @@ function LoopNodes(Nodes, ParentObject) {
                     }
                 }
             } else if (Properties.Class === "Frame" || Properties.Class === "ImageLabel" || Properties.Class === "TextLabel") {
-                // Only Intended to support ImageLabel, TextLabel, Frame
-                // now what if the Class is none of these?
-                //console.log("convert to button", Properties, ParentObject)
                 Properties._IsButton = true;
 
                 if (Properties.Class === "ImageLabel") Properties.Class = "ImageButton"
-                else if (Properties.Class === "TextLabel") Properties.Class = "TextButton"
+                else {
+                    Properties.Class = "TextButton";
+
+                    // Remove text from non-TextLabels (Frames, Groups, Components, Instances)
+                    if (Properties.Class !== "TextLabel") {
+                        Properties.Text = "";
+                        Properties.TextSize = 0;
+                        Properties.TextTransparency = 1;
+                    };
+                }
             } else console.warn(`[Figma to Roblox] FAILED to convert element "${Properties.Name}" into a button as class "${Properties.Class}" is none of the following: Frame, ImageLabel, TextLabel`)
         } else if (removeNameAbriv && removeNameAbriv[0] === "scrl" || lowercaseName.match("scroll")) {  // Convert to Scrolling Frame
             if (removeNameAbriv) Properties.Name = Properties.Name.replace(/scrl/i, "");
@@ -295,7 +305,7 @@ function LoopNodes(Nodes, ParentObject) {
         }
 
         if (ParentObject) {
-            if (ParentObject._OriginalPosition && ParentObject.Node.type !== "FRAME" && ParentObject.Node.type !== "INSTANCE") {
+            if (ParentObject._OriginalPosition && ParentObject.Node.type !== "FRAME" && ParentObject.Node.type !== "INSTANCE" && ParentObject.Node.type !== "COMPONENT") {
                 // Get Position relative to Parent
                 Properties.Position.XO = Properties.Position.XO - ParentObject._OriginalPosition.XO;
                 Properties.Position.YO = Properties.Position.YO - ParentObject._OriginalPosition.YO;
