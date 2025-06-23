@@ -80,6 +80,9 @@
             <input type="checkbox" id="uploadimages" name="Upload Images" />
             <label for="uploadimages">Upload Images</label>
             <div></div>
+
+            <label for="ignoreimageexporting"><input type="checkbox" id="ignoreimageexporting" name="Ignore Image Exporting (disable Uploading)"/> Ignore Image Exporting <small>(disable Uploading)</small></label>
+            <div></div>
             
             <input type="checkbox" id="isgroup" name="Is Group" />
             <label for="isgroup">Upload To Group</label>
@@ -87,6 +90,14 @@
 
             <input type="checkbox" id="forcereupload" name="Force Reupload Images" />
             <label for="forcereupload">Force Reupload Images</label>
+            <div></div>
+            
+            <input type="checkbox" id="reuploadstuck" name="Reupload Stuck Images" />
+            <label for="reuploadstuck">Reupload Stuck Images</label>
+            <div></div>
+            
+            <input type="checkbox" id="awaitmoderation" name="Await Moderation" />
+            <label for="awaitmoderation">Await Moderation</label>
             <div></div>
             
             <label for="apikey">Cloud API Key</label>
@@ -110,7 +121,7 @@
         <h5>
             <span>Made by NoTwistedHere,</span>
             <br>
-            <span>report any issues via <a href="https://github.com/NoTwistedHere/Figma-to-Roblox/issues">Github</a> or Discord</span>
+            <span>report any issues via <a href="https://github.com/NoTwistedHere/Figma-to-Roblox/issues">Github</a> or Discord (notwistedhere)</span>
         </h5>
 
         <script>
@@ -122,9 +133,25 @@
                     type: "checkbox",
                 },
                 {
+                    name: "IgnoreImageExporting",
+                    id: "ignoreimageexporting",
+                    type: "checkbox",
+                    flipped: true,
+                },
+                {
                     name: "ForceUploadImages",
                     id: "forcereupload",
                     type: "checkbox",
+                },
+                {
+                    name: "ReuploadStuckImages",
+                    id: "reuploadstuck",
+                    type: "checkbox",
+                },
+                {
+                    name: "AwaitModeration",
+                    id: "awaitmoderation",
+                    type: "checkbox"
                 },
                 {
                     name: "CloudApiKey",
@@ -171,7 +198,7 @@
                     type: "checkbox",
                 },
                 {
-                    name: "ScaleScrollFramesDominantAxis",
+                    name: "ScrollFrame_ScaleDominantAxis",
                     id: "ScaleScrollFramesDominantAxis",
                     type: "checkbox",
                 },
@@ -313,8 +340,13 @@
                             if (InitialResponse.done == true) {
                                 PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status });
                                 return;
-                            } else if (InitialResponse.errors) {
+                            } else if (InitialResponse.errors || !InitialResponse.operationId || !InitialResponse.path) {
                                 console.log("POST Response:", InitialResponse)
+                                // return placeholder as to not interrupt exporting
+                                PostMessage({ type: "ImageUploaded", id: data.Id, data: {
+                                    imageContent: "rbxasset://textures/StudioSharedUI/TransparentWhiteImagePlaceholder.png"
+                                } });
+
                                 if (InitialResponse.status) console.error(`Image POST returned status ${InitialResponse.status}, "${InitialResponse.title}", errors:`, InitialResponse.errors[""] || InitialResponse.errors.map(err => err.message).join(", "))
                                 else console.error(`Image POST returned errors:`, InitialResponse.errors.map(err => err.message).join(", "));
                                 return;
@@ -323,11 +355,9 @@
                             // Update the origin node so if we fail to finish it can be recovered from the node's plugin properties
                             PostMessage({ type: "UpdateOperationId", id: data.Id, data: InitialResponse.operationId });
 
-                            //var ModerationReviewing = false;
+                            Sleep(500);
 
-                            Sleep(750);
-
-                            for (var i = 0; i < 20; i++) {
+                            for (var i = 0; i < 40; i++) {
                                 const UploadResponse = await (await fetch(`https://apis.roblox.com/assets/v1/${InitialResponse.path}`, {
                                     method: "GET",
                                     //mode: "no-cors",
@@ -338,24 +368,25 @@
                                     }
                                 })).json();
 
-                                console.log("got Status Response:", UploadResponse);
-
                                 if (UploadResponse.done == true) {
-                                    if (UploadResponse.response && UploadResponse.response.moderationResult && UploadResponse.response.moderationResult.moderationState === "Revewing") {
+                                    if (Settings.AwaitModeration && UploadResponse.response && UploadResponse.response.moderationResult && UploadResponse.response.moderationResult.moderationState == "Reviewing") {
                                         // This should be ran every time the image is still for review
                                         //ModerationReviewing = true;
-                                        console.log("Image is being reviewed");
-                                        Sleep(2000);
+
+                                        // Admit defeat
+                                        if (i === 40) PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status })
+                                        else Sleep(5000);
+
                                         continue;
                                     }
 
                                     PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status })
-                                    break;
+                                    return;
                                 }
 
-                                Sleep(1500);
+                                Sleep(2000);
                             }
-                        })
+                        });
 
                         break;
 
@@ -381,7 +412,6 @@
                         break;
                 };
             };
-
         </script>
     </body>
 </html>

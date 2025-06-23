@@ -7881,6 +7881,7 @@ const Settings = {
     //ApplyAspectRatio: false, // Changed to Flag (/Utilities.js)
     //ExportVectors: true, // Changed to Flag (/Utilities.js)
     ApplyZIndex: true, // Not implemented?
+    UploadImages: false,
 };
 
 function ConvertFill(Fill, Object) {
@@ -7938,11 +7939,12 @@ function ConvertFill(Fill, Object) {
     return [Color3, Transparency];
 }
 
-async function ExportImage(Node, Properties, CustomExport) {
-    const Name = Node.name;
-
+function ExportImage(Node, Properties, CustomExport, ForceReupload) {
     let AssetId = Node.getPluginData("AssetId");
     var UploadId = Node.getPluginData("OperationId");
+
+    if (!Settings.UploadImages) return;
+    if (AssetId && AssetId.match(/[0-9]+/)) AssetId = AssetId.match(/[0-9]+/)[0];
 
     if (Node.vectorPaths) { // hash vector, Flags.ExportVectorsAsImage should be true if we get here
         var CombinedVecPaths = "";
@@ -7951,12 +7953,12 @@ async function ExportImage(Node, Properties, CustomExport) {
         Properties._ImageHash = createHash("sha256").update(CombinedVecPaths).digest("hex");
     }
 
-    if (!Flags.ForceUploadImages) {
-        if (AssetId) {
+    if (!ForceReupload && !Flags.ForceUploadImages) {
+        if (AssetId && !AssetId.match(/TransparentWhiteImagePlaceholder.png/)) {
             // Check if image hashes match
 
             if (Node.getPluginData("ImageHash") === Properties._ImageHash) {
-                console.log("Image has not changed, using Image:", AssetId)
+                console.log("Image has not changed, using ImageId:", AssetId)
                 Properties.Image = `rbxassetid://${AssetId}`
 
                 return;
@@ -7968,7 +7970,7 @@ async function ExportImage(Node, Properties, CustomExport) {
                 console.log("Image was uploaded, checking Operation (Id):", UploadId);
 
                 ImagesRemaining += 1;
-                Properties.Image = `{OP-${UploadId}}`
+                Properties.Image = `{FTR_${UploadId}}`
                 Node.setPluginData("ImageHash", Properties._ImageHash);
     
                 ImageExports[UploadId] = {
@@ -7982,31 +7984,27 @@ async function ExportImage(Node, Properties, CustomExport) {
                     data: {
                         Id: UploadId
                     }
-                })
-    
-    
+                });
+                
                 return UploadId
-            } else console.warn("Operation exists but Hashes don't match, uploading..")
+            } else console.log("Operation exists but Hashes don't match, uploading..")
         }
     }
 
-    UploadId = UploadId || Properties._ImageHash //Node.id
+    UploadId = UploadId || Properties._ImageHash || AssetId || Properties.Name //Node.id
 
-    if (!UploadId || UploadId.length < 2) QuickClose("Node has no id!?")
-
-    Node.setPluginData("AssetId", "");
-    Node.setPluginData("OperationId", "");
+    if (!UploadId || UploadId.length < 2) QuickClose("Node has no id!?");
 
     //Properties.UploadId = UploadId;
 
-    Properties.Image = `{OP-${UploadId}}`
-    if (Properties._ImageHash) Node.setPluginData("ImageHash", Properties._ImageHash);
+    Properties.Image = `{FTR_${UploadId}}`
     if (ImageUploads.find((id) => id === UploadId)) return UploadId;
-
-    ImageUploads.push(UploadId)
-
-    ImagesRemaining += 1
-
+    ImageUploads.push(UploadId);
+    ImagesRemaining += 1;
+    
+    console.log("exporting", UploadId);
+    
+    if (Properties._ImageHash) Node.setPluginData("ImageHash", Properties._ImageHash);
     Node.exportAsync(CustomExport || Settings.DefaultExport).then(Bytes => {
         const Format = (CustomExport ? CustomExport.format : "PNG").toLowerCase();
         var IgnoreUpload = false;
@@ -8027,6 +8025,30 @@ async function ExportImage(Node, Properties, CustomExport) {
             }
         }
 
+        if (!ForceReupload && !Flags.ForceUploadImages && !Properties._ImageHash) {
+            const _ImageHash = createHash("sha256").update(Bytes).digest("hex");
+            
+            if (_ImageHash) {
+                if (AssetId && Node.getPluginData("ImageHash") === _ImageHash) {
+                    console.log("Node exported image has not changed, using ImageId:", AssetId)
+                    Properties.Image = `rbxassetid://${AssetId}`
+                    UpdateImage({id: UploadId, data: {
+                        "assetId": AssetId,
+                        "moderationResult": {
+                            "moderationState": "Approved"
+                        },
+                        "state": "Active"
+                    }});
+                    return;
+                }
+
+                Node.setPluginData("ImageHash", _ImageHash);
+            }
+        }
+        
+        Node.setPluginData("AssetId", "");
+        Node.setPluginData("OperationId", "");
+
         // Test post image upload with template data
         if (Flags.ImageUploadTesting) UpdateImage({id: UploadId, data: Flags.ImageUploadBoilerplate});
         // Upload Image
@@ -8035,7 +8057,7 @@ async function ExportImage(Node, Properties, CustomExport) {
             data: {
                 Data: Bytes,
                 Id: UploadId,
-                Name: Name,
+                Name: Properties.Name.substr(0, 30),
                 Format: Format
             }
         })
@@ -8066,18 +8088,23 @@ function UpdateImage(msg) {
             figma.notify(`Image Element ${msg.id} took too long to pass moderation, Image Id: ${msg.data.assetId || msg.data.path}`)
             console.warn(`Image Element ${msg.id} took too long to pass moderation:`, ModerationResult, msg);
         } else {
-            figma.notify(`Image Element ${msg.id} failed moderation (check console for more info)`);
+            figma.notify(`Image Element ${msg.id} failed moderation (check console for more info); moderation state: ${ModerationResult.moderationState}`);
             console.warn(`Image Element ${msg.id} failed moderation:`, ModerationResult, msg);
         }
-        return;
+
+        //ImagesRemaining -= 1; return;
     }
 
-    if (msg.data.imageContent) {
-        ImageInfo.Node.setPluginData("AssetId", msg.data.imageContent);
-        ImageInfo.Properties.Image = msg.data.imageContent;
-    } else {
-        ImageInfo.Node.setPluginData("AssetId", msg.data.assetId);
-        ImageInfo.Properties.Image = "rbxassetid://" + msg.data.assetId;
+    var Content = msg.data.imageContent || msg.data.assetId;
+
+    if (!Content.match(/TransparentWhiteImagePlaceholder.png/)) {
+        ImageInfo.Node.setPluginData("AssetId", Content);
+        
+        if (!Content.match(/rbxasset/)) {
+            Content = "rbxassetid://" + Content
+        }
+
+        ImageInfo.Properties.Image = Content;
     }
 
     ImagesRemaining -= 1;
@@ -8101,7 +8128,12 @@ function GetImageFromOperation(OperationId) {
 }
 
 function IsDone() {
-    return ImagesRemaining === 0
+    console.log(ImagesRemaining);
+    if (ImagesRemaining === 0) {
+        ImageUploads.splice(0, ImageUploads.length);
+        return true
+    }
+    return false
 }
 
 const PropertyTypes = {// the only return value should be nothing or an object containing properties to update
@@ -8111,7 +8143,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
     ["fills"]: (Value, Object, Node) => {
         if (/*Value.length > 1 ||*/ Value == figma.mixed) {
             return console.warn(`Frame ${Object.Name} cannot have more than 1 fill`);
-        } else if (Value.length === 0) {
+        } else if (Value.length === 0 || Object._hasExport) {
             Object.BackgroundTransparency = 0;
             return;
         }
@@ -8127,20 +8159,20 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         //Object.Visible = Node.type === "GROUP" ? true : Fill.visible; // ensure a boolean, and always enable groups
         //Object.Visible = Fill.visible !== false; // ensure a boolean - REMOVED as a better way would be to set the opacity to 0
 
-        if (Fill.type === "IMAGE") {
-            // TODO: Implement better fill support (DONE within ExportImage)
-            // if (Node.getPluginData("ImageHash") === Fill.imageHash) {
-            //     Object.Class = "ImageLabel"
-            //     Object.Image = Node.getPluginData("ImageId")
-            //     return;
-            // }
-
+        // if (!Settings.UploadImages) {
+        //     Properties.BackgroundTransparency = Properties.ImageTransparency || 0;
+        //     if (Properties.ImageColor3) Properties.BackgroundColor3 = Properties.ImageColor3;
+        //     return;
+        // };
+        
+        if (Flags.IgnoreImageExporting && Fill.type === "IMAGE") {
             // Export image
-
             Object._ImageHash = Fill.imageHash;
             Object.Class = "ImageLabel"; // or ImageButton?!
             Object.ImageColor3 = {R: 255, G: 255, B: 255};
-            //Object.BackgroundTransparency = 0; // Images can't have backgrounds from what I can tell (in figma)
+
+            // Images can't have backgrounds from what I can tell (in figma), unless image uploading is disabled, but exporting is enabled
+            if (!Settings.UploadImages) Object.BackgroundTransparency = 0;
 
             ExportImage(Node, Object);
 
@@ -8176,9 +8208,28 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         }
     },
     ["effects"]: (Value, Object, Node) => {
+        if (!Settings.UploadImages) return; // UploadImages is disabled, ignore?
+
         Value.forEach(Effect => {
+            function clamp(OldOffset, X, Y) {
+                var NewOffset = {X: X, Y: Y};
+
+                if (OldOffset) {
+                    if (OldOffset.X > X) NewOffset.X = OldOffset.X;
+                    if (OldOffset.Y > Y) NewOffset.Y = OldOffset.Y;
+                }
+
+                return NewOffset;
+            }
+
+            if (Effect.offset) {
+                Object.EffectRadius = clamp(Object.EffectRadius, Effect.offset.x, Effect.offset.y);
+            } else if (Effect.radius) {
+                Object.EffectRadius = clamp(Object.EffectRadius, Effect.radius, Effect.radius);
+            }
+
             switch (Effect.type) {
-                case "DROP_SHADOW":
+                /*case "DROP_SHADOW":
                     // do something
                     // 
                     // IDEA:
@@ -8192,6 +8243,15 @@ const PropertyTypes = {// the only return value should be nothing or an object c
                     //     BackgroundTransparency: 
                     // })
 
+                    break;*/
+                default:
+                    // Export as image
+                    Object.Class = "ImageLabel"; // or ImageButton?!
+                    Object.ImageColor3 = {R: 1, G: 1, B: 1};
+                    Object._hasExport = true
+                    //Object.BackgroundTransparency = 0; // Images can't have backgrounds from what I can tell (in figma)
+
+                    ExportImage(Node, Object)
                     break;
             }
         })
@@ -8367,6 +8427,10 @@ const PropertyTypes = {// the only return value should be nothing or an object c
                 HorizontalAlignment: Conversions.HorizontalAlignment.indexOf(HorizontalAlignment),
                 VerticalAlignment: Conversions.VerticalAlignment.indexOf(VerticalAlignment),
             })
+
+            if (!Object.Name.match("scrl")) {
+                Object.Name += "scrl"
+            }
 
             return;
         }
@@ -8653,6 +8717,10 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
 
             Children: [],
             Node: Node,
+        }
+
+        if (Node.name.toLowerCase().match(/IMG/)) {
+            ExportImage(Node, Properties);
         }
 
         return Properties;
@@ -9082,6 +9150,15 @@ function GetNodeProperties(Node, Settings, ParentObject) {
         if (ParentObject._Transparency) { // Multiply Transparency with Parent Transparency/Pass through
             Properties._Transparency = ParentObject._Transparency * Properties._Transparency
         };
+        
+        if (!Settings.UploadImages && Properties.Class === "TextLabel" && ParentObject.Class.match("Button")) {
+            if (Flags.IgnoreImageExporting) {
+                Properties.Interactable = false;
+            } else {
+                Properties.Text = "";
+                Properties.TextTransparency = 1;
+            }
+        }
 
        /* Properties._OriginalPosition = {
             XS: Properties.Position.YS,
@@ -9095,6 +9172,10 @@ function GetNodeProperties(Node, Settings, ParentObject) {
         YS: 0,
         YO: 0,
     };*/
+
+    if (Properties.Name.length > 99) {
+        Properties.Name = Properties.Name.substr(0, 100);
+    }
 
     //const BoundingBox = Node.absoluteBoundingBox // DO NOT RE-IMPLEMENT WITHOUT RE-ARRANGING
     // Properties.Position = {
@@ -9113,7 +9194,7 @@ function GetNodeProperties(Node, Settings, ParentObject) {
     // Loop Node properties
     Object.getOwnPropertyNames(Object.getPrototypeOf(Node)).forEach((i) => {
         if (PropertyTypes[i]) {
-            PropertyTypes[i](Node[i], Properties, Node);
+            PropertyTypes[i](Node[i], Properties, Node, ParentObject);
         }
     });
     // for (const [propkey, propvalue] of Object.entries(Node)) {
@@ -9177,6 +9258,9 @@ var Flags = {
     IgnoreInvisible: true, // Will skip over (/ignore) invisible elements
     OffsetFromScale: false, // Allows for example, a frame in the bottom right of the screen to have a UDim2 Scale + Offset Position of (1, -25, 1, -25)
     GroupBackgroundFrameName: "background", // The name to look for to convert Groups into Frames
+    ReuploadStuckImages: false, // Intended when images are taking a long time to get through moderation
+    AwaitModeration: true, // True: Waits for all images to successfully pass moderation before exporting, False: exports when all images have been successfully uploaded
+    IgnoreImageExporting: true, // Only applies when UploadImages setting is disabled, allows for Images (including Buttons) to be exported without an image
 
     // Debugging
     ForceUploadImages: false, // Skips image matching (ignoring cached ids), upload is still overwritten by ImageUploadTesting
@@ -9207,6 +9291,7 @@ function QuickClose(Message) {
     console.warn("Closing Plugin:", Message)
     figma.notify(`Error: ` + Message, {timeout: 5000});
     figma.closePlugin();
+    alert(Message)
 
     throw new Error(Message);
 }
@@ -9455,7 +9540,7 @@ function LoopNodes(Nodes, ParentObject) {
                 Properties._IsButton = true;
 
                 if (Properties.Class === "ImageLabel") Properties.Class = "ImageButton"
-                else {
+                else /*if (Properties.Class === "TextLabel")*/ {
                     Properties.Class = "TextButton";
 
                     // Remove text from non-TextLabels (Frames, Groups, Components, Instances)
@@ -9497,21 +9582,25 @@ function LoopNodes(Nodes, ParentObject) {
                 Properties.HorizontalScrollBarInset = 0 //Conversions.ScrollBarInset.indexOf("SCROLLBAR")
             }
         }
-
-        // Finish up and Convert Properties
-
         
-        //
-        // Create Item element, loop/add children (if applicable)
-        
+        // Misc
         var New = "";
         
         if (Properties.Children) {
             New += LoopChildren(Properties.Children, ParentObject);
         }
         // Loop all Node Children
-        if (Node.children) New += LoopNodes(Node.children, Properties);
+        if (!Properties.Image && Node.children) New += LoopNodes(Node.children, Properties);
         
+        // Adjust element Size & Position to account for effects
+        if (Properties.EffectRadius) {
+            const EffectRadius = Properties.EffectRadius
+            Properties.Size.XO += EffectRadius.X * 2
+            Properties.Size.YO += EffectRadius.Y * 2
+            Properties.Position.XO -= EffectRadius.X
+            Properties.Position.YO -= EffectRadius.Y
+        }
+
         // Calculate Aspect Ratio and Scale
         if (Flags.ApplyAspectRatio) {
             if (Properties.Class === "ScrollingFrame") console.warn("Cannot Apply UIAspectRatioConstraint to a ScrollingFrame that scrolls")
@@ -9683,10 +9772,32 @@ function LoopNodes(Nodes, ParentObject) {
             }
         } else if (!Flags.UseSelectionPositionRelativeToScene) {
             // Set Position of upmost Element (most likely a Group) to (0,0)
-            Properties.Position.XO = 0;
-            Properties.Position.YO = 0;
+            Properties.Position.XO -= Node.x;
+            Properties.Position.YO -= Node.y;
+        } else if (Node.parent) {
+            // Convert user-selected frame to scale
+            Properties.Position.XO -= Node.parent.x;
+            Properties.Position.YO -= Node.parent.y;
+
+            if (Flags.ConvertOffsetToScale) {
+                const PSX = Node.parent.width
+                const PSY = Node.parent.height
+
+                //console.log(Properties.Position, "X:", PSX, "Y:", PSY)
+                Properties.Position.XS = Properties.Position.XO / PSX
+                Properties.Position.YS = Properties.Position.YO / PSY
+                Properties.Size.XS = Properties.Size.XO / PSX;
+                Properties.Size.YS = Properties.Size.YO / PSY;
+                
+                Properties.Position.XO = 0;
+                Properties.Position.YO = 0;
+                Properties.Size.XO = 0;
+                Properties.Size.YO = 0;
+            }
         }
         
+        // Convert to XML
+
         FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
         FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n" + New;
         FileContent += "</Item>\n";
@@ -9694,45 +9805,6 @@ function LoopNodes(Nodes, ParentObject) {
     }
 
     return FileContent
-}
-
-async function ConvertNodes() {
-    var SelectedNodes = figma.currentPage.selection;
-
-    if (SelectedNodes.length == 0) return QuickClose("No Nodes selected");
-
-    // Start Converting Nodes
-
-    var FileContent = '<!--\n\tGenerated by Figma to Roblox\n\tReport any bugs/issues to notwistedhere on discord/github\n-->\n\n<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Meta name="ExplicitAutoJoints">true</Meta>\n';
-
-    var Nodes = LoopNodes(SelectedNodes);
-
-    // wait for all images to be uploaded
-    await new Promise((resolve, reject) => {
-        function Timeout() {
-            if (IsDone()) return resolve();
-
-            setTimeout(Timeout, 500);
-        }
-
-        Timeout()
-    })
-
-    const ImageOperations = Nodes.replace(/{OP-([0-9a-zA-Z-:]+)}/g, (_, Id) => {
-        var ExportedImage = GetImageFromOperation(Id);
-        return ExportedImage.Properties.Image;
-    });
-
-    FileContent += ImageOperations + "</roblox>";
-
-    figma.ui.postMessage({
-        type: "Download",
-        data: FileContent
-    });
-
-    Notify("Successfully exported")
-
-    return true
 }
 
 function CreatePreset(Preset) {
@@ -9774,12 +9846,40 @@ function CreatePreset(Preset) {
     Frame.name = `${Preset} (${SizeX}x${SizeY})`
 }
 
-function RunPlugin() { // this is technecally a codegen plugin?
+async function RunPlugin() { // this is technecally a codegen plugin?
     if (RunDebounce) return;
+    if (figma.currentPage.selection.length == 0) return QuickClose("No Nodes selected");
 
     RunDebounce = true
     console.log("[FTR] Starting");
-    ConvertNodes();
+
+    // Start Converting Nodes
+    var FileContent = '<!--\n\tGenerated by Figma to Roblox\n\tReport any bugs/issues to notwistedhere on discord/github\n-->\n\n<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Meta name="ExplicitAutoJoints">true</Meta>\n';
+    var Nodes = LoopNodes(figma.currentPage.selection);
+
+    // wait for all images to be uploaded
+    await new Promise((resolve, reject) => {
+        function Timeout() {
+            if (IsDone()) return resolve();
+            else setTimeout(Timeout, 500);
+        }
+
+        Timeout()
+    })
+
+    const ImageOperations = Nodes.replaceAll(/{FTR_([0-9a-zA-Z-:]+)}/g, (_, Id) => {
+        var ExportedImage = GetImageFromOperation(Id);
+        return ExportedImage.Properties.Image;
+    });
+
+    FileContent += ImageOperations + "</roblox>";
+
+    figma.ui.postMessage({
+        type: "Download",
+        data: FileContent
+    });
+
+    Notify("Successfully exported");
     console.log("[FTR] Done");
     
     setTimeout(() => {
@@ -9787,8 +9887,6 @@ function RunPlugin() { // this is technecally a codegen plugin?
     }, 2500)
     //RunDebounce = false
 }
-
-//ConvertNodes();
 
 figma.ui.onmessage = msg => {
     switch (msg.type) {
@@ -9802,12 +9900,12 @@ figma.ui.onmessage = msg => {
             UpdateImage(msg);
             break;
         case "SetAsync":
-            if (Settings[msg.key] !== undefined) Settings[msg.key] = msg.value;
-            // vv DEBUGGING vv
-            if (Flags[msg.key] !== undefined) Flags[msg.key] = msg.value;
-
-            figma.clientStorage.setAsync(msg.key, msg.value);
-            break;
+           if (Settings[msg.key] !== undefined) Settings[msg.key] = msg.value;
+           // vv DEBUGGING vv
+           if (Flags[msg.key] !== undefined) Flags[msg.key] = msg.value;
+        
+           figma.clientStorage.setAsync(msg.key, msg.value);
+           break;
         case "CreatePreset":
             CreatePreset(msg.preset);
             break;
@@ -9846,8 +9944,8 @@ const FetchPromise = new Promise((resolve, reject) => {
 });
 
 FetchPromise.then((StoredSettings) => figma.ui.postMessage({
-    type: "LoadSettings",
-    settings: StoredSettings
+   type: "LoadSettings",
+   settings: StoredSettings
 }));
 
 // TODO: Visualise Buttons & Scrolling frames? I can't believe annotations are paid :(

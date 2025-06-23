@@ -14,6 +14,9 @@ var Flags = {
     IgnoreInvisible: true, // Will skip over (/ignore) invisible elements
     OffsetFromScale: false, // Allows for example, a frame in the bottom right of the screen to have a UDim2 Scale + Offset Position of (1, -25, 1, -25)
     GroupBackgroundFrameName: "background", // The name to look for to convert Groups into Frames
+    ReuploadStuckImages: false, // Intended when images are taking a long time to get through moderation
+    AwaitModeration: true, // True: Waits for all images to successfully pass moderation before exporting, False: exports when all images have been successfully uploaded
+    IgnoreImageExporting: true, // Only applies when UploadImages setting is disabled, allows for Images (including Buttons) to be exported without an image
 
     // Debugging
     ForceUploadImages: false, // Skips image matching (ignoring cached ids), upload is still overwritten by ImageUploadTesting
@@ -44,6 +47,7 @@ function QuickClose(Message) {
     console.warn("Closing Plugin:", Message)
     figma.notify(`Error: ` + Message, {timeout: 5000});
     figma.closePlugin();
+    alert(Message)
 
     throw new Error(Message);
 }
