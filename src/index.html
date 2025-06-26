@@ -10,7 +10,6 @@
 
         <style>
             :root {
-                width: 300px;
                 --background: var(--figma-color-bg-secondary) !important;
                 --background-body: var(--figma-color-bg) !important;
                 --button-base: var(--figma-color-bg-secondary) !important;
@@ -19,6 +18,10 @@
             }
             input {
                 accent-color: var(--background) !important;
+                width: 100%;
+            }
+            summary {
+                width: 100%;
             }
         </style>
 
@@ -40,8 +43,8 @@
         <br>
 
         <div>
-            <input type="checkbox" id="ApplyAspectRatio" name="Apply AspectRatioConstraint" />
-            <label for="ApplyAspectRatio">Apply AspectRatioConstraint</label>
+            <input type="checkbox" id="ApplyAspectRatio" name="Apply AspectRatio" />
+            <label for="ApplyAspectRatio">Apply AspectRatio globally</label>
             <div></div>
 
             <label for="ConvertOffsetToScale">
@@ -100,6 +103,10 @@
             <label for="awaitmoderation">Await Moderation</label>
             <div></div>
             
+            <input type="checkbox" id="uploadeffects" name="Upload effects" />
+            <label for="uploadeffects">Upload effects</label>
+            <div></div>
+            
             <label for="apikey">Cloud API Key</label>
             <input type="text" id="apikey" placeholder="XXXXXXXXXXXXXXXXXXXXXXXXXXX" />
             <div></div>
@@ -114,6 +121,23 @@
             
             <!-- <input type="checkbox" id="exportImages" name="Export Images" />
             <label for="exportImages">Export Images</label> -->
+
+            <details>
+                <summary>
+                    Plugin Help
+                </summary>
+                <p style="font-size: small">You can often find more detailed information on <a href="https://github.com/NoTwistedHere/Figma-to-Roblox/blob/main/README.md" target="_blank">github</a></p>
+                <h4>Not case sensitive, alt names don't get exported</h4>
+                Tags:
+                <ul>
+                    <li>Image (alt: <b>IMG</b>)</li>
+                    <li>Button (alt: <b>BTN</b>)</li>
+                    <li>Scroll (alt: <b>SCRL</b>)</li>
+                </ul>
+                <p style="font-size: small">With tags you can add the same to both TextLabel (or Buttons) and its parent Group, for better linking</p>
+                <p style="font-size: small">Frames with the name <b>'Background'</b> will override their parent group's apperance once exported.</p>
+                <p style="font-size: small">Frames with Auto Layout enabled will automatically export as a Scrolling Frame.</p>
+            </details>
         </div>
 
         <!--  -->
@@ -121,7 +145,7 @@
         <h5>
             <span>Made by NoTwistedHere,</span>
             <br>
-            <span>report any issues via <a href="https://github.com/NoTwistedHere/Figma-to-Roblox/issues">Github</a> or Discord (notwistedhere)</span>
+            <span>report any issues via <a href="https://github.com/NoTwistedHere/Figma-to-Roblox/issues" target="_blank">Github</a> or Discord (notwistedhere)</span>
         </h5>
 
         <script>
@@ -151,6 +175,11 @@
                 {
                     name: "AwaitModeration",
                     id: "awaitmoderation",
+                    type: "checkbox"
+                },
+                {
+                    name: "UploadEffects",
+                    id: "uploadeffects",
                     type: "checkbox"
                 },
                 {
@@ -227,6 +256,7 @@
                     };
 
                     if (Value !== undefined && Settings[Option.name] !== Value) {
+                        Settings[Option.name] = Value;
                         PostMessage({
                             type: "SetAsync",
                             key: Option.name,

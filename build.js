@@ -7882,6 +7882,7 @@ const Settings = {
     //ExportVectors: true, // Changed to Flag (/Utilities.js)
     ApplyZIndex: true, // Not implemented?
     UploadImages: false,
+    UploadEffects: false,
 };
 
 function ConvertFill(Fill, Object) {
@@ -7939,7 +7940,7 @@ function ConvertFill(Fill, Object) {
     return [Color3, Transparency];
 }
 
-function ExportImage(Node, Properties, CustomExport, ForceReupload) {
+function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout) {
     let AssetId = Node.getPluginData("AssetId");
     var UploadId = Node.getPluginData("OperationId");
 
@@ -7991,7 +7992,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload) {
         }
     }
 
-    UploadId = UploadId || Properties._ImageHash || AssetId || Properties.Name //Node.id
+    UploadId = UploadId || Properties._ImageHash || AssetId || Properties.Name.replace(/[[:alnum:]\-:]+/g, "") //Node.id
 
     if (!UploadId || UploadId.length < 2) QuickClose("Node has no id!?");
 
@@ -8005,27 +8006,41 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload) {
     console.log("exporting", UploadId);
     
     if (Properties._ImageHash) Node.setPluginData("ImageHash", Properties._ImageHash);
-    Node.exportAsync(CustomExport || Settings.DefaultExport).then(Bytes => {
+    var ExportNode = Node;
+
+    if (FullWhiteout && Node.fills && Node.fills[0]) {
+        ExportNode = Node.clone();
+        ExportNode.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+    }
+    
+    ExportNode.exportAsync(CustomExport || Settings.DefaultExport).then(Bytes => {
         const Format = (CustomExport ? CustomExport.format : "PNG").toLowerCase();
         var IgnoreUpload = false;
 
-        // for (var i = 0; i < ImageExports.length; i++) {
-        //     if (ImageExports[i].Bytes == Bytes) {
-        //         IgnoreUpload = true;
-        //         UploadId = ImageExports[i].UploadId
-        //     };
-        // }
-
-        if (!ImageExports[UploadId]) {
-            ImageExports[UploadId] = {
-                Node: Node,
-                Properties: Properties,
-                Bytes: Bytes, // Uint8Array
-                UploadId: UploadId
-            }
+        for (const [key, value] in ImageExports) {
+            if (value.Bytes == Bytes) {
+                IgnoreUpload = true;
+                UploadId = key
+                Properties.Image = `{FTR_${key}}`
+                ImagesRemaining += 1;
+                break;
+            };
         }
 
-        if (!ForceReupload && !Flags.ForceUploadImages && !Properties._ImageHash) {
+        Node.setPluginData("AssetId", "");
+        Node.setPluginData("OperationId", "");
+
+        if (IgnoreUpload) return
+        else if (!ForceReupload && !Flags.ForceUploadImages && !Properties._ImageHash) {
+            if (!ImageExports[UploadId]) {
+                ImageExports[UploadId] = {
+                    Node: Node,
+                    Properties: Properties,
+                    Bytes: Bytes, // Uint8Array
+                    UploadId: UploadId
+                }
+            }
+
             const _ImageHash = createHash("sha256").update(Bytes).digest("hex");
             
             if (_ImageHash) {
@@ -8045,14 +8060,11 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload) {
                 Node.setPluginData("ImageHash", _ImageHash);
             }
         }
-        
-        Node.setPluginData("AssetId", "");
-        Node.setPluginData("OperationId", "");
 
         // Test post image upload with template data
         if (Flags.ImageUploadTesting) UpdateImage({id: UploadId, data: Flags.ImageUploadBoilerplate});
         // Upload Image
-        else if (!IgnoreUpload) figma.ui.postMessage({
+        else figma.ui.postMessage({
             type: "UploadImage",
             data: {
                 Data: Bytes,
@@ -8061,7 +8073,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload) {
                 Format: Format
             }
         })
-    })
+    });
 
     return UploadId
 }
@@ -8093,6 +8105,11 @@ function UpdateImage(msg) {
         }
 
         //ImagesRemaining -= 1; return;
+    }
+    
+    if (ImageInfo.Properties._ReplacedBy) {
+        ImageInfo.Properties = ImageInfo.Properties._ReplacedBy;
+        ImageInfo.Node = ImageInfo.Properties._OriginalNode;
     }
 
     var Content = msg.data.imageContent || msg.data.assetId;
@@ -8140,10 +8157,14 @@ const PropertyTypes = {// the only return value should be nothing or an object c
     ["clipsContent"]: (Value, Object, Node) => {
         Object.ClipsDescendants = Value;
     },
+    ["targetAspectRatio"]: (Value, Object, Node) => {
+        if (!Value) return;
+        Object._ApplyAspectRatio = true
+    },
     ["fills"]: (Value, Object, Node) => {
         if (/*Value.length > 1 ||*/ Value == figma.mixed) {
             return console.warn(`Frame ${Object.Name} cannot have more than 1 fill`);
-        } else if (Value.length === 0 || Object._hasExport) {
+        } else if (Value.length === 0 /*|| Object._hasExport*/) { // if the export is exported white, _hasExport should be false so we can recover the per-item colours:
             Object.BackgroundTransparency = 0;
             return;
         }
@@ -8208,7 +8229,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         }
     },
     ["effects"]: (Value, Object, Node) => {
-        if (!Settings.UploadImages) return; // UploadImages is disabled, ignore?
+        if (!Settings.UploadImages || Settings.UploadEffects) return; // UploadImages is disabled, ignore?
 
         Value.forEach(Effect => {
             function clamp(OldOffset, X, Y) {
@@ -8251,7 +8272,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
                     Object._hasExport = true
                     //Object.BackgroundTransparency = 0; // Images can't have backgrounds from what I can tell (in figma)
 
-                    ExportImage(Node, Object)
+                    ExportImage(Node, Object, null, null, true)
                     break;
             }
         })
@@ -8719,7 +8740,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             Node: Node,
         }
 
-        if (Node.name.toLowerCase().match(/IMG/)) {
+        if (Node.name.toLowerCase().match(/img/)) {
             ExportImage(Node, Properties);
         }
 
@@ -8790,7 +8811,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             ZIndex: 1,
 
             Text: Node.characters,
-            TextSize: Node.fontSize !== figma.mixed ? Node.fontSize : undefined,
+            TextSize: Node.fontSize !== figma.mixed ? Node.fontSize : 24,
             TextXAlignment: Conversions.TextXAlignments.indexOf(Node.textAlignHorizontal),
             TextYAlignment: Conversions.TextYAlignments.indexOf(Node.textAlignVertical),
             TextWrapped: true, // hmmm
@@ -9155,8 +9176,8 @@ function GetNodeProperties(Node, Settings, ParentObject) {
             if (Flags.IgnoreImageExporting) {
                 Properties.Interactable = false;
             } else {
-                Properties.Text = "";
-                Properties.TextTransparency = 1;
+                //Properties.Text = "";
+                //Properties.TextTransparency = 1;
             }
         }
 
@@ -9362,6 +9383,8 @@ function ConvertObject(Properties, ParentObject) {
     var XML = ""
 
     for (var [Key, Value] of Object.entries(Properties)) {
+        if (Value == null || Value == undefined) continue;
+
         switch (Key) {
             case "Node":
             case "Children":
@@ -9459,6 +9482,7 @@ function LoopNodes(Nodes, ParentObject) {
         if (Flags.IgnoreInvisible && !Node.visible) continue;
         
         const Properties = GetNodeProperties(Node, Settings, ParentObject); // Can't name it Object because of below v
+        Properties._OriginalNode = Node;
 
         //console.log("Props:", Properties, "Parent:", ParentObject)
         //console.log("Node:", Node);
@@ -9472,24 +9496,31 @@ function LoopNodes(Nodes, ParentObject) {
             // FileContent += "</Item>\n";
         }
         
-        
         const lowercaseName = Properties.Name.toLowerCase();
         const removeNameAbriv = lowercaseName.match("btn") || lowercaseName.match("scrl");
 
-        if (lowercaseName == Flags.GroupBackgroundFrameName && ParentObject) {
+        if (ParentObject && (lowercaseName == Flags.GroupBackgroundFrameName /*|| (
+            Node.type === "RECTANGLE" && Properties.BackgroundTransparency == 0
+            && Properties.Position.XO == ParentObject.Position.XO
+            && Properties.Position.YO == ParentObject.Position.YO
+            && Properties.Size.XO == ParentObject.Size.XO
+            && Properties.Size.YO == ParentObject.Size.YO)
+        */)) { // Convert parent object into the new background
             ParentObject._HasGradient = Properties._HasGradient;
             ParentObject.BackgroundColor3 = Properties.BackgroundColor3;
             ParentObject.BackgroundTransparency = Properties.BackgroundTransparency;
             ParentObject.BorderSizePixel = Properties.BorderSizePixel;
+            ParentObject.Image = Properties.Image;
             //ParentObject.Rotation = Properties.Rotation; // this now looks like a bad idea
             ParentObject.Class = Properties.Class;
+            Properties._ReplacedBy = ParentObject;
             
             if (Properties.Children) {
                 FileContent += LoopChildren(Properties.Children, Properties);
             }
 
             continue;
-        } else if (removeNameAbriv && removeNameAbriv[0] === "btn" || lowercaseName.match("button")) { // Convert to button
+        } else if (removeNameAbriv && removeNameAbriv[0] === "btn" || lowercaseName.match("button")) {
             if (removeNameAbriv) Properties.Name = Properties.Name.replace(/btn/i, "");
 
             if (ParentObject && ParentObject._IsButton) { // update parent button
@@ -9541,14 +9572,14 @@ function LoopNodes(Nodes, ParentObject) {
 
                 if (Properties.Class === "ImageLabel") Properties.Class = "ImageButton"
                 else /*if (Properties.Class === "TextLabel")*/ {
-                    Properties.Class = "TextButton";
-
                     // Remove text from non-TextLabels (Frames, Groups, Components, Instances)
                     if (Properties.Class !== "TextLabel") {
                         Properties.Text = "";
                         Properties.TextSize = 0;
                         Properties.TextTransparency = 1;
                     };
+
+                    Properties.Class = "TextButton";
                 }
             } else console.warn(`[Figma to Roblox] FAILED to convert element "${Properties.Name}" into a button as class "${Properties.Class}" is none of the following: Frame, ImageLabel, TextLabel`)
         } else if (removeNameAbriv && removeNameAbriv[0] === "scrl" || lowercaseName.match("scroll")) {  // Convert to Scrolling Frame
@@ -9590,7 +9621,7 @@ function LoopNodes(Nodes, ParentObject) {
             New += LoopChildren(Properties.Children, ParentObject);
         }
         // Loop all Node Children
-        if (!Properties.Image && Node.children) New += LoopNodes(Node.children, Properties);
+        if ((Properties._hasExport || !Properties.Image) && Node.children) New += LoopNodes(Node.children, Properties);
         
         // Adjust element Size & Position to account for effects
         if (Properties.EffectRadius) {
@@ -9602,7 +9633,7 @@ function LoopNodes(Nodes, ParentObject) {
         }
 
         // Calculate Aspect Ratio and Scale
-        if (Flags.ApplyAspectRatio) {
+        if (Properties._ApplyAspectRatio || Flags.ApplyAspectRatio) {
             if (Properties.Class === "ScrollingFrame") console.warn("Cannot Apply UIAspectRatioConstraint to a ScrollingFrame that scrolls")
             else {
                 var AspectRatio = Math.round((Properties.Size.XO / Properties.Size.YO) * 100000) / 100000;
@@ -9913,7 +9944,7 @@ figma.ui.onmessage = msg => {
 }
 
 figma.showUI(__html__, {
-    width: 260,
+    width: 300,
     height: 380,
     themeColors: true
 });

@@ -52,6 +52,8 @@ function ConvertObject(Properties, ParentObject) {
     var XML = ""
 
     for (var [Key, Value] of Object.entries(Properties)) {
+        if (Value == null || Value == undefined) continue;
+
         switch (Key) {
             case "Node":
             case "Children":
@@ -149,6 +151,7 @@ function LoopNodes(Nodes, ParentObject) {
         if (Flags.IgnoreInvisible && !Node.visible) continue;
         
         const Properties = GetNodeProperties(Node, Settings, ParentObject); // Can't name it Object because of below v
+        Properties._OriginalNode = Node;
 
         //console.log("Props:", Properties, "Parent:", ParentObject)
         //console.log("Node:", Node);
@@ -162,24 +165,31 @@ function LoopNodes(Nodes, ParentObject) {
             // FileContent += "</Item>\n";
         }
         
-        
         const lowercaseName = Properties.Name.toLowerCase();
         const removeNameAbriv = lowercaseName.match("btn") || lowercaseName.match("scrl");
 
-        if (lowercaseName == Flags.GroupBackgroundFrameName && ParentObject) {
+        if (ParentObject && (lowercaseName == Flags.GroupBackgroundFrameName /*|| (
+            Node.type === "RECTANGLE" && Properties.BackgroundTransparency == 0
+            && Properties.Position.XO == ParentObject.Position.XO
+            && Properties.Position.YO == ParentObject.Position.YO
+            && Properties.Size.XO == ParentObject.Size.XO
+            && Properties.Size.YO == ParentObject.Size.YO)
+        */)) { // Convert parent object into the new background
             ParentObject._HasGradient = Properties._HasGradient;
             ParentObject.BackgroundColor3 = Properties.BackgroundColor3;
             ParentObject.BackgroundTransparency = Properties.BackgroundTransparency;
             ParentObject.BorderSizePixel = Properties.BorderSizePixel;
+            ParentObject.Image = Properties.Image;
             //ParentObject.Rotation = Properties.Rotation; // this now looks like a bad idea
             ParentObject.Class = Properties.Class;
+            Properties._ReplacedBy = ParentObject;
             
             if (Properties.Children) {
                 FileContent += LoopChildren(Properties.Children, Properties);
             }
 
             continue;
-        } else if (removeNameAbriv && removeNameAbriv[0] === "btn" || lowercaseName.match("button")) { // Convert to button
+        } else if (removeNameAbriv && removeNameAbriv[0] === "btn" || lowercaseName.match("button")) {
             if (removeNameAbriv) Properties.Name = Properties.Name.replace(/btn/i, "");
 
             if (ParentObject && ParentObject._IsButton) { // update parent button
@@ -231,14 +241,14 @@ function LoopNodes(Nodes, ParentObject) {
 
                 if (Properties.Class === "ImageLabel") Properties.Class = "ImageButton"
                 else /*if (Properties.Class === "TextLabel")*/ {
-                    Properties.Class = "TextButton";
-
                     // Remove text from non-TextLabels (Frames, Groups, Components, Instances)
                     if (Properties.Class !== "TextLabel") {
                         Properties.Text = "";
                         Properties.TextSize = 0;
                         Properties.TextTransparency = 1;
                     };
+
+                    Properties.Class = "TextButton";
                 }
             } else console.warn(`[Figma to Roblox] FAILED to convert element "${Properties.Name}" into a button as class "${Properties.Class}" is none of the following: Frame, ImageLabel, TextLabel`)
         } else if (removeNameAbriv && removeNameAbriv[0] === "scrl" || lowercaseName.match("scroll")) {  // Convert to Scrolling Frame
@@ -280,7 +290,7 @@ function LoopNodes(Nodes, ParentObject) {
             New += LoopChildren(Properties.Children, ParentObject);
         }
         // Loop all Node Children
-        if (!Properties.Image && Node.children) New += LoopNodes(Node.children, Properties);
+        if ((Properties._hasExport || !Properties.Image) && Node.children) New += LoopNodes(Node.children, Properties);
         
         // Adjust element Size & Position to account for effects
         if (Properties.EffectRadius) {
@@ -292,7 +302,7 @@ function LoopNodes(Nodes, ParentObject) {
         }
 
         // Calculate Aspect Ratio and Scale
-        if (Flags.ApplyAspectRatio) {
+        if (Properties._ApplyAspectRatio || Flags.ApplyAspectRatio) {
             if (Properties.Class === "ScrollingFrame") console.warn("Cannot Apply UIAspectRatioConstraint to a ScrollingFrame that scrolls")
             else {
                 var AspectRatio = Math.round((Properties.Size.XO / Properties.Size.YO) * 100000) / 100000;
@@ -603,7 +613,7 @@ figma.ui.onmessage = msg => {
 }
 
 figma.showUI(__html__, {
-    width: 260,
+    width: 300,
     height: 380,
     themeColors: true
 });

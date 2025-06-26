@@ -74,6 +74,7 @@ NOTE: This might be missing some things
     * NOTE: any transparency cannot be done in figma (to my knowledge), and will likely not look the same
 * Rotation
 * Image Button (include either "Button" or "BTN" in the name)
+* Optionally, any nodes can be exported as Images by including `IMG` in the name (not case sensitive)
 
 ### Buttons
     Both Text and Image buttons are suppported,
