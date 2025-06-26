@@ -140,8 +140,6 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
     ImageUploads.push(UploadId);
     ImagesRemaining += 1;
     
-    console.log("exporting", UploadId);
-    
     if (Properties._ImageHash) Node.setPluginData("ImageHash", Properties._ImageHash);
     var ExportNode = Node;
 

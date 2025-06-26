@@ -621,7 +621,7 @@ figma.showUI(__html__, {
 const FetchPromise = new Promise((resolve, reject) => {    
     figma.clientStorage.keysAsync().then(Keys => {
         var Done = 0;
-        var StoredSettings = {};
+        var StoredSettings = Flags;
         
         for (var i = 0; i < Keys.length; i++) {
             const Key = Keys[i];

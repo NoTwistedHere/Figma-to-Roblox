@@ -84,7 +84,7 @@
             <label for="uploadimages">Upload Images</label>
             <div></div>
 
-            <label for="ignoreimageexporting"><input type="checkbox" id="ignoreimageexporting" name="Ignore Image Exporting (disable Uploading)"/> Ignore Image Exporting <small>(disable Uploading)</small></label>
+            <label for="ignoreimageexporting"><input type="checkbox" id="ignoreimageexporting" name="Ignore Image Exporting (disable Uploading)"/> Export Empty Images <small>(applies if Uploading is disabled)</small></label>
             <div></div>
             
             <input type="checkbox" id="isgroup" name="Is Group" />
@@ -165,11 +165,6 @@
                 {
                     name: "ForceUploadImages",
                     id: "forcereupload",
-                    type: "checkbox",
-                },
-                {
-                    name: "ReuploadStuckImages",
-                    id: "reuploadstuck",
                     type: "checkbox",
                 },
                 {

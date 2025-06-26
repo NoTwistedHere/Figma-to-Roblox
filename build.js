@@ -8003,8 +8003,6 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
     ImageUploads.push(UploadId);
     ImagesRemaining += 1;
     
-    console.log("exporting", UploadId);
-    
     if (Properties._ImageHash) Node.setPluginData("ImageHash", Properties._ImageHash);
     var ExportNode = Node;
 
@@ -9952,7 +9950,7 @@ figma.showUI(__html__, {
 const FetchPromise = new Promise((resolve, reject) => {    
     figma.clientStorage.keysAsync().then(Keys => {
         var Done = 0;
-        var StoredSettings = {};
+        var StoredSettings = Flags;
         
         for (var i = 0; i < Keys.length; i++) {
             const Key = Keys[i];
