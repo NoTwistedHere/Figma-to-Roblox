@@ -43,6 +43,10 @@
         <br>
 
         <div>
+            <input type="checkbox" id="HighlightNodes" name="Highlight Nodes" />
+            <label for="HighlightNodes">Highlight Nodes (WIP)</label>
+            <div></div>
+
             <input type="checkbox" id="ApplyAspectRatio" name="Apply AspectRatio" />
             <label for="ApplyAspectRatio">Apply AspectRatio globally</label>
             <div></div>
@@ -84,7 +88,7 @@
             <label for="uploadimages">Upload Images</label>
             <div></div>
 
-            <label for="ignoreimageexporting"><input type="checkbox" id="ignoreimageexporting" name="Ignore Image Exporting (disable Uploading)"/> Export Empty Images <small>(applies if Uploading is disabled)</small></label>
+            <label for="alwaysexportimages"><input type="checkbox" id="alwaysexportimages" name="Export Images (disable Uploading)"/> Export Images <small>(only applies if Uploading is disabled)</small></label>
             <div></div>
             
             <input type="checkbox" id="isgroup" name="Is Group" />
@@ -157,10 +161,9 @@
                     type: "checkbox",
                 },
                 {
-                    name: "IgnoreImageExporting",
-                    id: "ignoreimageexporting",
+                    name: "AlwaysExportImages",
+                    id: "alwaysexportimages",
                     type: "checkbox",
-                    flipped: true,
                 },
                 {
                     name: "ForceUploadImages",
@@ -173,9 +176,21 @@
                     type: "checkbox"
                 },
                 {
+                    name: "ReuploadStuckImages",
+                    id: "reuploadstuck",
+                    type: "checkbox"
+                },
+                {
                     name: "UploadEffects",
                     id: "uploadeffects",
                     type: "checkbox"
+                },
+                
+                {
+                    name: "ShowHighlights",
+                    id: "HighlightNodes",
+                    type: "checkbox",
+                    instantUpdate: true,
                 },
                 {
                     name: "CloudApiKey",
@@ -235,6 +250,31 @@
             function Sleep(ms) {
                 return new Promise(res => setTimeout(res, ms));
             }
+
+            Options.forEach(Option => {
+                const Element = document.getElementById(Option.id);
+
+                if (Element && Option.instantUpdate) {
+                    Element.onclick = () => {
+                        // ik I could use switch but is it really needed?
+                        if (Option.type === "text") Value = Element.value
+                        else if (Option.type === "checkbox") {
+                            Value = Element.checked;
+                            
+                            if (Option.flipped) Value = !Value
+                        };
+
+                        if (Value !== undefined && Settings[Option.name] !== Value) {
+                            Settings[Option.name] = Value;
+                            PostMessage({
+                                type: "SetAsync",
+                                key: Option.name,
+                                value: Value
+                            });
+                        }
+                    };
+                }
+            });
 
             document.getElementById("convselect").onclick = () => {
                 Options.forEach(Option => {
@@ -313,7 +353,7 @@
                             }
                         })).json();
 
-                        if (UploadResponse.done) PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status })
+                        if (UploadResponse.done) PostMessage({ type: "ImageUploaded", id: data.Id, co: true, data: UploadResponse.response || UploadResponse.status })
                         else console.warn("Image operation not complete:", UploadResponse)
 
                         break;

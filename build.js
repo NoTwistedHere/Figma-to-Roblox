@@ -7889,7 +7889,7 @@ function ConvertFill(Fill, Object) {
     if (Fill.visible === false) return [{}, 0]
     
     var Transparency = Fill.opacity;
-    var Color3 = {R: 255, G: 255, B: 255};
+    var Color3 = {R: 1, G: 1, B: 1};
 
     switch (Fill.type) {
         case "SOLID":
@@ -7944,8 +7944,8 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
     let AssetId = Node.getPluginData("AssetId");
     var UploadId = Node.getPluginData("OperationId");
 
-    if (!Settings.UploadImages) return;
     if (AssetId && AssetId.match(/[0-9]+/)) AssetId = AssetId.match(/[0-9]+/)[0];
+    if (!Settings.UploadImages) return Properties.Image = `rbxassetid://${AssetId}`;
 
     if (Node.vectorPaths) { // hash vector, Flags.ExportVectorsAsImage should be true if we get here
         var CombinedVecPaths = "";
@@ -8093,8 +8093,11 @@ function UpdateImage(msg) {
     
     let ModerationResult = msg.data.moderationResult
 
-    if (ModerationResult && (ModerationResult.moderationState != "Approved" && ModerationResult.moderationState != "MODERATION_STATE_APPROVED")) {
-        if (ModerationResult.moderationState === "Reviewing") {
+    if (Flags.AwaitModeration && ModerationResult && (ModerationResult.moderationState != "Approved" && ModerationResult.moderationState != "MODERATION_STATE_APPROVED")) {
+        if (msg.co && Flags.ReuploadStuckImages) {
+            ExportImage(ImageInfo.Node, ImageInfo.Properties, false, true)
+            return;
+        }else if (ModerationResult.moderationState === "Reviewing") {
             figma.notify(`Image Element ${msg.id} took too long to pass moderation, Image Id: ${msg.data.assetId || msg.data.path}`)
             console.warn(`Image Element ${msg.id} took too long to pass moderation:`, ModerationResult, msg);
         } else {
@@ -8184,11 +8187,11 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         //     return;
         // };
         
-        if (Flags.IgnoreImageExporting && Fill.type === "IMAGE") {
+        if (Flags.AlwaysExportImages && Fill.type === "IMAGE") {
             // Export image
             Object._ImageHash = Fill.imageHash;
             Object.Class = "ImageLabel"; // or ImageButton?!
-            Object.ImageColor3 = {R: 255, G: 255, B: 255};
+            Object.ImageColor3 = {R: 1, G: 1, B: 1};
 
             // Images can't have backgrounds from what I can tell (in figma), unless image uploading is disabled, but exporting is enabled
             if (!Settings.UploadImages) Object.BackgroundTransparency = 0;
@@ -9171,44 +9174,18 @@ function GetNodeProperties(Node, Settings, ParentObject) {
         };
         
         if (!Settings.UploadImages && Properties.Class === "TextLabel" && ParentObject.Class.match("Button")) {
-            if (Flags.IgnoreImageExporting) {
+            if (!Flags.AlwaysExportImages) {
                 Properties.Interactable = false;
             } else {
                 //Properties.Text = "";
                 //Properties.TextTransparency = 1;
             }
         }
-
-       /* Properties._OriginalPosition = {
-            XS: Properties.Position.YS,
-            XO: Properties.Position.XO,
-            YS: Properties.Position.YS,
-            YO: Properties.Position.YO,
-        };*/
-    }/*else if (!ParentObject && Node.type == "FRAME") Properties._OriginalPosition = {
-        XS: 0,
-        XO: 0,
-        YS: 0,
-        YO: 0,
-    };*/
+    }
 
     if (Properties.Name.length > 99) {
         Properties.Name = Properties.Name.substr(0, 100);
     }
-
-    //const BoundingBox = Node.absoluteBoundingBox // DO NOT RE-IMPLEMENT WITHOUT RE-ARRANGING
-    // Properties.Position = {
-    //     XS: 0,
-    //     XO: BoundingBox.x,
-    //     YS: 0,
-    //     YO: BoundingBox.y,
-    // }
-    // Properties.Size = {
-    //     XS: 0,
-    //     XO: BoundingBox.width,
-    //     YS: 0,
-    //     YO: BoundingBox.height,
-    // }
     
     // Loop Node properties
     Object.getOwnPropertyNames(Object.getPrototypeOf(Node)).forEach((i) => {
@@ -9216,23 +9193,10 @@ function GetNodeProperties(Node, Settings, ParentObject) {
             PropertyTypes[i](Node[i], Properties, Node, ParentObject);
         }
     });
-    // for (const [propkey, propvalue] of Object.entries(Node)) {
-    //     if (PropertyTypes[propkey]) {
-    //         console.log(propkey, propvalue);
-    //         PropertyTypes[propkey](propvalue, Properties, Node);
-    //     }
-    // }
-
-    //PropertyTypes["strokes"](Node["strokes"], Properties, Node);
-    //console.log(Properties)
     
     Properties._OriginalPosition = Properties.Position;
     Properties._OriginalSize = Properties.Size;
-    //Properties._OriginalSize = Properties.Size;
-    //Properties.Position.XO -= some math //*= Scale.X
-    //Properties.Position.YO //*= Scale.Y
-    //Properties.Size.XO *= Scale.X
-    //Properties.Size.YO *= Scale.Y
+    
     if (Properties.Rotation && Properties.Rotation !== 0 /*&& Properties.Size.XO !== 0 && Properties.Size.YO !== 0*/) {
         const BoundingBox = Node.absoluteBoundingBox;
 
@@ -9260,7 +9224,154 @@ module.exports = {
     GetImageFromOperation,
     IsDone
 }
-},{"./Conversions":58,"./Utilities":60,"create-hash/browser":27}],60:[function(require,module,exports){
+},{"./Conversions":58,"./Utilities":61,"create-hash/browser":27}],60:[function(require,module,exports){
+
+const { Flags } = require('../Utilities.js');
+
+var HighlightedNodes = [];
+var CurrentGroup;
+
+const Types = {
+    btn: {
+        text: "Button",
+        color: {r: 0.25, g: 0.5, b: 0.8},
+        opacity: 0.94,
+        textWidth: 57,
+    },
+    img: {
+        text: "Image",
+        color: {r: 0.4, g: 0.9, b: 0.5},
+        textColor: {r: 0.1, g: 0.1, b: 0.1},
+        opacity: 0.94,
+        textWidth: 52,
+    },
+    scrl: {
+        text: "Scrolling Frame",
+        color: {r: 0.8, g: 0.8, b: 0.4},
+        opacity: 0.94,
+        textWidth: 132,
+    }
+}
+
+function HighlightNode(node) {
+    const TypeFlags = node.name.toLowerCase().match(/btn|img|scrl/g);
+    
+    if (!TypeFlags || node.parent && node.parent.name.match(/btn|button|img|image/i)) return;
+
+    const NodeId = node.name.replace(/btn|scrl|img/ig, "") + node.id;
+
+    node.setPluginData("NodeId", NodeId);
+
+    const NodeType = Types[TypeFlags[0]]
+    const HighlightRect = figma.createRectangle();
+    HighlightedNodes.push(HighlightRect);
+    HighlightRect.name = NodeId;
+    HighlightRect.x = node.absoluteBoundingBox.x - 2;
+    HighlightRect.y = node.absoluteBoundingBox.y - 2;
+    HighlightRect.resize(node.width + 4, node.height + 4);
+    HighlightRect.fills = [];
+    HighlightRect.strokes = [{
+        type: "SOLID",
+        color: NodeType.color,
+        opacity: NodeType.opacity || 0.8,
+    }];
+    HighlightRect.strokeWeight = 3;
+    HighlightRect.strokeAlign = "OUTSIDE";
+
+    const BodyRect = figma.createRectangle();
+    HighlightedNodes.push(BodyRect);
+    BodyRect.name = NodeId;
+    BodyRect.x = node.absoluteBoundingBox.x;
+    BodyRect.y = node.absoluteBoundingBox.y + node.height + 8;
+    BodyRect.resize(0, 0);
+    BodyRect.cornerRadius = 4;
+    BodyRect.fills = [{
+        type: "SOLID",
+        color: NodeType.color,
+        opacity: 0.8,
+    }];
+
+    const BodyTextRect = figma.createText();
+    HighlightedNodes.push(BodyTextRect);
+    BodyTextRect.name = NodeId;
+    BodyTextRect.x = node.absoluteBoundingBox.x + 10;
+    BodyTextRect.y = node.absoluteBoundingBox.y + node.height + 8;
+    BodyTextRect.resize(0, 0);
+    BodyTextRect.fills = [{
+        type: "SOLID",
+        color: NodeType.textColor || {r: 1, g: 1, b: 1},
+        opacity: 1,
+    }];
+
+    figma.loadFontAsync(BodyTextRect.fontName).then(() => {
+        BodyTextRect.fontSize = 18
+        BodyTextRect.characters = NodeType.text //"BUTTON"
+        BodyTextRect.resize(NodeType.textWidth, 20); // Math.max(NodeType.textWidth, Math.min(node.width - 20, 200))
+        BodyRect.resize(NodeType.textWidth + 20, 24);
+    });
+
+    if (CurrentGroup && CurrentGroup.parent) {
+        CurrentGroup.appendChild(HighlightRect);
+        CurrentGroup.appendChild(BodyRect);
+        CurrentGroup.appendChild(BodyTextRect);
+    }
+}
+
+function HighlightNodes() {
+    const nodes = figma.currentPage.findAll(node => {
+        if (node.name === "FigmaToRoblox_TEMP") CurrentGroup = node;
+        return node.name.match(/btn|scrl|img/i);
+    })
+
+    if (CurrentGroup && CurrentGroup.parent) CurrentGroup.remove();
+    CurrentGroup = undefined
+    HighlightedNodes = []
+
+    nodes.forEach(HighlightNode);
+
+    CurrentGroup = figma.group(HighlightedNodes, figma.currentPage);
+    CurrentGroup.name = "FigmaToRoblox_TEMP"
+}
+
+function close() {
+    if (CurrentGroup && CurrentGroup.parent) CurrentGroup.remove();
+    HighlightedNodes = undefined;
+    CurrentGroup = undefined;
+}
+
+figma.currentPage.on("nodechange", (data) => {
+    if (data.nodeChanges) {
+        data.nodeChanges.forEach(nodeChange => {
+            if (nodeChange.origin == "LOCAL" && nodeChange.type == "PROPERTY_CHANGE" && nodeChange.properties.find(p => p == "name") && !HighlightedNodes.find(hen => hen == nodeChange.node)) {
+                const NodeId = nodeChange.node.getPluginData("NodeId");
+
+                if (NodeId) {
+                    HighlightedNodes = HighlightedNodes.filter((Node) => {
+                        if (Node.parent) {
+                            if (Node.name === NodeId) {
+                                Node.remove();
+                            }
+
+                            return false
+                        }
+
+                        return true
+                    });
+                }
+                
+                if (nodeChange.node.name.match(/btn|scrl|img/i)) HighlightNode(nodeChange.node);
+                else if (NodeId) nodeChange.node.setPluginData("NodeId", "");
+            }
+        })
+    }
+})
+
+module.exports = {
+    name: "ShowHighlights",
+    start: HighlightNodes,
+    stop: close,
+}
+},{"../Utilities.js":61}],61:[function(require,module,exports){
 var CurrentNotification;
 
 var Flags = {
@@ -9279,7 +9390,8 @@ var Flags = {
     GroupBackgroundFrameName: "background", // The name to look for to convert Groups into Frames
     ReuploadStuckImages: false, // Intended when images are taking a long time to get through moderation
     AwaitModeration: true, // True: Waits for all images to successfully pass moderation before exporting, False: exports when all images have been successfully uploaded
-    IgnoreImageExporting: true, // Only applies when UploadImages setting is disabled, allows for Images (including Buttons) to be exported without an image
+    AlwaysExportImages: true, // Only applies when UploadImages setting is disabled, allows for Images (including Buttons) to be exported without an image id
+    ShowHighlights: false, // True: Temporarily creates highlights around Images, Buttons and Scrolls, with a name tag below
 
     // Debugging
     ForceUploadImages: false, // Skips image matching (ignoring cached ids), upload is still overwritten by ImageUploadTesting
@@ -9326,7 +9438,7 @@ module.exports = {
     QuickClose,
     Notify
 }
-},{}],61:[function(require,module,exports){
+},{}],62:[function(require,module,exports){
 /*
     @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@bbbbbbbb@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -9374,6 +9486,7 @@ module.exports = {
 const Conversions = require('./Conversions.js');
 const { Flags, QuickClose, Notify } = require('./Utilities.js');
 const { GetNodeProperties, XMLTypes, Settings, UpdateImage, UpdateOperationId, GetImageFromOperation, IsDone } = require('./Converters.js');
+const HighlightNodes = require("./Flags/HighlightNodes.js");
 
 var RunDebounce = false;
 
@@ -9549,7 +9662,7 @@ function LoopNodes(Nodes, ParentObject) {
                         
                         //ParentObject.Text = Properties.Text
         
-                        continue;
+                        //continue;
                     } else {
                         console.log("TextLabel doesn't meet criteria to update parent TextButton")
                     }
@@ -9917,6 +10030,11 @@ async function RunPlugin() { // this is technecally a codegen plugin?
     //RunDebounce = false
 }
 
+figma.skipInvisibleInstanceChildren = true;
+figma.on("close", () => {
+    HighlightNodes.stop();
+});
+
 figma.ui.onmessage = msg => {
     switch (msg.type) {
         case "run":
@@ -9932,6 +10050,11 @@ figma.ui.onmessage = msg => {
            if (Settings[msg.key] !== undefined) Settings[msg.key] = msg.value;
            // vv DEBUGGING vv
            if (Flags[msg.key] !== undefined) Flags[msg.key] = msg.value;
+
+           if (msg.key == HighlightNodes.name) {
+                if (msg.value === true) HighlightNodes.start()
+                else HighlightNodes.stop();
+           }
         
            figma.clientStorage.setAsync(msg.key, msg.value);
            break;
@@ -9947,7 +10070,7 @@ figma.showUI(__html__, {
     themeColors: true
 });
 
-const FetchPromise = new Promise((resolve, reject) => {    
+new Promise((resolve, reject) => {    
     figma.clientStorage.keysAsync().then(Keys => {
         var Done = 0;
         var StoredSettings = Flags;
@@ -9970,12 +10093,16 @@ const FetchPromise = new Promise((resolve, reject) => {
             })
         }
     })
-});
+}).then((StoredSettings) => {
+    if (Flags.ShowHighlights) {
+        HighlightNodes.start();
+    }
 
-FetchPromise.then((StoredSettings) => figma.ui.postMessage({
-   type: "LoadSettings",
-   settings: StoredSettings
-}));
+    figma.ui.postMessage({
+        type: "LoadSettings",
+        settings: StoredSettings
+    })
+});
 
 // TODO: Visualise Buttons & Scrolling frames? I can't believe annotations are paid :(
 // figma.on("close", () => {
@@ -9991,4 +10118,4 @@ switch (figma.command) {
     default:
         console.warn(`[Figma To Roblox] Unknown command "${figma.command}"`)
 }
-},{"./Conversions.js":58,"./Converters.js":59,"./Utilities.js":60}]},{},[61]);
+},{"./Conversions.js":58,"./Converters.js":59,"./Flags/HighlightNodes.js":60,"./Utilities.js":61}]},{},[62]);

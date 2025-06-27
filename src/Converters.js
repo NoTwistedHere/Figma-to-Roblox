@@ -26,7 +26,7 @@ function ConvertFill(Fill, Object) {
     if (Fill.visible === false) return [{}, 0]
     
     var Transparency = Fill.opacity;
-    var Color3 = {R: 255, G: 255, B: 255};
+    var Color3 = {R: 1, G: 1, B: 1};
 
     switch (Fill.type) {
         case "SOLID":
@@ -81,8 +81,8 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
     let AssetId = Node.getPluginData("AssetId");
     var UploadId = Node.getPluginData("OperationId");
 
-    if (!Settings.UploadImages) return;
     if (AssetId && AssetId.match(/[0-9]+/)) AssetId = AssetId.match(/[0-9]+/)[0];
+    if (!Settings.UploadImages) return Properties.Image = `rbxassetid://${AssetId}`;
 
     if (Node.vectorPaths) { // hash vector, Flags.ExportVectorsAsImage should be true if we get here
         var CombinedVecPaths = "";
@@ -230,8 +230,11 @@ function UpdateImage(msg) {
     
     let ModerationResult = msg.data.moderationResult
 
-    if (ModerationResult && (ModerationResult.moderationState != "Approved" && ModerationResult.moderationState != "MODERATION_STATE_APPROVED")) {
-        if (ModerationResult.moderationState === "Reviewing") {
+    if (Flags.AwaitModeration && ModerationResult && (ModerationResult.moderationState != "Approved" && ModerationResult.moderationState != "MODERATION_STATE_APPROVED")) {
+        if (msg.co && Flags.ReuploadStuckImages) {
+            ExportImage(ImageInfo.Node, ImageInfo.Properties, false, true)
+            return;
+        }else if (ModerationResult.moderationState === "Reviewing") {
             figma.notify(`Image Element ${msg.id} took too long to pass moderation, Image Id: ${msg.data.assetId || msg.data.path}`)
             console.warn(`Image Element ${msg.id} took too long to pass moderation:`, ModerationResult, msg);
         } else {
@@ -321,11 +324,11 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         //     return;
         // };
         
-        if (Flags.IgnoreImageExporting && Fill.type === "IMAGE") {
+        if (Flags.AlwaysExportImages && Fill.type === "IMAGE") {
             // Export image
             Object._ImageHash = Fill.imageHash;
             Object.Class = "ImageLabel"; // or ImageButton?!
-            Object.ImageColor3 = {R: 255, G: 255, B: 255};
+            Object.ImageColor3 = {R: 1, G: 1, B: 1};
 
             // Images can't have backgrounds from what I can tell (in figma), unless image uploading is disabled, but exporting is enabled
             if (!Settings.UploadImages) Object.BackgroundTransparency = 0;
@@ -1308,44 +1311,18 @@ function GetNodeProperties(Node, Settings, ParentObject) {
         };
         
         if (!Settings.UploadImages && Properties.Class === "TextLabel" && ParentObject.Class.match("Button")) {
-            if (Flags.IgnoreImageExporting) {
+            if (!Flags.AlwaysExportImages) {
                 Properties.Interactable = false;
             } else {
                 //Properties.Text = "";
                 //Properties.TextTransparency = 1;
             }
         }
-
-       /* Properties._OriginalPosition = {
-            XS: Properties.Position.YS,
-            XO: Properties.Position.XO,
-            YS: Properties.Position.YS,
-            YO: Properties.Position.YO,
-        };*/
-    }/*else if (!ParentObject && Node.type == "FRAME") Properties._OriginalPosition = {
-        XS: 0,
-        XO: 0,
-        YS: 0,
-        YO: 0,
-    };*/
+    }
 
     if (Properties.Name.length > 99) {
         Properties.Name = Properties.Name.substr(0, 100);
     }
-
-    //const BoundingBox = Node.absoluteBoundingBox // DO NOT RE-IMPLEMENT WITHOUT RE-ARRANGING
-    // Properties.Position = {
-    //     XS: 0,
-    //     XO: BoundingBox.x,
-    //     YS: 0,
-    //     YO: BoundingBox.y,
-    // }
-    // Properties.Size = {
-    //     XS: 0,
-    //     XO: BoundingBox.width,
-    //     YS: 0,
-    //     YO: BoundingBox.height,
-    // }
     
     // Loop Node properties
     Object.getOwnPropertyNames(Object.getPrototypeOf(Node)).forEach((i) => {
@@ -1353,23 +1330,10 @@ function GetNodeProperties(Node, Settings, ParentObject) {
             PropertyTypes[i](Node[i], Properties, Node, ParentObject);
         }
     });
-    // for (const [propkey, propvalue] of Object.entries(Node)) {
-    //     if (PropertyTypes[propkey]) {
-    //         console.log(propkey, propvalue);
-    //         PropertyTypes[propkey](propvalue, Properties, Node);
-    //     }
-    // }
-
-    //PropertyTypes["strokes"](Node["strokes"], Properties, Node);
-    //console.log(Properties)
     
     Properties._OriginalPosition = Properties.Position;
     Properties._OriginalSize = Properties.Size;
-    //Properties._OriginalSize = Properties.Size;
-    //Properties.Position.XO -= some math //*= Scale.X
-    //Properties.Position.YO //*= Scale.Y
-    //Properties.Size.XO *= Scale.X
-    //Properties.Size.YO *= Scale.Y
+    
     if (Properties.Rotation && Properties.Rotation !== 0 /*&& Properties.Size.XO !== 0 && Properties.Size.YO !== 0*/) {
         const BoundingBox = Node.absoluteBoundingBox;
 

@@ -45,6 +45,7 @@
 const Conversions = require('./Conversions.js');
 const { Flags, QuickClose, Notify } = require('./Utilities.js');
 const { GetNodeProperties, XMLTypes, Settings, UpdateImage, UpdateOperationId, GetImageFromOperation, IsDone } = require('./Converters.js');
+const HighlightNodes = require("./Flags/HighlightNodes.js");
 
 var RunDebounce = false;
 
@@ -220,7 +221,7 @@ function LoopNodes(Nodes, ParentObject) {
                         
                         //ParentObject.Text = Properties.Text
         
-                        continue;
+                        //continue;
                     } else {
                         console.log("TextLabel doesn't meet criteria to update parent TextButton")
                     }
@@ -588,6 +589,11 @@ async function RunPlugin() { // this is technecally a codegen plugin?
     //RunDebounce = false
 }
 
+figma.skipInvisibleInstanceChildren = true;
+figma.on("close", () => {
+    HighlightNodes.stop();
+});
+
 figma.ui.onmessage = msg => {
     switch (msg.type) {
         case "run":
@@ -603,6 +609,11 @@ figma.ui.onmessage = msg => {
            if (Settings[msg.key] !== undefined) Settings[msg.key] = msg.value;
            // vv DEBUGGING vv
            if (Flags[msg.key] !== undefined) Flags[msg.key] = msg.value;
+
+           if (msg.key == HighlightNodes.name) {
+                if (msg.value === true) HighlightNodes.start()
+                else HighlightNodes.stop();
+           }
         
            figma.clientStorage.setAsync(msg.key, msg.value);
            break;
@@ -618,7 +629,7 @@ figma.showUI(__html__, {
     themeColors: true
 });
 
-const FetchPromise = new Promise((resolve, reject) => {    
+new Promise((resolve, reject) => {    
     figma.clientStorage.keysAsync().then(Keys => {
         var Done = 0;
         var StoredSettings = Flags;
@@ -641,12 +652,16 @@ const FetchPromise = new Promise((resolve, reject) => {
             })
         }
     })
-});
+}).then((StoredSettings) => {
+    if (Flags.ShowHighlights) {
+        HighlightNodes.start();
+    }
 
-FetchPromise.then((StoredSettings) => figma.ui.postMessage({
-   type: "LoadSettings",
-   settings: StoredSettings
-}));
+    figma.ui.postMessage({
+        type: "LoadSettings",
+        settings: StoredSettings
+    })
+});
 
 // TODO: Visualise Buttons & Scrolling frames? I can't believe annotations are paid :(
 // figma.on("close", () => {

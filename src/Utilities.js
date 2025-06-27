@@ -16,7 +16,8 @@ var Flags = {
     GroupBackgroundFrameName: "background", // The name to look for to convert Groups into Frames
     ReuploadStuckImages: false, // Intended when images are taking a long time to get through moderation
     AwaitModeration: true, // True: Waits for all images to successfully pass moderation before exporting, False: exports when all images have been successfully uploaded
-    IgnoreImageExporting: true, // Only applies when UploadImages setting is disabled, allows for Images (including Buttons) to be exported without an image
+    AlwaysExportImages: true, // Only applies when UploadImages setting is disabled, allows for Images (including Buttons) to be exported without an image id
+    ShowHighlights: false, // True: Temporarily creates highlights around Images, Buttons and Scrolls, with a name tag below
 
     // Debugging
     ForceUploadImages: false, // Skips image matching (ignoring cached ids), upload is still overwritten by ImageUploadTesting
