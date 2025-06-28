@@ -1,5 +1,5 @@
 const Conversions = require("./Conversions");
-const { Flags, QuickClose } = require("./Utilities");
+const { Flags, NotifyError } = require("./Utilities");
 const createHash = require("create-hash/browser");
 
 var ImagesRemaining = 0;
@@ -41,8 +41,6 @@ function ConvertFill(Fill, Object) {
         case "GRADIENT_LINEAR":
             Transparency = Fill.opacity;
             Color3 = { R: 1, G: 1, B: 1 };
-
-            console.warn("Node has LINEAR GRADIENT!", Object)
 
             Object._HasGradient = true;
             Object.Children.push({
@@ -131,7 +129,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
 
     UploadId = UploadId || Properties._ImageHash || AssetId || Properties.Name.replace(/[[:alnum:]\-:]+/g, "") //Node.id
 
-    if (!UploadId || UploadId.length < 2) QuickClose("Node has no id!?");
+    if (!UploadId || UploadId.length < 2) NotifyError(`Node "${Node.name}" {${Node.id}} has an invalid UploadId`, true);
 
     //Properties.UploadId = UploadId;
 
@@ -265,7 +263,6 @@ function UpdateImage(msg) {
     }
 
     ImagesRemaining -= 1;
-    console.log("Images Remaning:", ImagesRemaining);
 }
 
 function UpdateOperationId(msg) {
@@ -285,7 +282,7 @@ function GetImageFromOperation(OperationId) {
 }
 
 function IsDone() {
-    console.log(ImagesRemaining);
+    console.log("Checking IsDone, Images Remaning:", ImagesRemaining);
     if (ImagesRemaining === 0) {
         ImageUploads.splice(0, ImageUploads.length);
         return true

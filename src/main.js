@@ -43,7 +43,7 @@
 */
 
 const Conversions = require('./Conversions.js');
-const { Flags, QuickClose, Notify } = require('./Utilities.js');
+const { Flags, NotifyError, Notify } = require('./Utilities.js');
 const { GetNodeProperties, XMLTypes, Settings, UpdateImage, UpdateOperationId, GetImageFromOperation, IsDone } = require('./Converters.js');
 const HighlightNodes = require("./Flags/HighlightNodes.js");
 
@@ -86,13 +86,14 @@ function ConvertObject(Properties, ParentObject) {
                 XML += XMLTypes.content(Key, Value)
                 break;
             case "BackgroundTransparency":
-            case "Transparency":
+            case "Transparency": //can be either a number OR NumberSequence
             case "TextStrokeTransparency":
             case "TextTransparency":
             case "ImageTransparency":
                 // Should always be parented to a group as only groups and sections allow children
-                Value = Properties._Transparency * Value;
+                if (typeof(Value) !== "number") continue; // should be a NumberSequence, let it be handled by object type
 
+                Value = Properties._Transparency * Value;
                 XML += XMLTypes.number(Key, 1 - Value, false, 10000);
                 break
             case "TextSize":
@@ -182,7 +183,8 @@ function LoopNodes(Nodes, ParentObject) {
             ParentObject.BorderSizePixel = Properties.BorderSizePixel;
             ParentObject.Image = Properties.Image;
             //ParentObject.Rotation = Properties.Rotation; // this now looks like a bad idea
-            ParentObject.Class = Properties.Class;
+
+            if (Properties.Class !== "Frame") ParentObject.Class = Properties.Class;
             Properties._ReplacedBy = ParentObject;
             
             if (Properties.Children) {
@@ -531,25 +533,24 @@ function CreatePreset(Preset) {
             SizeY = 2160;
             break;
         default: 
-            return QuickClose("Preset doesn't exist");
+            return NotifyError("Preset doesn't exist");
     }
 
     const Frame = figma.createFrame();
     Frame.x = CenterOfScreen.x - SizeX / 2;
     Frame.y = CenterOfScreen.y - SizeY / 2;
-
+    Frame.resize(SizeX, SizeY);
+    Frame.lockAspectRatio();
+    Frame.fills = [{ type: "SOLID", color: { r: 0.2, g: 0.2, b: 0.2 } }];
+    Frame.name = `${Preset} (${SizeX}x${SizeY})`
     Frame.setRelaunchData({
         "export": "Export with FigmaToRoblox"
     });
-
-    Frame.resize(SizeX, SizeY);
-    Frame.fills = [{ type: "SOLID", color: { r: 0.2, g: 0.2, b: 0.2 } }];
-    Frame.name = `${Preset} (${SizeX}x${SizeY})`
 }
 
 async function RunPlugin() { // this is technecally a codegen plugin?
     if (RunDebounce) return;
-    if (figma.currentPage.selection.length == 0) return QuickClose("No Nodes selected");
+    if (figma.currentPage.selection.length == 0) return NotifyError("No Nodes selected");
 
     RunDebounce = true
     console.log("[FTR] Starting");
@@ -594,6 +595,10 @@ figma.on("close", () => {
     HighlightNodes.stop();
 });
 
+const ImageUploadErrorSuggestions = {
+    "PERMISSION_DENIED": "Ensure Uploader Type (User or Group), Id and API Key are correct and active"
+}
+
 figma.ui.onmessage = msg => {
     switch (msg.type) {
         case "run":
@@ -604,6 +609,14 @@ figma.ui.onmessage = msg => {
             break;
         case "ImageUploaded":
             UpdateImage(msg);
+            break;
+        case "UploadError":
+            var Suggestion = ImageUploadErrorSuggestions[msg.code] || "";
+            
+            NotifyError(`FAILED to upload image, got error '${msg.code}: ${msg.message}'${Suggestion ? ",\r\n" + Suggestion : ""}`, false, {
+                timeout: 5000,
+                error: true,
+            });
             break;
         case "SetAsync":
            if (Settings[msg.key] !== undefined) Settings[msg.key] = msg.value;
@@ -644,6 +657,16 @@ new Promise((resolve, reject) => {
                 if (Settings[Key] !== undefined) Settings[Key] = Value;
                 // vv DEBUGGING vv
                 else if (Flags[Key] !== undefined) Flags[Key] = Value;
+                else { // [TEMPORARY] Migrate old settings
+                    switch (Key) {
+                        case "UploadToGroup":
+                            Flags.UploaderType = Value ? "group" : "user"
+                            break;
+                        default:
+                            console.warn(`[Figma to Roblox] Unknown Settings/Flag "${Key}", value: ${Value}`)
+                            break;
+                    }
+                }
                 
                 if (Done == Keys.length) {
                     Done = null;
@@ -655,6 +678,12 @@ new Promise((resolve, reject) => {
 }).then((StoredSettings) => {
     if (Flags.ShowHighlights) {
         HighlightNodes.start();
+    } else {
+        figma.currentPage.findAll(node => {
+            if (node.name === "FigmaToRoblox_TEMP") {
+                node.remove();
+            }
+        });
     }
 
     figma.ui.postMessage({

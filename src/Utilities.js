@@ -42,21 +42,22 @@ var Flags = {
     }
 }
 
-function QuickClose(Message) {
+function NotifyError(Message, ClosePlugin, Options) {
     if (CurrentNotification) CurrentNotification.cancel();
 
-    console.warn("Closing Plugin:", Message)
-    figma.notify(`Error: ` + Message, {timeout: 5000});
-    figma.closePlugin();
-    alert(Message)
-
-    throw new Error(Message);
+    figma.notify(Message, Options || {timeout: 5000});
+    if (ClosePlugin) {
+        figma.closePlugin();
+        alert(Message);
+        
+        //throw new Error(Message);
+    }
 }
 
-function Notify(Message) {
+function Notify(Message, Options) {
     if (CurrentNotification) CurrentNotification.cancel();
 
-    CurrentNotification = figma.notify(Message);
+    CurrentNotification = figma.notify(Message, Options || undefined);
 }
 
 function Debounce(function_, wait = 100, options = {}) {
@@ -163,7 +164,7 @@ function Debounce(function_, wait = 100, options = {}) {
 
 module.exports = {
     Flags,
-    QuickClose,
+    NotifyError,
     Notify,
     Debounce
 }

@@ -7892,7 +7892,7 @@ module.exports = {
 }
 },{}],43:[function(require,module,exports){
 const Conversions = require("./Conversions");
-const { Flags, QuickClose } = require("./Utilities");
+const { Flags, NotifyError } = require("./Utilities");
 const createHash = require("create-hash/browser");
 
 var ImagesRemaining = 0;
@@ -7934,8 +7934,6 @@ function ConvertFill(Fill, Object) {
         case "GRADIENT_LINEAR":
             Transparency = Fill.opacity;
             Color3 = { R: 1, G: 1, B: 1 };
-
-            console.warn("Node has LINEAR GRADIENT!", Object)
 
             Object._HasGradient = true;
             Object.Children.push({
@@ -8024,7 +8022,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
 
     UploadId = UploadId || Properties._ImageHash || AssetId || Properties.Name.replace(/[[:alnum:]\-:]+/g, "") //Node.id
 
-    if (!UploadId || UploadId.length < 2) QuickClose("Node has no id!?");
+    if (!UploadId || UploadId.length < 2) NotifyError(`Node "${Node.name}" {${Node.id}} has an invalid UploadId`, true);
 
     //Properties.UploadId = UploadId;
 
@@ -8158,7 +8156,6 @@ function UpdateImage(msg) {
     }
 
     ImagesRemaining -= 1;
-    console.log("Images Remaning:", ImagesRemaining);
 }
 
 function UpdateOperationId(msg) {
@@ -8178,7 +8175,7 @@ function GetImageFromOperation(OperationId) {
 }
 
 function IsDone() {
-    console.log(ImagesRemaining);
+    console.log("Checking IsDone, Images Remaning:", ImagesRemaining);
     if (ImagesRemaining === 0) {
         ImageUploads.splice(0, ImageUploads.length);
         return true
@@ -9283,6 +9280,7 @@ const Types = {
         text: "Scrolling Frame",
         alt: "scrl",
         color: {r: 0.8, g: 0.8, b: 0.4},
+        textColor: {r: 0.1, g: 0.1, b: 0.1},
         textWidth: 132,
     }
 }
@@ -9292,35 +9290,41 @@ for (var [type, value] of Object.entries(Types)) {
 }
 
 function HighlightNode(node, rm) {
-    if (node.parent && node.parent.name.match(/btn|button|img|image/i)) return;
+    if (!NodeHighlightsTEMP || node.parent && node.parent.name.match(/btn|button|img|image/i)) return;
 
     const TypeFlags = rm === true ? false : node.name.toLowerCase().match(/btn|button|img|image|scrl|scroll/g);
-    const NodeId = "@FtR" + node.id;
+    const NodeId = "@FTR" + node.id;
+
+    if (node.children) node.children.forEach(childNode => HighlightNode(childNode, rm));
 
     if (rm === true || HighlightedNodes.find(N => N === node)) {
         var ReuseHighlight;
 
         NodeHighlightsTEMP = NodeHighlightsTEMP.filter((Node) => {
-            if (Node.parent && Node.name.substr(0, Node.name.length - 1) == NodeId) {
-                ReuseHighlight = true;
+            try {
+                if (Node.parent && Node.name.substr(0, Node.name.length - 1) == NodeId) {
+                    ReuseHighlight = true;
 
-                if (!TypeFlags) return Node.remove();
+                    if (!TypeFlags) return Node.remove();
 
-                switch (Node.name.substr(-1, 1)) {
-                    case "B": // Background
-                        Node.x = node.absoluteBoundingBox.x - 2;
-                        Node.y = node.absoluteBoundingBox.y - 2;
-                        Node.resize(node.width + 4, node.height + 4);
-                        break;
-                    case "C": // Text Background (Card)
-                        Node.x = node.absoluteBoundingBox.x;
-                        Node.y = node.absoluteBoundingBox.y + node.height + 8;
-                        break;
-                    case "T": // Text
-                        Node.x = node.absoluteBoundingBox.x + 10;
-                        Node.y = node.absoluteBoundingBox.y + node.height + 8;
-                        break;
+                    switch (Node.name.substr(-1, 1)) {
+                        case "B": // Background
+                            Node.x = node.absoluteBoundingBox.x - 2;
+                            Node.y = node.absoluteBoundingBox.y - 2;
+                            Node.resize(node.width + 4, node.height + 4);
+                            break;
+                        case "C": // Text Background (Card)
+                            Node.x = node.absoluteBoundingBox.x;
+                            Node.y = node.absoluteBoundingBox.y + node.height + 8;
+                            break;
+                        case "T": // Text
+                            Node.x = node.absoluteBoundingBox.x + 10;
+                            Node.y = node.absoluteBoundingBox.y + node.height + 8;
+                            break;
+                    }
                 }
+            } catch (error) {
+                console.warn(Node, error);
             }
 
             return true
@@ -9353,14 +9357,14 @@ function HighlightNode(node, rm) {
     const HighlightRect = figma.createRectangle();
     NodeHighlightsTEMP.push(HighlightRect);
     HighlightRect.name = NodeId + "B";
-    HighlightRect.x = node.absoluteBoundingBox.x - 2;
-    HighlightRect.y = node.absoluteBoundingBox.y - 2;
-    HighlightRect.resize(node.width + 4, node.height + 4);
+    HighlightRect.x = node.absoluteBoundingBox.x - 1;
+    HighlightRect.y = node.absoluteBoundingBox.y - 1;
+    HighlightRect.resize(node.width + 2, node.height + 2);
     HighlightRect.fills = [];
     HighlightRect.strokes = [{
         type: "SOLID",
         color: FirstNode.color,
-        opacity: FirstNode.opacity || 0.8,
+        opacity: FirstNode.opacity || 0.85,
     }];
     HighlightRect.strokeWeight = 3;
     HighlightRect.strokeAlign = "OUTSIDE";
@@ -9375,7 +9379,7 @@ function HighlightNode(node, rm) {
     BodyRect.fills = [{
         type: "SOLID",
         color: FirstNode.color,
-        opacity: 0.8,
+        opacity: 0.85,
     }];
 
     const BodyTextRect = figma.createText();
@@ -9417,14 +9421,18 @@ const NodeChangeDebounce = Debounce((data) => {
         }
 
         data.nodeChanges.forEach(nodeChange => {
-            if (RecentMoves[nodeChange] || nodeChange.origin !== "LOCAL") return;
-            RecentMoves[nodeChange] = true
+            if (RecentMoves[nodeChange.node] || nodeChange.origin !== "LOCAL") return;
+            RecentMoves[nodeChange.node] = true;
 
-            if (nodeChange.type == "PROPERTY_CHANGE"
+            if (
+                nodeChange.type == "CREATE"
+                || (nodeChange.type == "PROPERTY_CHANGE"
+                && nodeChange.properties
                 && nodeChange.properties.find(p => p == "name" || p == "x" || p == "y" || p == "height" || p == "width")
-                && !NodeHighlightsTEMP.find(hen => hen == nodeChange.node)
+                && !NodeHighlightsTEMP.find(hen => hen == nodeChange.node))
             ) {
                 HighlightNode(nodeChange.node);
+
                 /*if (nodeChange.node.name.toLowerCase().match(/btn|button|scrl|scroll|img|image/)) HighlightNode(nodeChange.node);
                 else if (HighlightedNodes.find(N => N === nodeChange.node)) {
                     const NodeId = nodeChange.node.name
@@ -9440,8 +9448,7 @@ const NodeChangeDebounce = Debounce((data) => {
                     
                     nodeChange.node.setPluginData("NodeId", "");
                 }*/
-            } else if (nodeChange.type == "CREATE") HighlightNode(nodeChange.node);
-            else if (nodeChange.type == "DELETE") HighlightNode(nodeChange.node, true);
+            } else if (nodeChange.type == "DELETE") HighlightNode(nodeChange.node, true);
         })
     }
 }, 800, {
@@ -9462,7 +9469,9 @@ function HighlightNodes() {
         }
         
         return node.name.match(/btn|button|scrl|scroll|img|image/i);
-    })
+    });
+    
+    figma.currentPage.on("nodechange", NodeChangeDebounce);
     
     if (CurrentGroup) {
         try {
@@ -9485,6 +9494,7 @@ function HighlightNodes() {
 }
 
 function close() {
+    figma.currentPage.off("nodechange", NodeChangeDebounce);
     NodeHighlightsTEMP = undefined;
     
     if (CurrentGroup) {
@@ -9494,8 +9504,6 @@ function close() {
         CurrentGroup = undefined
     }
 }
-
-figma.currentPage.on("nodechange", NodeChangeDebounce);
 
 module.exports = {
     name: "ShowHighlights",
@@ -9547,21 +9555,22 @@ var Flags = {
     }
 }
 
-function QuickClose(Message) {
+function NotifyError(Message, ClosePlugin, Options) {
     if (CurrentNotification) CurrentNotification.cancel();
 
-    console.warn("Closing Plugin:", Message)
-    figma.notify(`Error: ` + Message, {timeout: 5000});
-    figma.closePlugin();
-    alert(Message)
-
-    throw new Error(Message);
+    figma.notify(Message, Options || {timeout: 5000});
+    if (ClosePlugin) {
+        figma.closePlugin();
+        alert(Message);
+        
+        //throw new Error(Message);
+    }
 }
 
-function Notify(Message) {
+function Notify(Message, Options) {
     if (CurrentNotification) CurrentNotification.cancel();
 
-    CurrentNotification = figma.notify(Message);
+    CurrentNotification = figma.notify(Message, Options || undefined);
 }
 
 function Debounce(function_, wait = 100, options = {}) {
@@ -9668,7 +9677,7 @@ function Debounce(function_, wait = 100, options = {}) {
 
 module.exports = {
     Flags,
-    QuickClose,
+    NotifyError,
     Notify,
     Debounce
 }
@@ -9718,7 +9727,7 @@ module.exports = {
 */
 
 const Conversions = require('./Conversions.js');
-const { Flags, QuickClose, Notify } = require('./Utilities.js');
+const { Flags, NotifyError, Notify } = require('./Utilities.js');
 const { GetNodeProperties, XMLTypes, Settings, UpdateImage, UpdateOperationId, GetImageFromOperation, IsDone } = require('./Converters.js');
 const HighlightNodes = require("./Flags/HighlightNodes.js");
 
@@ -9761,13 +9770,14 @@ function ConvertObject(Properties, ParentObject) {
                 XML += XMLTypes.content(Key, Value)
                 break;
             case "BackgroundTransparency":
-            case "Transparency":
+            case "Transparency": //can be either a number OR NumberSequence
             case "TextStrokeTransparency":
             case "TextTransparency":
             case "ImageTransparency":
                 // Should always be parented to a group as only groups and sections allow children
-                Value = Properties._Transparency * Value;
+                if (typeof(Value) !== "number") continue; // should be a NumberSequence, let it be handled by object type
 
+                Value = Properties._Transparency * Value;
                 XML += XMLTypes.number(Key, 1 - Value, false, 10000);
                 break
             case "TextSize":
@@ -9857,7 +9867,8 @@ function LoopNodes(Nodes, ParentObject) {
             ParentObject.BorderSizePixel = Properties.BorderSizePixel;
             ParentObject.Image = Properties.Image;
             //ParentObject.Rotation = Properties.Rotation; // this now looks like a bad idea
-            ParentObject.Class = Properties.Class;
+
+            if (Properties.Class !== "Frame") ParentObject.Class = Properties.Class;
             Properties._ReplacedBy = ParentObject;
             
             if (Properties.Children) {
@@ -10206,25 +10217,24 @@ function CreatePreset(Preset) {
             SizeY = 2160;
             break;
         default: 
-            return QuickClose("Preset doesn't exist");
+            return NotifyError("Preset doesn't exist");
     }
 
     const Frame = figma.createFrame();
     Frame.x = CenterOfScreen.x - SizeX / 2;
     Frame.y = CenterOfScreen.y - SizeY / 2;
-
+    Frame.resize(SizeX, SizeY);
+    Frame.lockAspectRatio();
+    Frame.fills = [{ type: "SOLID", color: { r: 0.2, g: 0.2, b: 0.2 } }];
+    Frame.name = `${Preset} (${SizeX}x${SizeY})`
     Frame.setRelaunchData({
         "export": "Export with FigmaToRoblox"
     });
-
-    Frame.resize(SizeX, SizeY);
-    Frame.fills = [{ type: "SOLID", color: { r: 0.2, g: 0.2, b: 0.2 } }];
-    Frame.name = `${Preset} (${SizeX}x${SizeY})`
 }
 
 async function RunPlugin() { // this is technecally a codegen plugin?
     if (RunDebounce) return;
-    if (figma.currentPage.selection.length == 0) return QuickClose("No Nodes selected");
+    if (figma.currentPage.selection.length == 0) return NotifyError("No Nodes selected");
 
     RunDebounce = true
     console.log("[FTR] Starting");
@@ -10269,6 +10279,10 @@ figma.on("close", () => {
     HighlightNodes.stop();
 });
 
+const ImageUploadErrorSuggestions = {
+    "PERMISSION_DENIED": "Ensure Uploader Type (User or Group), Id and API Key are correct and active"
+}
+
 figma.ui.onmessage = msg => {
     switch (msg.type) {
         case "run":
@@ -10279,6 +10293,14 @@ figma.ui.onmessage = msg => {
             break;
         case "ImageUploaded":
             UpdateImage(msg);
+            break;
+        case "UploadError":
+            var Suggestion = ImageUploadErrorSuggestions[msg.code] || "";
+            
+            NotifyError(`FAILED to upload image, got error '${msg.code}: ${msg.message}'${Suggestion ? ",\r\n" + Suggestion : ""}`, false, {
+                timeout: 5000,
+                error: true,
+            });
             break;
         case "SetAsync":
            if (Settings[msg.key] !== undefined) Settings[msg.key] = msg.value;
@@ -10319,6 +10341,16 @@ new Promise((resolve, reject) => {
                 if (Settings[Key] !== undefined) Settings[Key] = Value;
                 // vv DEBUGGING vv
                 else if (Flags[Key] !== undefined) Flags[Key] = Value;
+                else { // [TEMPORARY] Migrate old settings
+                    switch (Key) {
+                        case "UploadToGroup":
+                            Flags.UploaderType = Value ? "group" : "user"
+                            break;
+                        default:
+                            console.warn(`[Figma to Roblox] Unknown Settings/Flag "${Key}", value: ${Value}`)
+                            break;
+                    }
+                }
                 
                 if (Done == Keys.length) {
                     Done = null;
@@ -10330,6 +10362,12 @@ new Promise((resolve, reject) => {
 }).then((StoredSettings) => {
     if (Flags.ShowHighlights) {
         HighlightNodes.start();
+    } else {
+        figma.currentPage.findAll(node => {
+            if (node.name === "FigmaToRoblox_TEMP") {
+                node.remove();
+            }
+        });
     }
 
     figma.ui.postMessage({

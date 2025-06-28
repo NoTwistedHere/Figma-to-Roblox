@@ -24,6 +24,7 @@ const Types = {
         text: "Scrolling Frame",
         alt: "scrl",
         color: {r: 0.8, g: 0.8, b: 0.4},
+        textColor: {r: 0.1, g: 0.1, b: 0.1},
         textWidth: 132,
     }
 }
@@ -33,35 +34,41 @@ for (var [type, value] of Object.entries(Types)) {
 }
 
 function HighlightNode(node, rm) {
-    if (node.parent && node.parent.name.match(/btn|button|img|image/i)) return;
+    if (!NodeHighlightsTEMP || node.parent && node.parent.name.match(/btn|button|img|image/i)) return;
 
     const TypeFlags = rm === true ? false : node.name.toLowerCase().match(/btn|button|img|image|scrl|scroll/g);
-    const NodeId = "@FtR" + node.id;
+    const NodeId = "@FTR" + node.id;
+
+    if (node.children) node.children.forEach(childNode => HighlightNode(childNode, rm));
 
     if (rm === true || HighlightedNodes.find(N => N === node)) {
         var ReuseHighlight;
 
         NodeHighlightsTEMP = NodeHighlightsTEMP.filter((Node) => {
-            if (Node.parent && Node.name.substr(0, Node.name.length - 1) == NodeId) {
-                ReuseHighlight = true;
+            try {
+                if (Node.parent && Node.name.substr(0, Node.name.length - 1) == NodeId) {
+                    ReuseHighlight = true;
 
-                if (!TypeFlags) return Node.remove();
+                    if (!TypeFlags) return Node.remove();
 
-                switch (Node.name.substr(-1, 1)) {
-                    case "B": // Background
-                        Node.x = node.absoluteBoundingBox.x - 2;
-                        Node.y = node.absoluteBoundingBox.y - 2;
-                        Node.resize(node.width + 4, node.height + 4);
-                        break;
-                    case "C": // Text Background (Card)
-                        Node.x = node.absoluteBoundingBox.x;
-                        Node.y = node.absoluteBoundingBox.y + node.height + 8;
-                        break;
-                    case "T": // Text
-                        Node.x = node.absoluteBoundingBox.x + 10;
-                        Node.y = node.absoluteBoundingBox.y + node.height + 8;
-                        break;
+                    switch (Node.name.substr(-1, 1)) {
+                        case "B": // Background
+                            Node.x = node.absoluteBoundingBox.x - 2;
+                            Node.y = node.absoluteBoundingBox.y - 2;
+                            Node.resize(node.width + 4, node.height + 4);
+                            break;
+                        case "C": // Text Background (Card)
+                            Node.x = node.absoluteBoundingBox.x;
+                            Node.y = node.absoluteBoundingBox.y + node.height + 8;
+                            break;
+                        case "T": // Text
+                            Node.x = node.absoluteBoundingBox.x + 10;
+                            Node.y = node.absoluteBoundingBox.y + node.height + 8;
+                            break;
+                    }
                 }
+            } catch (error) {
+                console.warn(Node, error);
             }
 
             return true
@@ -94,14 +101,14 @@ function HighlightNode(node, rm) {
     const HighlightRect = figma.createRectangle();
     NodeHighlightsTEMP.push(HighlightRect);
     HighlightRect.name = NodeId + "B";
-    HighlightRect.x = node.absoluteBoundingBox.x - 2;
-    HighlightRect.y = node.absoluteBoundingBox.y - 2;
-    HighlightRect.resize(node.width + 4, node.height + 4);
+    HighlightRect.x = node.absoluteBoundingBox.x - 1;
+    HighlightRect.y = node.absoluteBoundingBox.y - 1;
+    HighlightRect.resize(node.width + 2, node.height + 2);
     HighlightRect.fills = [];
     HighlightRect.strokes = [{
         type: "SOLID",
         color: FirstNode.color,
-        opacity: FirstNode.opacity || 0.8,
+        opacity: FirstNode.opacity || 0.85,
     }];
     HighlightRect.strokeWeight = 3;
     HighlightRect.strokeAlign = "OUTSIDE";
@@ -116,7 +123,7 @@ function HighlightNode(node, rm) {
     BodyRect.fills = [{
         type: "SOLID",
         color: FirstNode.color,
-        opacity: 0.8,
+        opacity: 0.85,
     }];
 
     const BodyTextRect = figma.createText();
@@ -158,14 +165,18 @@ const NodeChangeDebounce = Debounce((data) => {
         }
 
         data.nodeChanges.forEach(nodeChange => {
-            if (RecentMoves[nodeChange] || nodeChange.origin !== "LOCAL") return;
-            RecentMoves[nodeChange] = true
+            if (RecentMoves[nodeChange.node] || nodeChange.origin !== "LOCAL") return;
+            RecentMoves[nodeChange.node] = true;
 
-            if (nodeChange.type == "PROPERTY_CHANGE"
+            if (
+                nodeChange.type == "CREATE"
+                || (nodeChange.type == "PROPERTY_CHANGE"
+                && nodeChange.properties
                 && nodeChange.properties.find(p => p == "name" || p == "x" || p == "y" || p == "height" || p == "width")
-                && !NodeHighlightsTEMP.find(hen => hen == nodeChange.node)
+                && !NodeHighlightsTEMP.find(hen => hen == nodeChange.node))
             ) {
                 HighlightNode(nodeChange.node);
+
                 /*if (nodeChange.node.name.toLowerCase().match(/btn|button|scrl|scroll|img|image/)) HighlightNode(nodeChange.node);
                 else if (HighlightedNodes.find(N => N === nodeChange.node)) {
                     const NodeId = nodeChange.node.name
@@ -181,8 +192,7 @@ const NodeChangeDebounce = Debounce((data) => {
                     
                     nodeChange.node.setPluginData("NodeId", "");
                 }*/
-            } else if (nodeChange.type == "CREATE") HighlightNode(nodeChange.node);
-            else if (nodeChange.type == "DELETE") HighlightNode(nodeChange.node, true);
+            } else if (nodeChange.type == "DELETE") HighlightNode(nodeChange.node, true);
         })
     }
 }, 800, {
@@ -203,7 +213,9 @@ function HighlightNodes() {
         }
         
         return node.name.match(/btn|button|scrl|scroll|img|image/i);
-    })
+    });
+    
+    figma.currentPage.on("nodechange", NodeChangeDebounce);
     
     if (CurrentGroup) {
         try {
@@ -226,6 +238,7 @@ function HighlightNodes() {
 }
 
 function close() {
+    figma.currentPage.off("nodechange", NodeChangeDebounce);
     NodeHighlightsTEMP = undefined;
     
     if (CurrentGroup) {
@@ -235,8 +248,6 @@ function close() {
         CurrentGroup = undefined
     }
 }
-
-figma.currentPage.on("nodechange", NodeChangeDebounce);
 
 module.exports = {
     name: "ShowHighlights",

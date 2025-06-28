@@ -90,10 +90,6 @@
 
             <label for="alwaysexportimages"><input type="checkbox" id="alwaysexportimages" name="Export Images (disable Uploading)"/> Export Images <small>(only applies if Uploading is disabled)</small></label>
             <div></div>
-            
-            <input type="checkbox" id="isgroup" name="Is Group" />
-            <label for="isgroup">Upload To Group</label>
-            <div></div>
 
             <input type="checkbox" id="forcereupload" name="Force Reupload Images" />
             <label for="forcereupload">Force Reupload Images</label>
@@ -115,9 +111,19 @@
             <input type="text" id="apikey" placeholder="XXXXXXXXXXXXXXXXXXXXXXXXXXX" />
             <div></div>
             
-            <label for="uploaderid">User/Group ID</label>
+            <label for="uploaderid">User/Group Id</label>
             <input type="text" id="uploaderid" placeholder="xxxxxxxxxx" />
             <div></div>
+
+            <label for="uploadertype">Uploader Type</label>
+            <select name="uploadertype" id="uploadertype" style="height: 40px">
+                <option value="user">User</option>
+                <option value="group">Group</option>
+            </select>
+            
+            <!-- <input type="checkbox" id="isgroup" name="Is Group" />
+            <label for="isgroup">Upload To Group</label>
+            <div></div> -->
             
             <!-- <label for="prox">Custom Proxy</label>
             <input type="text" id="prox" placeholder="Proxy URL" />
@@ -204,10 +210,16 @@
                     type: "text",
                     placeholder: "xxxxxxxxxx",
                 },
+                // {
+                //     name: "UploadToGroup",
+                //     id: "isgroup",
+                //     type: "checkbox",
+                // },
                 {
-                    name: "UploadToGroup",
-                    id: "isgroup",
-                    type: "checkbox",
+                    name: "UploaderType",
+                    id: "uploadertype",
+                    type: "text",
+                    default: "user"
                 },
                 
                 {
@@ -392,8 +404,7 @@
                             description: "Exported from Figma",
                             creationContext: {
                                 creator: {
-                                    userId: !Settings.UploadToGroup ? parseFloat(Settings.UploaderId) : undefined,
-                                    groupId: Settings.UploadToGroup ? parseFloat(Settings.UploaderId) : undefined,
+                                    [Settings.UploaderType + "Id"]: parseFloat(Settings.UploaderId),
                                 }
                             }
                         }));
@@ -424,7 +435,10 @@
                                     imageContent: "rbxasset://textures/StudioSharedUI/TransparentWhiteImagePlaceholder.png"
                                 } });
 
-                                if (InitialResponse.status) console.error(`Image POST returned status ${InitialResponse.status}, "${InitialResponse.title}", errors:`, InitialResponse.errors[""] || InitialResponse.errors.map(err => err.message).join(", "))
+                                if (InitialResponse.code && InitialResponse.message) {
+                                    InitialResponse.type = "UploadError";
+                                    PostMessage(InitialResponse);
+                                } else if (InitialResponse.status) console.error(`Image POST returned status ${InitialResponse.status}, "${InitialResponse.title}", errors:`, InitialResponse.errors[""] || InitialResponse.errors.map(err => err.message).join(", "))
                                 else console.error(`Image POST returned errors:`, InitialResponse.errors.map(err => err.message).join(", "));
                                 return;
                             }
@@ -477,7 +491,7 @@
                                 const Value = Settings[Option.name];
 
                                 // ik I could use switch but is it really needed?
-                                if (Option.type === "text") Element.value = Value || "" 
+                                if (Option.type === "text") Element.value = Value || Option.default || "" 
                                 else if (Option.type === "checkbox") {
                                     Element.checked = Value || false;
 
