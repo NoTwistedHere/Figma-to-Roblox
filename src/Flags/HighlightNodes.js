@@ -1,35 +1,10 @@
-const Debounce = require("debounce");
+const { Debounce } = require("../Utilities");
 
 var HighlightedNodes = [];
+var NodeHighlightsTEMP = [];
 var CurrentGroup;
 var RecentMoves = {}
-var IsFirst;
-
-const NodeChangeDebounce = Debounce((data) => {
-    if (data.nodeChanges) {
-        data.nodeChanges.forEach(nodeChange => {
-            if (RecentMoves[nodeChange]) return;
-            RecentMoves[nodeChange] = true
-
-            if (nodeChange.origin == "LOCAL"
-                && nodeChange.type == "PROPERTY_CHANGE"
-                && nodeChange.properties.find(p => p == "name" || p == "x" || p == "y" || p == "height" || p == "width")
-                && !HighlightedNodes.find(hen => hen == nodeChange.node)
-            ) {
-                if (nodeChange.node.name.match(/btn|button|scrl|scroll|img|image/i)) HighlightNode(nodeChange.node);
-                else if (NodeId) nodeChange.node.setPluginData("NodeId", "");
-            }
-        })
-
-        if (IsFirst) {
-            IsFirst = false
-            setTimeout(() => {
-                RecentMoves = [];
-                IsFirst = true
-            }, 500)
-        }
-    }
-}, 2000)
+var IsFirst = true;
 
 const Types = {
     button: {
@@ -57,50 +32,49 @@ for (var [type, value] of Object.entries(Types)) {
     Types[value.alt] = value;
 }
 
-function HighlightNode(node) {
-    const TypeFlags = node.name.toLowerCase().match(/btn|button|img|image|scrl|scroll/g);
-    
-    if (!TypeFlags || node.parent && node.parent.name.match(/btn|button|img|image/i)) return;
+function HighlightNode(node, rm) {
+    if (node.parent && node.parent.name.match(/btn|button|img|image/i)) return;
 
-    var NodeId = node.name.match(/[%d]+:[%d]+/);
+    const TypeFlags = rm === true ? false : node.name.toLowerCase().match(/btn|button|img|image|scrl|scroll/g);
+    const NodeId = "@FtR" + node.id;
 
-    if (NodeId) {
-        NodeId = NodeId[0]
+    if (rm === true || HighlightedNodes.find(N => N === node)) {
         var ReuseHighlight;
 
-        HighlightedNodes = HighlightedNodes.filter((Node) => {
-            if (Node.parent) {
-                if (Node.name.match(NodeId)) {
-                    ReuseHighlight = true;
+        NodeHighlightsTEMP = NodeHighlightsTEMP.filter((Node) => {
+            if (Node.parent && Node.name.substr(0, Node.name.length - 1) == NodeId) {
+                ReuseHighlight = true;
 
-                    switch (Node.name.substr(-1, 1)) {
-                        case "B": // Background
-                            Node.x = node.absoluteBoundingBox.x - 2;
-                            Node.y = node.absoluteBoundingBox.y - 2;
-                            Node.resize(node.width + 4, node.height + 4);
-                            break;
-                        case "C": // Text Background (Card)
-                            Node.x = node.absoluteBoundingBox.x;
-                            Node.y = node.absoluteBoundingBox.y + node.height + 8;
-                            break;
-                        case "T": // Text
-                            Node.x = node.absoluteBoundingBox.x + 10;
-                            Node.y = node.absoluteBoundingBox.y + node.height + 8;
-                            break;
-                    }
+                if (!TypeFlags) return Node.remove();
+
+                switch (Node.name.substr(-1, 1)) {
+                    case "B": // Background
+                        Node.x = node.absoluteBoundingBox.x - 2;
+                        Node.y = node.absoluteBoundingBox.y - 2;
+                        Node.resize(node.width + 4, node.height + 4);
+                        break;
+                    case "C": // Text Background (Card)
+                        Node.x = node.absoluteBoundingBox.x;
+                        Node.y = node.absoluteBoundingBox.y + node.height + 8;
+                        break;
+                    case "T": // Text
+                        Node.x = node.absoluteBoundingBox.x + 10;
+                        Node.y = node.absoluteBoundingBox.y + node.height + 8;
+                        break;
                 }
-
-                return false
             }
 
             return true
         });
 
         if (ReuseHighlight) return;
-    } else NodeId = node.id;
+    };
+
+    if (!TypeFlags) return;
 
     node.setPluginData("NodeId", ""); // NodeId
-
+    HighlightedNodes.push(node);
+    
     var TextHeight = 0;
     var TextWidth = 0;
     var Text = "";
@@ -118,7 +92,7 @@ function HighlightNode(node) {
     }
     
     const HighlightRect = figma.createRectangle();
-    HighlightedNodes.push(HighlightRect);
+    NodeHighlightsTEMP.push(HighlightRect);
     HighlightRect.name = NodeId + "B";
     HighlightRect.x = node.absoluteBoundingBox.x - 2;
     HighlightRect.y = node.absoluteBoundingBox.y - 2;
@@ -133,7 +107,7 @@ function HighlightNode(node) {
     HighlightRect.strokeAlign = "OUTSIDE";
     
     const BodyRect = figma.createRectangle();
-    HighlightedNodes.push(BodyRect);
+    NodeHighlightsTEMP.push(BodyRect);
     BodyRect.name = NodeId + "C";
     BodyRect.x = node.absoluteBoundingBox.x;
     BodyRect.y = node.absoluteBoundingBox.y + node.height + 8;
@@ -146,7 +120,7 @@ function HighlightNode(node) {
     }];
 
     const BodyTextRect = figma.createText();
-    HighlightedNodes.push(BodyTextRect);
+    NodeHighlightsTEMP.push(BodyTextRect);
     BodyTextRect.name = NodeId + "T";
     BodyTextRect.x = node.absoluteBoundingBox.x + 10;
     BodyTextRect.y = node.absoluteBoundingBox.y + node.height + 8;
@@ -157,6 +131,12 @@ function HighlightNode(node) {
         opacity: 1,
     }];
 
+    if (CurrentGroup && CurrentGroup.parent) {
+        CurrentGroup.appendChild(HighlightRect);
+        CurrentGroup.appendChild(BodyRect);
+        CurrentGroup.appendChild(BodyTextRect);
+    }
+
     figma.loadFontAsync(BodyTextRect.fontName).then(() => {
         //if (TypeFlags[1] == "img") TODO: have 'Image Button' and not Image and/or Button, or have multiple texts in the Y axis
 
@@ -165,37 +145,89 @@ function HighlightNode(node) {
         BodyTextRect.resize(TextWidth, TextHeight); // Math.max(TextWidth, Math.min(node.width - 20, 200))
         BodyRect.resize(TextWidth + 20, TextHeight + 4);
     });
-
-    if (CurrentGroup && CurrentGroup.parent) {
-        CurrentGroup.appendChild(HighlightRect);
-        CurrentGroup.appendChild(BodyRect);
-        CurrentGroup.appendChild(BodyTextRect);
-    }
 }
 
+const NodeChangeDebounce = Debounce((data) => {
+    if (data && data.nodeChanges) {
+        if (IsFirst) {
+            IsFirst = false
+            setTimeout(() => {
+                RecentMoves = [];
+                IsFirst = true
+            }, 500)
+        }
+
+        data.nodeChanges.forEach(nodeChange => {
+            if (RecentMoves[nodeChange] || nodeChange.origin !== "LOCAL") return;
+            RecentMoves[nodeChange] = true
+
+            if (nodeChange.type == "PROPERTY_CHANGE"
+                && nodeChange.properties.find(p => p == "name" || p == "x" || p == "y" || p == "height" || p == "width")
+                && !NodeHighlightsTEMP.find(hen => hen == nodeChange.node)
+            ) {
+                HighlightNode(nodeChange.node);
+                /*if (nodeChange.node.name.toLowerCase().match(/btn|button|scrl|scroll|img|image/)) HighlightNode(nodeChange.node);
+                else if (HighlightedNodes.find(N => N === nodeChange.node)) {
+                    const NodeId = nodeChange.node.name
+
+                    NodeHighlightsTEMP = NodeHighlightsTEMP.filter((Node) => {
+                        if (Node.parent && Node.name.match(NodeId)) {
+                            Node.remove();
+                            return false;
+                        }
+
+                        return true
+                    });
+                    
+                    nodeChange.node.setPluginData("NodeId", "");
+                }*/
+            } else if (nodeChange.type == "CREATE") HighlightNode(nodeChange.node);
+            else if (nodeChange.type == "DELETE") HighlightNode(nodeChange.node, true);
+        })
+    }
+}, 800, {
+    immediate: true
+})
+
 function HighlightNodes() {
+    RecentMoves = []
+    NodeHighlightsTEMP = []
+
     const nodes = figma.currentPage.findAll(node => {
         if (node.name === "FigmaToRoblox_TEMP") CurrentGroup = node;
-
+        else if (node.name.match(/@FtR[0-9]+:[0-9]+/i)) {
+            NodeHighlightsTEMP.push(node)
+            return;
+        }
+        
         return node.name.match(/btn|button|scrl|scroll|img|image/i);
     })
-
+    
     if (CurrentGroup && CurrentGroup.parent) CurrentGroup.remove();
     CurrentGroup = undefined
-    HighlightedNodes = []
 
+    for (var i=0; i< NodeHighlightsTEMP.length; i++) {
+        NodeHighlightsTEMP[i].remove();
+    }
+    
+    NodeHighlightsTEMP = [];
     nodes.forEach(HighlightNode);
-
-    CurrentGroup = figma.group(HighlightedNodes, figma.currentPage);
+    
+    CurrentGroup = figma.group(NodeHighlightsTEMP, figma.currentPage);
     CurrentGroup.name = "FigmaToRoblox_TEMP"
     CurrentGroup.locked = true;
     NodeChangeDebounce.clear();
 }
 
 function close() {
-    if (CurrentGroup && CurrentGroup.parent) CurrentGroup.remove();
-    HighlightedNodes = undefined;
-    CurrentGroup = undefined;
+    NodeHighlightsTEMP = undefined;
+    
+    if (CurrentGroup) {
+        try {
+            CurrentGroup.remove();
+        } catch (e) {}
+        CurrentGroup = undefined
+    }
 }
 
 figma.currentPage.on("nodechange", NodeChangeDebounce);

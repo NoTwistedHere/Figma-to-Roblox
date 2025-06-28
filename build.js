@@ -2294,7 +2294,7 @@ function numberIsNaN (obj) {
 }
 
 }).call(this)}).call(this,require("buffer").Buffer)
-},{"base64-js":1,"buffer":5,"ieee754":11}],6:[function(require,module,exports){
+},{"base64-js":1,"buffer":5,"ieee754":10}],6:[function(require,module,exports){
 'use strict';
 
 var Buffer = require('safe-buffer').Buffer;
@@ -2463,7 +2463,7 @@ CipherBase.prototype._toString = function (value, enc, fin) {
 
 module.exports = CipherBase;
 
-},{"inherits":12,"safe-buffer":31,"stream":40,"string_decoder":4}],7:[function(require,module,exports){
+},{"inherits":11,"safe-buffer":30,"stream":39,"string_decoder":4}],7:[function(require,module,exports){
 'use strict'
 var inherits = require('inherits')
 var MD5 = require('md5.js')
@@ -2495,112 +2495,7 @@ module.exports = function createHash (alg) {
   return new Hash(sha(alg))
 }
 
-},{"cipher-base":6,"inherits":12,"md5.js":13,"ripemd160":30,"sha.js":33}],8:[function(require,module,exports){
-function debounce(function_, wait = 100, options = {}) {
-	if (typeof function_ !== 'function') {
-		throw new TypeError(`Expected the first parameter to be a function, got \`${typeof function_}\`.`);
-	}
-
-	if (wait < 0) {
-		throw new RangeError('`wait` must not be negative.');
-	}
-
-	// TODO: Deprecate the boolean parameter at some point.
-	const {immediate} = typeof options === 'boolean' ? {immediate: options} : options;
-
-	let storedContext;
-	let storedArguments;
-	let timeoutId;
-	let timestamp;
-	let result;
-
-	function run() {
-		const callContext = storedContext;
-		const callArguments = storedArguments;
-		storedContext = undefined;
-		storedArguments = undefined;
-		result = function_.apply(callContext, callArguments);
-		return result;
-	}
-
-	function later() {
-		const last = Date.now() - timestamp;
-
-		if (last < wait && last >= 0) {
-			timeoutId = setTimeout(later, wait - last);
-		} else {
-			timeoutId = undefined;
-
-			if (!immediate) {
-				result = run();
-			}
-		}
-	}
-
-	const debounced = function (...arguments_) {
-		if (
-			storedContext
-			&& this !== storedContext
-			&& Object.getPrototypeOf(this) === Object.getPrototypeOf(storedContext)
-		) {
-			throw new Error('Debounced method called with different contexts of the same prototype.');
-		}
-
-		storedContext = this; // eslint-disable-line unicorn/no-this-assignment
-		storedArguments = arguments_;
-		timestamp = Date.now();
-
-		const callNow = immediate && !timeoutId;
-
-		if (!timeoutId) {
-			timeoutId = setTimeout(later, wait);
-		}
-
-		if (callNow) {
-			result = run();
-		}
-
-		return result;
-	};
-
-	Object.defineProperty(debounced, 'isPending', {
-		get() {
-			return timeoutId !== undefined;
-		},
-	});
-
-	debounced.clear = () => {
-		if (!timeoutId) {
-			return;
-		}
-
-		clearTimeout(timeoutId);
-		timeoutId = undefined;
-	};
-
-	debounced.flush = () => {
-		if (!timeoutId) {
-			return;
-		}
-
-		debounced.trigger();
-	};
-
-	debounced.trigger = () => {
-		result = run();
-
-		debounced.clear();
-	};
-
-	return debounced;
-}
-
-// Adds compatibility for ES modules
-module.exports.debounce = debounce;
-
-module.exports = debounce;
-
-},{}],9:[function(require,module,exports){
+},{"cipher-base":6,"inherits":11,"md5.js":12,"ripemd160":29,"sha.js":32}],8:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -3099,7 +2994,7 @@ function eventTargetAgnosticAddListener(emitter, name, listener, flags) {
   }
 }
 
-},{}],10:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 'use strict'
 var Buffer = require('safe-buffer').Buffer
 var Transform = require('readable-stream').Transform
@@ -3196,7 +3091,7 @@ HashBase.prototype._digest = function () {
 
 module.exports = HashBase
 
-},{"inherits":12,"readable-stream":29,"safe-buffer":31}],11:[function(require,module,exports){
+},{"inherits":11,"readable-stream":28,"safe-buffer":30}],10:[function(require,module,exports){
 /*! ieee754. BSD-3-Clause License. Feross Aboukhadijeh <https://feross.org/opensource> */
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
@@ -3283,7 +3178,7 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128
 }
 
-},{}],12:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -3312,7 +3207,7 @@ if (typeof Object.create === 'function') {
   }
 }
 
-},{}],13:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 'use strict'
 var inherits = require('inherits')
 var HashBase = require('hash-base')
@@ -3460,7 +3355,7 @@ function fnI (a, b, c, d, m, k, s) {
 
 module.exports = MD5
 
-},{"hash-base":10,"inherits":12,"safe-buffer":31}],14:[function(require,module,exports){
+},{"hash-base":9,"inherits":11,"safe-buffer":30}],13:[function(require,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 
@@ -3646,7 +3541,7 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],15:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 'use strict';
 
 function _inheritsLoose(subClass, superClass) { subClass.prototype = Object.create(superClass.prototype); subClass.prototype.constructor = subClass; subClass.__proto__ = superClass; }
@@ -3775,7 +3670,7 @@ createErrorType('ERR_UNKNOWN_ENCODING', function (arg) {
 createErrorType('ERR_STREAM_UNSHIFT_AFTER_END_EVENT', 'stream.unshift() after end event');
 module.exports.codes = codes;
 
-},{}],16:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 (function (process){(function (){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -3904,7 +3799,7 @@ Object.defineProperty(Duplex.prototype, 'destroyed', {
   }
 });
 }).call(this)}).call(this,require('_process'))
-},{"./_stream_readable":18,"./_stream_writable":20,"_process":14,"inherits":12}],17:[function(require,module,exports){
+},{"./_stream_readable":17,"./_stream_writable":19,"_process":13,"inherits":11}],16:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -3942,7 +3837,7 @@ function PassThrough(options) {
 PassThrough.prototype._transform = function (chunk, encoding, cb) {
   cb(null, chunk);
 };
-},{"./_stream_transform":19,"inherits":12}],18:[function(require,module,exports){
+},{"./_stream_transform":18,"inherits":11}],17:[function(require,module,exports){
 (function (process,global){(function (){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -4972,7 +4867,7 @@ function indexOf(xs, x) {
   return -1;
 }
 }).call(this)}).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../errors":15,"./_stream_duplex":16,"./internal/streams/async_iterator":21,"./internal/streams/buffer_list":22,"./internal/streams/destroy":23,"./internal/streams/from":25,"./internal/streams/state":27,"./internal/streams/stream":28,"_process":14,"buffer":5,"events":9,"inherits":12,"string_decoder/":41,"util":2}],19:[function(require,module,exports){
+},{"../errors":14,"./_stream_duplex":15,"./internal/streams/async_iterator":20,"./internal/streams/buffer_list":21,"./internal/streams/destroy":22,"./internal/streams/from":24,"./internal/streams/state":26,"./internal/streams/stream":27,"_process":13,"buffer":5,"events":8,"inherits":11,"string_decoder/":40,"util":2}],18:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -5163,7 +5058,7 @@ function done(stream, er, data) {
   if (stream._transformState.transforming) throw new ERR_TRANSFORM_ALREADY_TRANSFORMING();
   return stream.push(null);
 }
-},{"../errors":15,"./_stream_duplex":16,"inherits":12}],20:[function(require,module,exports){
+},{"../errors":14,"./_stream_duplex":15,"inherits":11}],19:[function(require,module,exports){
 (function (process,global){(function (){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -5807,7 +5702,7 @@ Writable.prototype._destroy = function (err, cb) {
   cb(err);
 };
 }).call(this)}).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../errors":15,"./_stream_duplex":16,"./internal/streams/destroy":23,"./internal/streams/state":27,"./internal/streams/stream":28,"_process":14,"buffer":5,"inherits":12,"util-deprecate":42}],21:[function(require,module,exports){
+},{"../errors":14,"./_stream_duplex":15,"./internal/streams/destroy":22,"./internal/streams/state":26,"./internal/streams/stream":27,"_process":13,"buffer":5,"inherits":11,"util-deprecate":41}],20:[function(require,module,exports){
 (function (process){(function (){
 'use strict';
 
@@ -5990,7 +5885,7 @@ var createReadableStreamAsyncIterator = function createReadableStreamAsyncIterat
 };
 module.exports = createReadableStreamAsyncIterator;
 }).call(this)}).call(this,require('_process'))
-},{"./end-of-stream":24,"_process":14}],22:[function(require,module,exports){
+},{"./end-of-stream":23,"_process":13}],21:[function(require,module,exports){
 'use strict';
 
 function ownKeys(object, enumerableOnly) { var keys = Object.keys(object); if (Object.getOwnPropertySymbols) { var symbols = Object.getOwnPropertySymbols(object); enumerableOnly && (symbols = symbols.filter(function (sym) { return Object.getOwnPropertyDescriptor(object, sym).enumerable; })), keys.push.apply(keys, symbols); } return keys; }
@@ -6174,7 +6069,7 @@ module.exports = /*#__PURE__*/function () {
   }]);
   return BufferList;
 }();
-},{"buffer":5,"util":2}],23:[function(require,module,exports){
+},{"buffer":5,"util":2}],22:[function(require,module,exports){
 (function (process){(function (){
 'use strict';
 
@@ -6273,7 +6168,7 @@ module.exports = {
   errorOrDestroy: errorOrDestroy
 };
 }).call(this)}).call(this,require('_process'))
-},{"_process":14}],24:[function(require,module,exports){
+},{"_process":13}],23:[function(require,module,exports){
 // Ported from https://github.com/mafintosh/end-of-stream with
 // permission from the author, Mathias Buus (@mafintosh).
 
@@ -6360,12 +6255,12 @@ function eos(stream, opts, callback) {
   };
 }
 module.exports = eos;
-},{"../../../errors":15}],25:[function(require,module,exports){
+},{"../../../errors":14}],24:[function(require,module,exports){
 module.exports = function () {
   throw new Error('Readable.from is not available in the browser')
 };
 
-},{}],26:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 // Ported from https://github.com/mafintosh/pump with
 // permission from the author, Mathias Buus (@mafintosh).
 
@@ -6452,7 +6347,7 @@ function pipeline() {
   return streams.reduce(pipe);
 }
 module.exports = pipeline;
-},{"../../../errors":15,"./end-of-stream":24}],27:[function(require,module,exports){
+},{"../../../errors":14,"./end-of-stream":23}],26:[function(require,module,exports){
 'use strict';
 
 var ERR_INVALID_OPT_VALUE = require('../../../errors').codes.ERR_INVALID_OPT_VALUE;
@@ -6475,10 +6370,10 @@ function getHighWaterMark(state, options, duplexKey, isDuplex) {
 module.exports = {
   getHighWaterMark: getHighWaterMark
 };
-},{"../../../errors":15}],28:[function(require,module,exports){
+},{"../../../errors":14}],27:[function(require,module,exports){
 module.exports = require('events').EventEmitter;
 
-},{"events":9}],29:[function(require,module,exports){
+},{"events":8}],28:[function(require,module,exports){
 exports = module.exports = require('./lib/_stream_readable.js');
 exports.Stream = exports;
 exports.Readable = exports;
@@ -6489,7 +6384,7 @@ exports.PassThrough = require('./lib/_stream_passthrough.js');
 exports.finished = require('./lib/internal/streams/end-of-stream.js');
 exports.pipeline = require('./lib/internal/streams/pipeline.js');
 
-},{"./lib/_stream_duplex.js":16,"./lib/_stream_passthrough.js":17,"./lib/_stream_readable.js":18,"./lib/_stream_transform.js":19,"./lib/_stream_writable.js":20,"./lib/internal/streams/end-of-stream.js":24,"./lib/internal/streams/pipeline.js":26}],30:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":15,"./lib/_stream_passthrough.js":16,"./lib/_stream_readable.js":17,"./lib/_stream_transform.js":18,"./lib/_stream_writable.js":19,"./lib/internal/streams/end-of-stream.js":23,"./lib/internal/streams/pipeline.js":25}],29:[function(require,module,exports){
 'use strict'
 var Buffer = require('buffer').Buffer
 var inherits = require('inherits')
@@ -6654,7 +6549,7 @@ function fn5 (a, b, c, d, e, m, k, s) {
 
 module.exports = RIPEMD160
 
-},{"buffer":5,"hash-base":10,"inherits":12}],31:[function(require,module,exports){
+},{"buffer":5,"hash-base":9,"inherits":11}],30:[function(require,module,exports){
 /*! safe-buffer. MIT License. Feross Aboukhadijeh <https://feross.org/opensource> */
 /* eslint-disable node/no-deprecated-api */
 var buffer = require('buffer')
@@ -6721,7 +6616,7 @@ SafeBuffer.allocUnsafeSlow = function (size) {
   return buffer.SlowBuffer(size)
 }
 
-},{"buffer":5}],32:[function(require,module,exports){
+},{"buffer":5}],31:[function(require,module,exports){
 var Buffer = require('safe-buffer').Buffer
 
 // prototype class for hash functions
@@ -6804,7 +6699,7 @@ Hash.prototype._update = function () {
 
 module.exports = Hash
 
-},{"safe-buffer":31}],33:[function(require,module,exports){
+},{"safe-buffer":30}],32:[function(require,module,exports){
 var exports = module.exports = function SHA (algorithm) {
   algorithm = algorithm.toLowerCase()
 
@@ -6821,7 +6716,7 @@ exports.sha256 = require('./sha256')
 exports.sha384 = require('./sha384')
 exports.sha512 = require('./sha512')
 
-},{"./sha":34,"./sha1":35,"./sha224":36,"./sha256":37,"./sha384":38,"./sha512":39}],34:[function(require,module,exports){
+},{"./sha":33,"./sha1":34,"./sha224":35,"./sha256":36,"./sha384":37,"./sha512":38}],33:[function(require,module,exports){
 /*
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-0, as defined
  * in FIPS PUB 180-1
@@ -6917,7 +6812,7 @@ Sha.prototype._hash = function () {
 
 module.exports = Sha
 
-},{"./hash":32,"inherits":12,"safe-buffer":31}],35:[function(require,module,exports){
+},{"./hash":31,"inherits":11,"safe-buffer":30}],34:[function(require,module,exports){
 /*
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-1, as defined
  * in FIPS PUB 180-1
@@ -7018,7 +6913,7 @@ Sha1.prototype._hash = function () {
 
 module.exports = Sha1
 
-},{"./hash":32,"inherits":12,"safe-buffer":31}],36:[function(require,module,exports){
+},{"./hash":31,"inherits":11,"safe-buffer":30}],35:[function(require,module,exports){
 /**
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-256, as defined
  * in FIPS 180-2
@@ -7073,7 +6968,7 @@ Sha224.prototype._hash = function () {
 
 module.exports = Sha224
 
-},{"./hash":32,"./sha256":37,"inherits":12,"safe-buffer":31}],37:[function(require,module,exports){
+},{"./hash":31,"./sha256":36,"inherits":11,"safe-buffer":30}],36:[function(require,module,exports){
 /**
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-256, as defined
  * in FIPS 180-2
@@ -7210,7 +7105,7 @@ Sha256.prototype._hash = function () {
 
 module.exports = Sha256
 
-},{"./hash":32,"inherits":12,"safe-buffer":31}],38:[function(require,module,exports){
+},{"./hash":31,"inherits":11,"safe-buffer":30}],37:[function(require,module,exports){
 var inherits = require('inherits')
 var SHA512 = require('./sha512')
 var Hash = require('./hash')
@@ -7269,7 +7164,7 @@ Sha384.prototype._hash = function () {
 
 module.exports = Sha384
 
-},{"./hash":32,"./sha512":39,"inherits":12,"safe-buffer":31}],39:[function(require,module,exports){
+},{"./hash":31,"./sha512":38,"inherits":11,"safe-buffer":30}],38:[function(require,module,exports){
 var inherits = require('inherits')
 var Hash = require('./hash')
 var Buffer = require('safe-buffer').Buffer
@@ -7531,7 +7426,7 @@ Sha512.prototype._hash = function () {
 
 module.exports = Sha512
 
-},{"./hash":32,"inherits":12,"safe-buffer":31}],40:[function(require,module,exports){
+},{"./hash":31,"inherits":11,"safe-buffer":30}],39:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -7662,9 +7557,9 @@ Stream.prototype.pipe = function(dest, options) {
   return dest;
 };
 
-},{"events":9,"inherits":12,"readable-stream/lib/_stream_duplex.js":16,"readable-stream/lib/_stream_passthrough.js":17,"readable-stream/lib/_stream_readable.js":18,"readable-stream/lib/_stream_transform.js":19,"readable-stream/lib/_stream_writable.js":20,"readable-stream/lib/internal/streams/end-of-stream.js":24,"readable-stream/lib/internal/streams/pipeline.js":26}],41:[function(require,module,exports){
+},{"events":8,"inherits":11,"readable-stream/lib/_stream_duplex.js":15,"readable-stream/lib/_stream_passthrough.js":16,"readable-stream/lib/_stream_readable.js":17,"readable-stream/lib/_stream_transform.js":18,"readable-stream/lib/_stream_writable.js":19,"readable-stream/lib/internal/streams/end-of-stream.js":23,"readable-stream/lib/internal/streams/pipeline.js":25}],40:[function(require,module,exports){
 arguments[4][4][0].apply(exports,arguments)
-},{"dup":4,"safe-buffer":31}],42:[function(require,module,exports){
+},{"dup":4,"safe-buffer":30}],41:[function(require,module,exports){
 (function (global){(function (){
 
 /**
@@ -7735,7 +7630,7 @@ function config (name) {
 }
 
 }).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],43:[function(require,module,exports){
+},{}],42:[function(require,module,exports){
 const FontStyle = {
     ["Thin"]: {
         Weight: 100,
@@ -7995,7 +7890,7 @@ module.exports = {
         "Border"
     ]
 }
-},{}],44:[function(require,module,exports){
+},{}],43:[function(require,module,exports){
 const Conversions = require("./Conversions");
 const { Flags, QuickClose } = require("./Utilities");
 const createHash = require("create-hash/browser");
@@ -9361,39 +9256,14 @@ module.exports = {
     GetImageFromOperation,
     IsDone
 }
-},{"./Conversions":43,"./Utilities":46,"create-hash/browser":7}],45:[function(require,module,exports){
-const Debounce = require("debounce");
+},{"./Conversions":42,"./Utilities":45,"create-hash/browser":7}],44:[function(require,module,exports){
+const { Debounce } = require("../Utilities");
 
 var HighlightedNodes = [];
+var NodeHighlightsTEMP = [];
 var CurrentGroup;
 var RecentMoves = {}
-var IsFirst;
-
-const NodeChangeDebounce = Debounce((data) => {
-    if (data.nodeChanges) {
-        data.nodeChanges.forEach(nodeChange => {
-            if (RecentMoves[nodeChange]) return;
-            RecentMoves[nodeChange] = true
-
-            if (nodeChange.origin == "LOCAL"
-                && nodeChange.type == "PROPERTY_CHANGE"
-                && nodeChange.properties.find(p => p == "name" || p == "x" || p == "y" || p == "height" || p == "width")
-                && !HighlightedNodes.find(hen => hen == nodeChange.node)
-            ) {
-                if (nodeChange.node.name.match(/btn|button|scrl|scroll|img|image/i)) HighlightNode(nodeChange.node);
-                else if (NodeId) nodeChange.node.setPluginData("NodeId", "");
-            }
-        })
-
-        if (IsFirst) {
-            IsFirst = false
-            setTimeout(() => {
-                RecentMoves = [];
-                IsFirst = true
-            }, 500)
-        }
-    }
-}, 2000)
+var IsFirst = true;
 
 const Types = {
     button: {
@@ -9421,50 +9291,49 @@ for (var [type, value] of Object.entries(Types)) {
     Types[value.alt] = value;
 }
 
-function HighlightNode(node) {
-    const TypeFlags = node.name.toLowerCase().match(/btn|button|img|image|scrl|scroll/g);
-    
-    if (!TypeFlags || node.parent && node.parent.name.match(/btn|button|img|image/i)) return;
+function HighlightNode(node, rm) {
+    if (node.parent && node.parent.name.match(/btn|button|img|image/i)) return;
 
-    var NodeId = node.name.match(/[%d]+:[%d]+/);
+    const TypeFlags = rm === true ? false : node.name.toLowerCase().match(/btn|button|img|image|scrl|scroll/g);
+    const NodeId = "@FtR" + node.id;
 
-    if (NodeId) {
-        NodeId = NodeId[0]
+    if (rm === true || HighlightedNodes.find(N => N === node)) {
         var ReuseHighlight;
 
-        HighlightedNodes = HighlightedNodes.filter((Node) => {
-            if (Node.parent) {
-                if (Node.name.match(NodeId)) {
-                    ReuseHighlight = true;
+        NodeHighlightsTEMP = NodeHighlightsTEMP.filter((Node) => {
+            if (Node.parent && Node.name.substr(0, Node.name.length - 1) == NodeId) {
+                ReuseHighlight = true;
 
-                    switch (Node.name.substr(-1, 1)) {
-                        case "B": // Background
-                            Node.x = node.absoluteBoundingBox.x - 2;
-                            Node.y = node.absoluteBoundingBox.y - 2;
-                            Node.resize(node.width + 4, node.height + 4);
-                            break;
-                        case "C": // Text Background (Card)
-                            Node.x = node.absoluteBoundingBox.x;
-                            Node.y = node.absoluteBoundingBox.y + node.height + 8;
-                            break;
-                        case "T": // Text
-                            Node.x = node.absoluteBoundingBox.x + 10;
-                            Node.y = node.absoluteBoundingBox.y + node.height + 8;
-                            break;
-                    }
+                if (!TypeFlags) return Node.remove();
+
+                switch (Node.name.substr(-1, 1)) {
+                    case "B": // Background
+                        Node.x = node.absoluteBoundingBox.x - 2;
+                        Node.y = node.absoluteBoundingBox.y - 2;
+                        Node.resize(node.width + 4, node.height + 4);
+                        break;
+                    case "C": // Text Background (Card)
+                        Node.x = node.absoluteBoundingBox.x;
+                        Node.y = node.absoluteBoundingBox.y + node.height + 8;
+                        break;
+                    case "T": // Text
+                        Node.x = node.absoluteBoundingBox.x + 10;
+                        Node.y = node.absoluteBoundingBox.y + node.height + 8;
+                        break;
                 }
-
-                return false
             }
 
             return true
         });
 
         if (ReuseHighlight) return;
-    } else NodeId = node.id;
+    };
+
+    if (!TypeFlags) return;
 
     node.setPluginData("NodeId", ""); // NodeId
-
+    HighlightedNodes.push(node);
+    
     var TextHeight = 0;
     var TextWidth = 0;
     var Text = "";
@@ -9482,7 +9351,7 @@ function HighlightNode(node) {
     }
     
     const HighlightRect = figma.createRectangle();
-    HighlightedNodes.push(HighlightRect);
+    NodeHighlightsTEMP.push(HighlightRect);
     HighlightRect.name = NodeId + "B";
     HighlightRect.x = node.absoluteBoundingBox.x - 2;
     HighlightRect.y = node.absoluteBoundingBox.y - 2;
@@ -9497,7 +9366,7 @@ function HighlightNode(node) {
     HighlightRect.strokeAlign = "OUTSIDE";
     
     const BodyRect = figma.createRectangle();
-    HighlightedNodes.push(BodyRect);
+    NodeHighlightsTEMP.push(BodyRect);
     BodyRect.name = NodeId + "C";
     BodyRect.x = node.absoluteBoundingBox.x;
     BodyRect.y = node.absoluteBoundingBox.y + node.height + 8;
@@ -9510,7 +9379,7 @@ function HighlightNode(node) {
     }];
 
     const BodyTextRect = figma.createText();
-    HighlightedNodes.push(BodyTextRect);
+    NodeHighlightsTEMP.push(BodyTextRect);
     BodyTextRect.name = NodeId + "T";
     BodyTextRect.x = node.absoluteBoundingBox.x + 10;
     BodyTextRect.y = node.absoluteBoundingBox.y + node.height + 8;
@@ -9521,6 +9390,12 @@ function HighlightNode(node) {
         opacity: 1,
     }];
 
+    if (CurrentGroup && CurrentGroup.parent) {
+        CurrentGroup.appendChild(HighlightRect);
+        CurrentGroup.appendChild(BodyRect);
+        CurrentGroup.appendChild(BodyTextRect);
+    }
+
     figma.loadFontAsync(BodyTextRect.fontName).then(() => {
         //if (TypeFlags[1] == "img") TODO: have 'Image Button' and not Image and/or Button, or have multiple texts in the Y axis
 
@@ -9529,37 +9404,89 @@ function HighlightNode(node) {
         BodyTextRect.resize(TextWidth, TextHeight); // Math.max(TextWidth, Math.min(node.width - 20, 200))
         BodyRect.resize(TextWidth + 20, TextHeight + 4);
     });
-
-    if (CurrentGroup && CurrentGroup.parent) {
-        CurrentGroup.appendChild(HighlightRect);
-        CurrentGroup.appendChild(BodyRect);
-        CurrentGroup.appendChild(BodyTextRect);
-    }
 }
 
+const NodeChangeDebounce = Debounce((data) => {
+    if (data && data.nodeChanges) {
+        if (IsFirst) {
+            IsFirst = false
+            setTimeout(() => {
+                RecentMoves = [];
+                IsFirst = true
+            }, 500)
+        }
+
+        data.nodeChanges.forEach(nodeChange => {
+            if (RecentMoves[nodeChange] || nodeChange.origin !== "LOCAL") return;
+            RecentMoves[nodeChange] = true
+
+            if (nodeChange.type == "PROPERTY_CHANGE"
+                && nodeChange.properties.find(p => p == "name" || p == "x" || p == "y" || p == "height" || p == "width")
+                && !NodeHighlightsTEMP.find(hen => hen == nodeChange.node)
+            ) {
+                HighlightNode(nodeChange.node);
+                /*if (nodeChange.node.name.toLowerCase().match(/btn|button|scrl|scroll|img|image/)) HighlightNode(nodeChange.node);
+                else if (HighlightedNodes.find(N => N === nodeChange.node)) {
+                    const NodeId = nodeChange.node.name
+
+                    NodeHighlightsTEMP = NodeHighlightsTEMP.filter((Node) => {
+                        if (Node.parent && Node.name.match(NodeId)) {
+                            Node.remove();
+                            return false;
+                        }
+
+                        return true
+                    });
+                    
+                    nodeChange.node.setPluginData("NodeId", "");
+                }*/
+            } else if (nodeChange.type == "CREATE") HighlightNode(nodeChange.node);
+            else if (nodeChange.type == "DELETE") HighlightNode(nodeChange.node, true);
+        })
+    }
+}, 800, {
+    immediate: true
+})
+
 function HighlightNodes() {
+    RecentMoves = []
+    NodeHighlightsTEMP = []
+
     const nodes = figma.currentPage.findAll(node => {
         if (node.name === "FigmaToRoblox_TEMP") CurrentGroup = node;
-
+        else if (node.name.match(/@FtR[0-9]+:[0-9]+/i)) {
+            NodeHighlightsTEMP.push(node)
+            return;
+        }
+        
         return node.name.match(/btn|button|scrl|scroll|img|image/i);
     })
-
+    
     if (CurrentGroup && CurrentGroup.parent) CurrentGroup.remove();
     CurrentGroup = undefined
-    HighlightedNodes = []
 
+    for (var i=0; i< NodeHighlightsTEMP.length; i++) {
+        NodeHighlightsTEMP[i].remove();
+    }
+    
+    NodeHighlightsTEMP = [];
     nodes.forEach(HighlightNode);
-
-    CurrentGroup = figma.group(HighlightedNodes, figma.currentPage);
+    
+    CurrentGroup = figma.group(NodeHighlightsTEMP, figma.currentPage);
     CurrentGroup.name = "FigmaToRoblox_TEMP"
     CurrentGroup.locked = true;
     NodeChangeDebounce.clear();
 }
 
 function close() {
-    if (CurrentGroup && CurrentGroup.parent) CurrentGroup.remove();
-    HighlightedNodes = undefined;
-    CurrentGroup = undefined;
+    NodeHighlightsTEMP = undefined;
+    
+    if (CurrentGroup) {
+        try {
+            CurrentGroup.remove();
+        } catch (e) {}
+        CurrentGroup = undefined
+    }
 }
 
 figma.currentPage.on("nodechange", NodeChangeDebounce);
@@ -9569,7 +9496,7 @@ module.exports = {
     start: HighlightNodes,
     stop: close,
 }
-},{"debounce":8}],46:[function(require,module,exports){
+},{"../Utilities":45}],45:[function(require,module,exports){
 var CurrentNotification;
 
 var Flags = {
@@ -9631,12 +9558,115 @@ function Notify(Message) {
     CurrentNotification = figma.notify(Message);
 }
 
+function Debounce(function_, wait = 100, options = {}) {
+    // Original: https://www.npmjs.com/package/debounce
+    // Slightly modifed for my purposes
+	if (typeof function_ !== 'function') {
+		throw new TypeError(`Expected the first parameter to be a function, got \`${typeof function_}\`.`);
+	}
+
+	if (wait < 0) {
+		throw new RangeError('`wait` must not be negative.');
+	}
+
+	// TODO: Deprecate the boolean parameter at some point.
+	const {immediate} = typeof options === 'boolean' ? {immediate: options} : options;
+
+	let storedContext;
+	let storedArguments;
+	let timeoutId;
+	let timestamp;
+	let result;
+
+	function run() {
+		const callContext = storedContext || function_;
+		const callArguments = storedArguments;
+
+		storedContext = undefined;
+		storedArguments = undefined;
+		result = function_.apply(callContext, callArguments);
+		//return result;
+	}
+
+	function later() {
+		const last = Date.now() - timestamp;
+
+		if (last < wait && last >= 0) {
+			timeoutId = setTimeout(later, wait - last);
+		} else {
+			timeoutId = undefined;
+
+			//if (!immediate) {
+				result = run();
+			//}
+		}
+	}
+
+	const debounced = function (...arguments_) {
+		if (
+			storedContext
+			&& this !== storedContext
+			&& Object.getPrototypeOf(this) === Object.getPrototypeOf(storedContext)
+		) {
+			throw new Error('Debounced method called with different contexts of the same prototype.');
+		}
+
+		storedContext = this; // eslint-disable-line unicorn/no-this-assignment
+		storedArguments = arguments_;
+		timestamp = Date.now();
+
+		const callNow = immediate && !timeoutId;
+
+		if (!timeoutId) {
+			timeoutId = setTimeout(later, wait);
+		}
+
+		if (callNow) {
+			result = run();
+		}
+
+		return result;
+	};
+
+	Object.defineProperty(debounced, 'isPending', {
+		get() {
+			return timeoutId !== undefined;
+		},
+	});
+
+	debounced.clear = () => {
+		if (!timeoutId) {
+			return;
+		}
+
+		clearTimeout(timeoutId);
+		timeoutId = undefined;
+	};
+
+	debounced.flush = () => {
+		if (!timeoutId) {
+			return;
+		}
+
+		debounced.trigger();
+	};
+
+	debounced.trigger = () => {
+		result = run();
+
+		debounced.clear();
+	};
+
+	return debounced;
+}
+
 module.exports = {
     Flags,
     QuickClose,
-    Notify
+    Notify,
+    Debounce
 }
-},{}],47:[function(require,module,exports){
+},{}],46:[function(require,module,exports){
 /*
     @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@bbbbbbbb@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -10316,4 +10346,4 @@ switch (figma.command) {
     default:
         console.warn(`[Figma To Roblox] Unknown command "${figma.command}"`)
 }
-},{"./Conversions.js":43,"./Converters.js":44,"./Flags/HighlightNodes.js":45,"./Utilities.js":46}]},{},[47]);
+},{"./Conversions.js":42,"./Converters.js":43,"./Flags/HighlightNodes.js":44,"./Utilities.js":45}]},{},[46]);
