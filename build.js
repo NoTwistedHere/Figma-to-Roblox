@@ -153,6 +153,367 @@ function fromByteArray (uint8) {
 },{}],2:[function(require,module,exports){
 
 },{}],3:[function(require,module,exports){
+/* eslint-disable node/no-deprecated-api */
+var buffer = require('buffer')
+var Buffer = buffer.Buffer
+
+// alternative to using Object.keys for old browsers
+function copyProps (src, dst) {
+  for (var key in src) {
+    dst[key] = src[key]
+  }
+}
+if (Buffer.from && Buffer.alloc && Buffer.allocUnsafe && Buffer.allocUnsafeSlow) {
+  module.exports = buffer
+} else {
+  // Copy properties from require('buffer')
+  copyProps(buffer, exports)
+  exports.Buffer = SafeBuffer
+}
+
+function SafeBuffer (arg, encodingOrOffset, length) {
+  return Buffer(arg, encodingOrOffset, length)
+}
+
+// Copy static methods from Buffer
+copyProps(Buffer, SafeBuffer)
+
+SafeBuffer.from = function (arg, encodingOrOffset, length) {
+  if (typeof arg === 'number') {
+    throw new TypeError('Argument must not be a number')
+  }
+  return Buffer(arg, encodingOrOffset, length)
+}
+
+SafeBuffer.alloc = function (size, fill, encoding) {
+  if (typeof size !== 'number') {
+    throw new TypeError('Argument must be a number')
+  }
+  var buf = Buffer(size)
+  if (fill !== undefined) {
+    if (typeof encoding === 'string') {
+      buf.fill(fill, encoding)
+    } else {
+      buf.fill(fill)
+    }
+  } else {
+    buf.fill(0)
+  }
+  return buf
+}
+
+SafeBuffer.allocUnsafe = function (size) {
+  if (typeof size !== 'number') {
+    throw new TypeError('Argument must be a number')
+  }
+  return Buffer(size)
+}
+
+SafeBuffer.allocUnsafeSlow = function (size) {
+  if (typeof size !== 'number') {
+    throw new TypeError('Argument must be a number')
+  }
+  return buffer.SlowBuffer(size)
+}
+
+},{"buffer":5}],4:[function(require,module,exports){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+'use strict';
+
+/*<replacement>*/
+
+var Buffer = require('safe-buffer').Buffer;
+/*</replacement>*/
+
+var isEncoding = Buffer.isEncoding || function (encoding) {
+  encoding = '' + encoding;
+  switch (encoding && encoding.toLowerCase()) {
+    case 'hex':case 'utf8':case 'utf-8':case 'ascii':case 'binary':case 'base64':case 'ucs2':case 'ucs-2':case 'utf16le':case 'utf-16le':case 'raw':
+      return true;
+    default:
+      return false;
+  }
+};
+
+function _normalizeEncoding(enc) {
+  if (!enc) return 'utf8';
+  var retried;
+  while (true) {
+    switch (enc) {
+      case 'utf8':
+      case 'utf-8':
+        return 'utf8';
+      case 'ucs2':
+      case 'ucs-2':
+      case 'utf16le':
+      case 'utf-16le':
+        return 'utf16le';
+      case 'latin1':
+      case 'binary':
+        return 'latin1';
+      case 'base64':
+      case 'ascii':
+      case 'hex':
+        return enc;
+      default:
+        if (retried) return; // undefined
+        enc = ('' + enc).toLowerCase();
+        retried = true;
+    }
+  }
+};
+
+// Do not cache `Buffer.isEncoding` when checking encoding names as some
+// modules monkey-patch it to support additional encodings
+function normalizeEncoding(enc) {
+  var nenc = _normalizeEncoding(enc);
+  if (typeof nenc !== 'string' && (Buffer.isEncoding === isEncoding || !isEncoding(enc))) throw new Error('Unknown encoding: ' + enc);
+  return nenc || enc;
+}
+
+// StringDecoder provides an interface for efficiently splitting a series of
+// buffers into a series of JS strings without breaking apart multi-byte
+// characters.
+exports.StringDecoder = StringDecoder;
+function StringDecoder(encoding) {
+  this.encoding = normalizeEncoding(encoding);
+  var nb;
+  switch (this.encoding) {
+    case 'utf16le':
+      this.text = utf16Text;
+      this.end = utf16End;
+      nb = 4;
+      break;
+    case 'utf8':
+      this.fillLast = utf8FillLast;
+      nb = 4;
+      break;
+    case 'base64':
+      this.text = base64Text;
+      this.end = base64End;
+      nb = 3;
+      break;
+    default:
+      this.write = simpleWrite;
+      this.end = simpleEnd;
+      return;
+  }
+  this.lastNeed = 0;
+  this.lastTotal = 0;
+  this.lastChar = Buffer.allocUnsafe(nb);
+}
+
+StringDecoder.prototype.write = function (buf) {
+  if (buf.length === 0) return '';
+  var r;
+  var i;
+  if (this.lastNeed) {
+    r = this.fillLast(buf);
+    if (r === undefined) return '';
+    i = this.lastNeed;
+    this.lastNeed = 0;
+  } else {
+    i = 0;
+  }
+  if (i < buf.length) return r ? r + this.text(buf, i) : this.text(buf, i);
+  return r || '';
+};
+
+StringDecoder.prototype.end = utf8End;
+
+// Returns only complete characters in a Buffer
+StringDecoder.prototype.text = utf8Text;
+
+// Attempts to complete a partial non-UTF-8 character using bytes from a Buffer
+StringDecoder.prototype.fillLast = function (buf) {
+  if (this.lastNeed <= buf.length) {
+    buf.copy(this.lastChar, this.lastTotal - this.lastNeed, 0, this.lastNeed);
+    return this.lastChar.toString(this.encoding, 0, this.lastTotal);
+  }
+  buf.copy(this.lastChar, this.lastTotal - this.lastNeed, 0, buf.length);
+  this.lastNeed -= buf.length;
+};
+
+// Checks the type of a UTF-8 byte, whether it's ASCII, a leading byte, or a
+// continuation byte. If an invalid byte is detected, -2 is returned.
+function utf8CheckByte(byte) {
+  if (byte <= 0x7F) return 0;else if (byte >> 5 === 0x06) return 2;else if (byte >> 4 === 0x0E) return 3;else if (byte >> 3 === 0x1E) return 4;
+  return byte >> 6 === 0x02 ? -1 : -2;
+}
+
+// Checks at most 3 bytes at the end of a Buffer in order to detect an
+// incomplete multi-byte UTF-8 character. The total number of bytes (2, 3, or 4)
+// needed to complete the UTF-8 character (if applicable) are returned.
+function utf8CheckIncomplete(self, buf, i) {
+  var j = buf.length - 1;
+  if (j < i) return 0;
+  var nb = utf8CheckByte(buf[j]);
+  if (nb >= 0) {
+    if (nb > 0) self.lastNeed = nb - 1;
+    return nb;
+  }
+  if (--j < i || nb === -2) return 0;
+  nb = utf8CheckByte(buf[j]);
+  if (nb >= 0) {
+    if (nb > 0) self.lastNeed = nb - 2;
+    return nb;
+  }
+  if (--j < i || nb === -2) return 0;
+  nb = utf8CheckByte(buf[j]);
+  if (nb >= 0) {
+    if (nb > 0) {
+      if (nb === 2) nb = 0;else self.lastNeed = nb - 3;
+    }
+    return nb;
+  }
+  return 0;
+}
+
+// Validates as many continuation bytes for a multi-byte UTF-8 character as
+// needed or are available. If we see a non-continuation byte where we expect
+// one, we "replace" the validated continuation bytes we've seen so far with
+// a single UTF-8 replacement character ('\ufffd'), to match v8's UTF-8 decoding
+// behavior. The continuation byte check is included three times in the case
+// where all of the continuation bytes for a character exist in the same buffer.
+// It is also done this way as a slight performance increase instead of using a
+// loop.
+function utf8CheckExtraBytes(self, buf, p) {
+  if ((buf[0] & 0xC0) !== 0x80) {
+    self.lastNeed = 0;
+    return '\ufffd';
+  }
+  if (self.lastNeed > 1 && buf.length > 1) {
+    if ((buf[1] & 0xC0) !== 0x80) {
+      self.lastNeed = 1;
+      return '\ufffd';
+    }
+    if (self.lastNeed > 2 && buf.length > 2) {
+      if ((buf[2] & 0xC0) !== 0x80) {
+        self.lastNeed = 2;
+        return '\ufffd';
+      }
+    }
+  }
+}
+
+// Attempts to complete a multi-byte UTF-8 character using bytes from a Buffer.
+function utf8FillLast(buf) {
+  var p = this.lastTotal - this.lastNeed;
+  var r = utf8CheckExtraBytes(this, buf, p);
+  if (r !== undefined) return r;
+  if (this.lastNeed <= buf.length) {
+    buf.copy(this.lastChar, p, 0, this.lastNeed);
+    return this.lastChar.toString(this.encoding, 0, this.lastTotal);
+  }
+  buf.copy(this.lastChar, p, 0, buf.length);
+  this.lastNeed -= buf.length;
+}
+
+// Returns all complete UTF-8 characters in a Buffer. If the Buffer ended on a
+// partial character, the character's bytes are buffered until the required
+// number of bytes are available.
+function utf8Text(buf, i) {
+  var total = utf8CheckIncomplete(this, buf, i);
+  if (!this.lastNeed) return buf.toString('utf8', i);
+  this.lastTotal = total;
+  var end = buf.length - (total - this.lastNeed);
+  buf.copy(this.lastChar, 0, end);
+  return buf.toString('utf8', i, end);
+}
+
+// For UTF-8, a replacement character is added when ending on a partial
+// character.
+function utf8End(buf) {
+  var r = buf && buf.length ? this.write(buf) : '';
+  if (this.lastNeed) return r + '\ufffd';
+  return r;
+}
+
+// UTF-16LE typically needs two bytes per character, but even if we have an even
+// number of bytes available, we need to check if we end on a leading/high
+// surrogate. In that case, we need to wait for the next two bytes in order to
+// decode the last character properly.
+function utf16Text(buf, i) {
+  if ((buf.length - i) % 2 === 0) {
+    var r = buf.toString('utf16le', i);
+    if (r) {
+      var c = r.charCodeAt(r.length - 1);
+      if (c >= 0xD800 && c <= 0xDBFF) {
+        this.lastNeed = 2;
+        this.lastTotal = 4;
+        this.lastChar[0] = buf[buf.length - 2];
+        this.lastChar[1] = buf[buf.length - 1];
+        return r.slice(0, -1);
+      }
+    }
+    return r;
+  }
+  this.lastNeed = 1;
+  this.lastTotal = 2;
+  this.lastChar[0] = buf[buf.length - 1];
+  return buf.toString('utf16le', i, buf.length - 1);
+}
+
+// For UTF-16LE we do not explicitly append special replacement characters if we
+// end on a partial character, we simply let v8 handle that.
+function utf16End(buf) {
+  var r = buf && buf.length ? this.write(buf) : '';
+  if (this.lastNeed) {
+    var end = this.lastTotal - this.lastNeed;
+    return r + this.lastChar.toString('utf16le', 0, end);
+  }
+  return r;
+}
+
+function base64Text(buf, i) {
+  var n = (buf.length - i) % 3;
+  if (n === 0) return buf.toString('base64', i);
+  this.lastNeed = 3 - n;
+  this.lastTotal = 3;
+  if (n === 1) {
+    this.lastChar[0] = buf[buf.length - 1];
+  } else {
+    this.lastChar[0] = buf[buf.length - 2];
+    this.lastChar[1] = buf[buf.length - 1];
+  }
+  return buf.toString('base64', i, buf.length - n);
+}
+
+function base64End(buf) {
+  var r = buf && buf.length ? this.write(buf) : '';
+  if (this.lastNeed) return r + this.lastChar.toString('base64', 0, 3 - this.lastNeed);
+  return r;
+}
+
+// Pass bytes on through for single-byte encodings (e.g. ascii, latin1, hex)
+function simpleWrite(buf) {
+  return buf.toString(this.encoding);
+}
+
+function simpleEnd(buf) {
+  return buf && buf.length ? this.write(buf) : '';
+}
+},{"safe-buffer":3}],5:[function(require,module,exports){
 (function (Buffer){(function (){
 /*!
  * The buffer module from node.js, for the browser.
@@ -1933,7 +2294,313 @@ function numberIsNaN (obj) {
 }
 
 }).call(this)}).call(this,require("buffer").Buffer)
-},{"base64-js":1,"buffer":3,"ieee754":5}],4:[function(require,module,exports){
+},{"base64-js":1,"buffer":5,"ieee754":11}],6:[function(require,module,exports){
+'use strict';
+
+var Buffer = require('safe-buffer').Buffer;
+var Transform = require('stream').Transform;
+var StringDecoder = require('string_decoder').StringDecoder;
+var inherits = require('inherits');
+
+function CipherBase(hashMode) {
+	Transform.call(this);
+	this.hashMode = typeof hashMode === 'string';
+	if (this.hashMode) {
+		this[hashMode] = this._finalOrDigest;
+	} else {
+		this['final'] = this._finalOrDigest;
+	}
+	if (this._final) {
+		this.__final = this._final;
+		this._final = null;
+	}
+	this._decoder = null;
+	this._encoding = null;
+}
+inherits(CipherBase, Transform);
+
+var useUint8Array = typeof Uint8Array !== 'undefined';
+var useArrayBuffer = typeof ArrayBuffer !== 'undefined'
+	&& typeof Uint8Array !== 'undefined'
+	&& ArrayBuffer.isView
+	&& (Buffer.prototype instanceof Uint8Array || Buffer.TYPED_ARRAY_SUPPORT);
+
+function toBuffer(data, encoding) {
+	/*
+	 * No need to do anything for exact instance
+	 * This is only valid when safe-buffer.Buffer === buffer.Buffer, i.e. when Buffer.from/Buffer.alloc existed
+	 */
+	if (data instanceof Buffer) {
+		return data;
+	}
+
+	// Convert strings to Buffer
+	if (typeof data === 'string') {
+		return Buffer.from(data, encoding);
+	}
+
+	/*
+	 * Wrap any TypedArray instances and DataViews
+	 * Makes sense only on engines with full TypedArray support -- let Buffer detect that
+	 */
+	if (useArrayBuffer && ArrayBuffer.isView(data)) {
+		// Bug in Node.js <6.3.1, which treats this as out-of-bounds
+		if (data.byteLength === 0) {
+			return Buffer.alloc(0);
+		}
+
+		var res = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+		/*
+		 * Recheck result size, as offset/length doesn't work on Node.js <5.10
+		 * We just go to Uint8Array case if this fails
+		 */
+		if (res.byteLength === data.byteLength) {
+			return res;
+		}
+	}
+
+	/*
+	 * Uint8Array in engines where Buffer.from might not work with ArrayBuffer, just copy over
+	 * Doesn't make sense with other TypedArray instances
+	 */
+	if (useUint8Array && data instanceof Uint8Array) {
+		return Buffer.from(data);
+	}
+
+	/*
+	 * Old Buffer polyfill on an engine that doesn't have TypedArray support
+	 * Also, this is from a different Buffer polyfill implementation then we have, as instanceof check failed
+	 * Convert to our current Buffer implementation
+	 */
+	if (
+		Buffer.isBuffer(data)
+			&& data.constructor
+			&& typeof data.constructor.isBuffer === 'function'
+			&& data.constructor.isBuffer(data)
+	) {
+		return Buffer.from(data);
+	}
+
+	throw new TypeError('The "data" argument must be of type string or an instance of Buffer, TypedArray, or DataView.');
+}
+
+CipherBase.prototype.update = function (data, inputEnc, outputEnc) {
+	var bufferData = toBuffer(data, inputEnc); // asserts correct input type
+	var outData = this._update(bufferData);
+	if (this.hashMode) {
+		return this;
+	}
+
+	if (outputEnc) {
+		outData = this._toString(outData, outputEnc);
+	}
+
+	return outData;
+};
+
+CipherBase.prototype.setAutoPadding = function () {};
+CipherBase.prototype.getAuthTag = function () {
+	throw new Error('trying to get auth tag in unsupported state');
+};
+
+CipherBase.prototype.setAuthTag = function () {
+	throw new Error('trying to set auth tag in unsupported state');
+};
+
+CipherBase.prototype.setAAD = function () {
+	throw new Error('trying to set aad in unsupported state');
+};
+
+CipherBase.prototype._transform = function (data, _, next) {
+	var err;
+	try {
+		if (this.hashMode) {
+			this._update(data);
+		} else {
+			this.push(this._update(data));
+		}
+	} catch (e) {
+		err = e;
+	} finally {
+		next(err);
+	}
+};
+CipherBase.prototype._flush = function (done) {
+	var err;
+	try {
+		this.push(this.__final());
+	} catch (e) {
+		err = e;
+	}
+
+	done(err);
+};
+CipherBase.prototype._finalOrDigest = function (outputEnc) {
+	var outData = this.__final() || Buffer.alloc(0);
+	if (outputEnc) {
+		outData = this._toString(outData, outputEnc, true);
+	}
+	return outData;
+};
+
+CipherBase.prototype._toString = function (value, enc, fin) {
+	if (!this._decoder) {
+		this._decoder = new StringDecoder(enc);
+		this._encoding = enc;
+	}
+
+	if (this._encoding !== enc) {
+		throw new Error('can’t switch encodings');
+	}
+
+	var out = this._decoder.write(value);
+	if (fin) {
+		out += this._decoder.end();
+	}
+
+	return out;
+};
+
+module.exports = CipherBase;
+
+},{"inherits":12,"safe-buffer":31,"stream":40,"string_decoder":4}],7:[function(require,module,exports){
+'use strict'
+var inherits = require('inherits')
+var MD5 = require('md5.js')
+var RIPEMD160 = require('ripemd160')
+var sha = require('sha.js')
+var Base = require('cipher-base')
+
+function Hash (hash) {
+  Base.call(this, 'digest')
+
+  this._hash = hash
+}
+
+inherits(Hash, Base)
+
+Hash.prototype._update = function (data) {
+  this._hash.update(data)
+}
+
+Hash.prototype._final = function () {
+  return this._hash.digest()
+}
+
+module.exports = function createHash (alg) {
+  alg = alg.toLowerCase()
+  if (alg === 'md5') return new MD5()
+  if (alg === 'rmd160' || alg === 'ripemd160') return new RIPEMD160()
+
+  return new Hash(sha(alg))
+}
+
+},{"cipher-base":6,"inherits":12,"md5.js":13,"ripemd160":30,"sha.js":33}],8:[function(require,module,exports){
+function debounce(function_, wait = 100, options = {}) {
+	if (typeof function_ !== 'function') {
+		throw new TypeError(`Expected the first parameter to be a function, got \`${typeof function_}\`.`);
+	}
+
+	if (wait < 0) {
+		throw new RangeError('`wait` must not be negative.');
+	}
+
+	// TODO: Deprecate the boolean parameter at some point.
+	const {immediate} = typeof options === 'boolean' ? {immediate: options} : options;
+
+	let storedContext;
+	let storedArguments;
+	let timeoutId;
+	let timestamp;
+	let result;
+
+	function run() {
+		const callContext = storedContext;
+		const callArguments = storedArguments;
+		storedContext = undefined;
+		storedArguments = undefined;
+		result = function_.apply(callContext, callArguments);
+		return result;
+	}
+
+	function later() {
+		const last = Date.now() - timestamp;
+
+		if (last < wait && last >= 0) {
+			timeoutId = setTimeout(later, wait - last);
+		} else {
+			timeoutId = undefined;
+
+			if (!immediate) {
+				result = run();
+			}
+		}
+	}
+
+	const debounced = function (...arguments_) {
+		if (
+			storedContext
+			&& this !== storedContext
+			&& Object.getPrototypeOf(this) === Object.getPrototypeOf(storedContext)
+		) {
+			throw new Error('Debounced method called with different contexts of the same prototype.');
+		}
+
+		storedContext = this; // eslint-disable-line unicorn/no-this-assignment
+		storedArguments = arguments_;
+		timestamp = Date.now();
+
+		const callNow = immediate && !timeoutId;
+
+		if (!timeoutId) {
+			timeoutId = setTimeout(later, wait);
+		}
+
+		if (callNow) {
+			result = run();
+		}
+
+		return result;
+	};
+
+	Object.defineProperty(debounced, 'isPending', {
+		get() {
+			return timeoutId !== undefined;
+		},
+	});
+
+	debounced.clear = () => {
+		if (!timeoutId) {
+			return;
+		}
+
+		clearTimeout(timeoutId);
+		timeoutId = undefined;
+	};
+
+	debounced.flush = () => {
+		if (!timeoutId) {
+			return;
+		}
+
+		debounced.trigger();
+	};
+
+	debounced.trigger = () => {
+		result = run();
+
+		debounced.clear();
+	};
+
+	return debounced;
+}
+
+// Adds compatibility for ES modules
+module.exports.debounce = debounce;
+
+module.exports = debounce;
+
+},{}],9:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -2432,7 +3099,104 @@ function eventTargetAgnosticAddListener(emitter, name, listener, flags) {
   }
 }
 
-},{}],5:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
+'use strict'
+var Buffer = require('safe-buffer').Buffer
+var Transform = require('readable-stream').Transform
+var inherits = require('inherits')
+
+function throwIfNotStringOrBuffer (val, prefix) {
+  if (!Buffer.isBuffer(val) && typeof val !== 'string') {
+    throw new TypeError(prefix + ' must be a string or a buffer')
+  }
+}
+
+function HashBase (blockSize) {
+  Transform.call(this)
+
+  this._block = Buffer.allocUnsafe(blockSize)
+  this._blockSize = blockSize
+  this._blockOffset = 0
+  this._length = [0, 0, 0, 0]
+
+  this._finalized = false
+}
+
+inherits(HashBase, Transform)
+
+HashBase.prototype._transform = function (chunk, encoding, callback) {
+  var error = null
+  try {
+    this.update(chunk, encoding)
+  } catch (err) {
+    error = err
+  }
+
+  callback(error)
+}
+
+HashBase.prototype._flush = function (callback) {
+  var error = null
+  try {
+    this.push(this.digest())
+  } catch (err) {
+    error = err
+  }
+
+  callback(error)
+}
+
+HashBase.prototype.update = function (data, encoding) {
+  throwIfNotStringOrBuffer(data, 'Data')
+  if (this._finalized) throw new Error('Digest already called')
+  if (!Buffer.isBuffer(data)) data = Buffer.from(data, encoding)
+
+  // consume data
+  var block = this._block
+  var offset = 0
+  while (this._blockOffset + data.length - offset >= this._blockSize) {
+    for (var i = this._blockOffset; i < this._blockSize;) block[i++] = data[offset++]
+    this._update()
+    this._blockOffset = 0
+  }
+  while (offset < data.length) block[this._blockOffset++] = data[offset++]
+
+  // update length
+  for (var j = 0, carry = data.length * 8; carry > 0; ++j) {
+    this._length[j] += carry
+    carry = (this._length[j] / 0x0100000000) | 0
+    if (carry > 0) this._length[j] -= 0x0100000000 * carry
+  }
+
+  return this
+}
+
+HashBase.prototype._update = function () {
+  throw new Error('_update is not implemented')
+}
+
+HashBase.prototype.digest = function (encoding) {
+  if (this._finalized) throw new Error('Digest already called')
+  this._finalized = true
+
+  var digest = this._digest()
+  if (encoding !== undefined) digest = digest.toString(encoding)
+
+  // reset state
+  this._block.fill(0)
+  this._blockOffset = 0
+  for (var i = 0; i < 4; ++i) this._length[i] = 0
+
+  return digest
+}
+
+HashBase.prototype._digest = function () {
+  throw new Error('_digest is not implemented')
+}
+
+module.exports = HashBase
+
+},{"inherits":12,"readable-stream":29,"safe-buffer":31}],11:[function(require,module,exports){
 /*! ieee754. BSD-3-Clause License. Feross Aboukhadijeh <https://feross.org/opensource> */
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
@@ -2519,7 +3283,7 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128
 }
 
-},{}],6:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -2548,7 +3312,155 @@ if (typeof Object.create === 'function') {
   }
 }
 
-},{}],7:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
+'use strict'
+var inherits = require('inherits')
+var HashBase = require('hash-base')
+var Buffer = require('safe-buffer').Buffer
+
+var ARRAY16 = new Array(16)
+
+function MD5 () {
+  HashBase.call(this, 64)
+
+  // state
+  this._a = 0x67452301
+  this._b = 0xefcdab89
+  this._c = 0x98badcfe
+  this._d = 0x10325476
+}
+
+inherits(MD5, HashBase)
+
+MD5.prototype._update = function () {
+  var M = ARRAY16
+  for (var i = 0; i < 16; ++i) M[i] = this._block.readInt32LE(i * 4)
+
+  var a = this._a
+  var b = this._b
+  var c = this._c
+  var d = this._d
+
+  a = fnF(a, b, c, d, M[0], 0xd76aa478, 7)
+  d = fnF(d, a, b, c, M[1], 0xe8c7b756, 12)
+  c = fnF(c, d, a, b, M[2], 0x242070db, 17)
+  b = fnF(b, c, d, a, M[3], 0xc1bdceee, 22)
+  a = fnF(a, b, c, d, M[4], 0xf57c0faf, 7)
+  d = fnF(d, a, b, c, M[5], 0x4787c62a, 12)
+  c = fnF(c, d, a, b, M[6], 0xa8304613, 17)
+  b = fnF(b, c, d, a, M[7], 0xfd469501, 22)
+  a = fnF(a, b, c, d, M[8], 0x698098d8, 7)
+  d = fnF(d, a, b, c, M[9], 0x8b44f7af, 12)
+  c = fnF(c, d, a, b, M[10], 0xffff5bb1, 17)
+  b = fnF(b, c, d, a, M[11], 0x895cd7be, 22)
+  a = fnF(a, b, c, d, M[12], 0x6b901122, 7)
+  d = fnF(d, a, b, c, M[13], 0xfd987193, 12)
+  c = fnF(c, d, a, b, M[14], 0xa679438e, 17)
+  b = fnF(b, c, d, a, M[15], 0x49b40821, 22)
+
+  a = fnG(a, b, c, d, M[1], 0xf61e2562, 5)
+  d = fnG(d, a, b, c, M[6], 0xc040b340, 9)
+  c = fnG(c, d, a, b, M[11], 0x265e5a51, 14)
+  b = fnG(b, c, d, a, M[0], 0xe9b6c7aa, 20)
+  a = fnG(a, b, c, d, M[5], 0xd62f105d, 5)
+  d = fnG(d, a, b, c, M[10], 0x02441453, 9)
+  c = fnG(c, d, a, b, M[15], 0xd8a1e681, 14)
+  b = fnG(b, c, d, a, M[4], 0xe7d3fbc8, 20)
+  a = fnG(a, b, c, d, M[9], 0x21e1cde6, 5)
+  d = fnG(d, a, b, c, M[14], 0xc33707d6, 9)
+  c = fnG(c, d, a, b, M[3], 0xf4d50d87, 14)
+  b = fnG(b, c, d, a, M[8], 0x455a14ed, 20)
+  a = fnG(a, b, c, d, M[13], 0xa9e3e905, 5)
+  d = fnG(d, a, b, c, M[2], 0xfcefa3f8, 9)
+  c = fnG(c, d, a, b, M[7], 0x676f02d9, 14)
+  b = fnG(b, c, d, a, M[12], 0x8d2a4c8a, 20)
+
+  a = fnH(a, b, c, d, M[5], 0xfffa3942, 4)
+  d = fnH(d, a, b, c, M[8], 0x8771f681, 11)
+  c = fnH(c, d, a, b, M[11], 0x6d9d6122, 16)
+  b = fnH(b, c, d, a, M[14], 0xfde5380c, 23)
+  a = fnH(a, b, c, d, M[1], 0xa4beea44, 4)
+  d = fnH(d, a, b, c, M[4], 0x4bdecfa9, 11)
+  c = fnH(c, d, a, b, M[7], 0xf6bb4b60, 16)
+  b = fnH(b, c, d, a, M[10], 0xbebfbc70, 23)
+  a = fnH(a, b, c, d, M[13], 0x289b7ec6, 4)
+  d = fnH(d, a, b, c, M[0], 0xeaa127fa, 11)
+  c = fnH(c, d, a, b, M[3], 0xd4ef3085, 16)
+  b = fnH(b, c, d, a, M[6], 0x04881d05, 23)
+  a = fnH(a, b, c, d, M[9], 0xd9d4d039, 4)
+  d = fnH(d, a, b, c, M[12], 0xe6db99e5, 11)
+  c = fnH(c, d, a, b, M[15], 0x1fa27cf8, 16)
+  b = fnH(b, c, d, a, M[2], 0xc4ac5665, 23)
+
+  a = fnI(a, b, c, d, M[0], 0xf4292244, 6)
+  d = fnI(d, a, b, c, M[7], 0x432aff97, 10)
+  c = fnI(c, d, a, b, M[14], 0xab9423a7, 15)
+  b = fnI(b, c, d, a, M[5], 0xfc93a039, 21)
+  a = fnI(a, b, c, d, M[12], 0x655b59c3, 6)
+  d = fnI(d, a, b, c, M[3], 0x8f0ccc92, 10)
+  c = fnI(c, d, a, b, M[10], 0xffeff47d, 15)
+  b = fnI(b, c, d, a, M[1], 0x85845dd1, 21)
+  a = fnI(a, b, c, d, M[8], 0x6fa87e4f, 6)
+  d = fnI(d, a, b, c, M[15], 0xfe2ce6e0, 10)
+  c = fnI(c, d, a, b, M[6], 0xa3014314, 15)
+  b = fnI(b, c, d, a, M[13], 0x4e0811a1, 21)
+  a = fnI(a, b, c, d, M[4], 0xf7537e82, 6)
+  d = fnI(d, a, b, c, M[11], 0xbd3af235, 10)
+  c = fnI(c, d, a, b, M[2], 0x2ad7d2bb, 15)
+  b = fnI(b, c, d, a, M[9], 0xeb86d391, 21)
+
+  this._a = (this._a + a) | 0
+  this._b = (this._b + b) | 0
+  this._c = (this._c + c) | 0
+  this._d = (this._d + d) | 0
+}
+
+MD5.prototype._digest = function () {
+  // create padding and handle blocks
+  this._block[this._blockOffset++] = 0x80
+  if (this._blockOffset > 56) {
+    this._block.fill(0, this._blockOffset, 64)
+    this._update()
+    this._blockOffset = 0
+  }
+
+  this._block.fill(0, this._blockOffset, 56)
+  this._block.writeUInt32LE(this._length[0], 56)
+  this._block.writeUInt32LE(this._length[1], 60)
+  this._update()
+
+  // produce result
+  var buffer = Buffer.allocUnsafe(16)
+  buffer.writeInt32LE(this._a, 0)
+  buffer.writeInt32LE(this._b, 4)
+  buffer.writeInt32LE(this._c, 8)
+  buffer.writeInt32LE(this._d, 12)
+  return buffer
+}
+
+function rotl (x, n) {
+  return (x << n) | (x >>> (32 - n))
+}
+
+function fnF (a, b, c, d, m, k, s) {
+  return (rotl((a + ((b & c) | ((~b) & d)) + m + k) | 0, s) + b) | 0
+}
+
+function fnG (a, b, c, d, m, k, s) {
+  return (rotl((a + ((b & d) | (c & (~d))) + m + k) | 0, s) + b) | 0
+}
+
+function fnH (a, b, c, d, m, k, s) {
+  return (rotl((a + (b ^ c ^ d) + m + k) | 0, s) + b) | 0
+}
+
+function fnI (a, b, c, d, m, k, s) {
+  return (rotl((a + ((c ^ (b | (~d)))) + m + k) | 0, s) + b) | 0
+}
+
+module.exports = MD5
+
+},{"hash-base":10,"inherits":12,"safe-buffer":31}],14:[function(require,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 
@@ -2734,205 +3646,7 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],8:[function(require,module,exports){
-/*! safe-buffer. MIT License. Feross Aboukhadijeh <https://feross.org/opensource> */
-/* eslint-disable node/no-deprecated-api */
-var buffer = require('buffer')
-var Buffer = buffer.Buffer
-
-// alternative to using Object.keys for old browsers
-function copyProps (src, dst) {
-  for (var key in src) {
-    dst[key] = src[key]
-  }
-}
-if (Buffer.from && Buffer.alloc && Buffer.allocUnsafe && Buffer.allocUnsafeSlow) {
-  module.exports = buffer
-} else {
-  // Copy properties from require('buffer')
-  copyProps(buffer, exports)
-  exports.Buffer = SafeBuffer
-}
-
-function SafeBuffer (arg, encodingOrOffset, length) {
-  return Buffer(arg, encodingOrOffset, length)
-}
-
-SafeBuffer.prototype = Object.create(Buffer.prototype)
-
-// Copy static methods from Buffer
-copyProps(Buffer, SafeBuffer)
-
-SafeBuffer.from = function (arg, encodingOrOffset, length) {
-  if (typeof arg === 'number') {
-    throw new TypeError('Argument must not be a number')
-  }
-  return Buffer(arg, encodingOrOffset, length)
-}
-
-SafeBuffer.alloc = function (size, fill, encoding) {
-  if (typeof size !== 'number') {
-    throw new TypeError('Argument must be a number')
-  }
-  var buf = Buffer(size)
-  if (fill !== undefined) {
-    if (typeof encoding === 'string') {
-      buf.fill(fill, encoding)
-    } else {
-      buf.fill(fill)
-    }
-  } else {
-    buf.fill(0)
-  }
-  return buf
-}
-
-SafeBuffer.allocUnsafe = function (size) {
-  if (typeof size !== 'number') {
-    throw new TypeError('Argument must be a number')
-  }
-  return Buffer(size)
-}
-
-SafeBuffer.allocUnsafeSlow = function (size) {
-  if (typeof size !== 'number') {
-    throw new TypeError('Argument must be a number')
-  }
-  return buffer.SlowBuffer(size)
-}
-
-},{"buffer":3}],9:[function(require,module,exports){
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-module.exports = Stream;
-
-var EE = require('events').EventEmitter;
-var inherits = require('inherits');
-
-inherits(Stream, EE);
-Stream.Readable = require('readable-stream/lib/_stream_readable.js');
-Stream.Writable = require('readable-stream/lib/_stream_writable.js');
-Stream.Duplex = require('readable-stream/lib/_stream_duplex.js');
-Stream.Transform = require('readable-stream/lib/_stream_transform.js');
-Stream.PassThrough = require('readable-stream/lib/_stream_passthrough.js');
-Stream.finished = require('readable-stream/lib/internal/streams/end-of-stream.js')
-Stream.pipeline = require('readable-stream/lib/internal/streams/pipeline.js')
-
-// Backwards-compat with node 0.4.x
-Stream.Stream = Stream;
-
-
-
-// old-style streams.  Note that the pipe method (the only relevant
-// part of this class) is overridden in the Readable class.
-
-function Stream() {
-  EE.call(this);
-}
-
-Stream.prototype.pipe = function(dest, options) {
-  var source = this;
-
-  function ondata(chunk) {
-    if (dest.writable) {
-      if (false === dest.write(chunk) && source.pause) {
-        source.pause();
-      }
-    }
-  }
-
-  source.on('data', ondata);
-
-  function ondrain() {
-    if (source.readable && source.resume) {
-      source.resume();
-    }
-  }
-
-  dest.on('drain', ondrain);
-
-  // If the 'end' option is not supplied, dest.end() will be called when
-  // source gets the 'end' or 'close' events.  Only dest.end() once.
-  if (!dest._isStdio && (!options || options.end !== false)) {
-    source.on('end', onend);
-    source.on('close', onclose);
-  }
-
-  var didOnEnd = false;
-  function onend() {
-    if (didOnEnd) return;
-    didOnEnd = true;
-
-    dest.end();
-  }
-
-
-  function onclose() {
-    if (didOnEnd) return;
-    didOnEnd = true;
-
-    if (typeof dest.destroy === 'function') dest.destroy();
-  }
-
-  // don't leave dangling pipes when there are errors.
-  function onerror(er) {
-    cleanup();
-    if (EE.listenerCount(this, 'error') === 0) {
-      throw er; // Unhandled stream error in pipe.
-    }
-  }
-
-  source.on('error', onerror);
-  dest.on('error', onerror);
-
-  // remove all the event listeners that were added.
-  function cleanup() {
-    source.removeListener('data', ondata);
-    dest.removeListener('drain', ondrain);
-
-    source.removeListener('end', onend);
-    source.removeListener('close', onclose);
-
-    source.removeListener('error', onerror);
-    dest.removeListener('error', onerror);
-
-    source.removeListener('end', cleanup);
-    source.removeListener('close', cleanup);
-
-    dest.removeListener('close', cleanup);
-  }
-
-  source.on('end', cleanup);
-  source.on('close', cleanup);
-
-  dest.on('close', cleanup);
-
-  dest.emit('pipe', source);
-
-  // Allow for unix-like usage: A.pipe(B).pipe(C)
-  return dest;
-};
-
-},{"events":4,"inherits":6,"readable-stream/lib/_stream_duplex.js":11,"readable-stream/lib/_stream_passthrough.js":12,"readable-stream/lib/_stream_readable.js":13,"readable-stream/lib/_stream_transform.js":14,"readable-stream/lib/_stream_writable.js":15,"readable-stream/lib/internal/streams/end-of-stream.js":19,"readable-stream/lib/internal/streams/pipeline.js":21}],10:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 'use strict';
 
 function _inheritsLoose(subClass, superClass) { subClass.prototype = Object.create(superClass.prototype); subClass.prototype.constructor = subClass; subClass.__proto__ = superClass; }
@@ -3061,7 +3775,7 @@ createErrorType('ERR_UNKNOWN_ENCODING', function (arg) {
 createErrorType('ERR_STREAM_UNSHIFT_AFTER_END_EVENT', 'stream.unshift() after end event');
 module.exports.codes = codes;
 
-},{}],11:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 (function (process){(function (){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -3190,7 +3904,7 @@ Object.defineProperty(Duplex.prototype, 'destroyed', {
   }
 });
 }).call(this)}).call(this,require('_process'))
-},{"./_stream_readable":13,"./_stream_writable":15,"_process":7,"inherits":6}],12:[function(require,module,exports){
+},{"./_stream_readable":18,"./_stream_writable":20,"_process":14,"inherits":12}],17:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -3228,7 +3942,7 @@ function PassThrough(options) {
 PassThrough.prototype._transform = function (chunk, encoding, cb) {
   cb(null, chunk);
 };
-},{"./_stream_transform":14,"inherits":6}],13:[function(require,module,exports){
+},{"./_stream_transform":19,"inherits":12}],18:[function(require,module,exports){
 (function (process,global){(function (){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -4258,7 +4972,7 @@ function indexOf(xs, x) {
   return -1;
 }
 }).call(this)}).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../errors":10,"./_stream_duplex":11,"./internal/streams/async_iterator":16,"./internal/streams/buffer_list":17,"./internal/streams/destroy":18,"./internal/streams/from":20,"./internal/streams/state":22,"./internal/streams/stream":23,"_process":7,"buffer":3,"events":4,"inherits":6,"string_decoder/":24,"util":2}],14:[function(require,module,exports){
+},{"../errors":15,"./_stream_duplex":16,"./internal/streams/async_iterator":21,"./internal/streams/buffer_list":22,"./internal/streams/destroy":23,"./internal/streams/from":25,"./internal/streams/state":27,"./internal/streams/stream":28,"_process":14,"buffer":5,"events":9,"inherits":12,"string_decoder/":41,"util":2}],19:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -4449,7 +5163,7 @@ function done(stream, er, data) {
   if (stream._transformState.transforming) throw new ERR_TRANSFORM_ALREADY_TRANSFORMING();
   return stream.push(null);
 }
-},{"../errors":10,"./_stream_duplex":11,"inherits":6}],15:[function(require,module,exports){
+},{"../errors":15,"./_stream_duplex":16,"inherits":12}],20:[function(require,module,exports){
 (function (process,global){(function (){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -5093,7 +5807,7 @@ Writable.prototype._destroy = function (err, cb) {
   cb(err);
 };
 }).call(this)}).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../errors":10,"./_stream_duplex":11,"./internal/streams/destroy":18,"./internal/streams/state":22,"./internal/streams/stream":23,"_process":7,"buffer":3,"inherits":6,"util-deprecate":25}],16:[function(require,module,exports){
+},{"../errors":15,"./_stream_duplex":16,"./internal/streams/destroy":23,"./internal/streams/state":27,"./internal/streams/stream":28,"_process":14,"buffer":5,"inherits":12,"util-deprecate":42}],21:[function(require,module,exports){
 (function (process){(function (){
 'use strict';
 
@@ -5276,7 +5990,7 @@ var createReadableStreamAsyncIterator = function createReadableStreamAsyncIterat
 };
 module.exports = createReadableStreamAsyncIterator;
 }).call(this)}).call(this,require('_process'))
-},{"./end-of-stream":19,"_process":7}],17:[function(require,module,exports){
+},{"./end-of-stream":24,"_process":14}],22:[function(require,module,exports){
 'use strict';
 
 function ownKeys(object, enumerableOnly) { var keys = Object.keys(object); if (Object.getOwnPropertySymbols) { var symbols = Object.getOwnPropertySymbols(object); enumerableOnly && (symbols = symbols.filter(function (sym) { return Object.getOwnPropertyDescriptor(object, sym).enumerable; })), keys.push.apply(keys, symbols); } return keys; }
@@ -5460,7 +6174,7 @@ module.exports = /*#__PURE__*/function () {
   }]);
   return BufferList;
 }();
-},{"buffer":3,"util":2}],18:[function(require,module,exports){
+},{"buffer":5,"util":2}],23:[function(require,module,exports){
 (function (process){(function (){
 'use strict';
 
@@ -5559,7 +6273,7 @@ module.exports = {
   errorOrDestroy: errorOrDestroy
 };
 }).call(this)}).call(this,require('_process'))
-},{"_process":7}],19:[function(require,module,exports){
+},{"_process":14}],24:[function(require,module,exports){
 // Ported from https://github.com/mafintosh/end-of-stream with
 // permission from the author, Mathias Buus (@mafintosh).
 
@@ -5646,12 +6360,12 @@ function eos(stream, opts, callback) {
   };
 }
 module.exports = eos;
-},{"../../../errors":10}],20:[function(require,module,exports){
+},{"../../../errors":15}],25:[function(require,module,exports){
 module.exports = function () {
   throw new Error('Readable.from is not available in the browser')
 };
 
-},{}],21:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 // Ported from https://github.com/mafintosh/pump with
 // permission from the author, Mathias Buus (@mafintosh).
 
@@ -5738,7 +6452,7 @@ function pipeline() {
   return streams.reduce(pipe);
 }
 module.exports = pipeline;
-},{"../../../errors":10,"./end-of-stream":19}],22:[function(require,module,exports){
+},{"../../../errors":15,"./end-of-stream":24}],27:[function(require,module,exports){
 'use strict';
 
 var ERR_INVALID_OPT_VALUE = require('../../../errors').codes.ERR_INVALID_OPT_VALUE;
@@ -5761,854 +6475,10 @@ function getHighWaterMark(state, options, duplexKey, isDuplex) {
 module.exports = {
   getHighWaterMark: getHighWaterMark
 };
-},{"../../../errors":10}],23:[function(require,module,exports){
+},{"../../../errors":15}],28:[function(require,module,exports){
 module.exports = require('events').EventEmitter;
 
-},{"events":4}],24:[function(require,module,exports){
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-'use strict';
-
-/*<replacement>*/
-
-var Buffer = require('safe-buffer').Buffer;
-/*</replacement>*/
-
-var isEncoding = Buffer.isEncoding || function (encoding) {
-  encoding = '' + encoding;
-  switch (encoding && encoding.toLowerCase()) {
-    case 'hex':case 'utf8':case 'utf-8':case 'ascii':case 'binary':case 'base64':case 'ucs2':case 'ucs-2':case 'utf16le':case 'utf-16le':case 'raw':
-      return true;
-    default:
-      return false;
-  }
-};
-
-function _normalizeEncoding(enc) {
-  if (!enc) return 'utf8';
-  var retried;
-  while (true) {
-    switch (enc) {
-      case 'utf8':
-      case 'utf-8':
-        return 'utf8';
-      case 'ucs2':
-      case 'ucs-2':
-      case 'utf16le':
-      case 'utf-16le':
-        return 'utf16le';
-      case 'latin1':
-      case 'binary':
-        return 'latin1';
-      case 'base64':
-      case 'ascii':
-      case 'hex':
-        return enc;
-      default:
-        if (retried) return; // undefined
-        enc = ('' + enc).toLowerCase();
-        retried = true;
-    }
-  }
-};
-
-// Do not cache `Buffer.isEncoding` when checking encoding names as some
-// modules monkey-patch it to support additional encodings
-function normalizeEncoding(enc) {
-  var nenc = _normalizeEncoding(enc);
-  if (typeof nenc !== 'string' && (Buffer.isEncoding === isEncoding || !isEncoding(enc))) throw new Error('Unknown encoding: ' + enc);
-  return nenc || enc;
-}
-
-// StringDecoder provides an interface for efficiently splitting a series of
-// buffers into a series of JS strings without breaking apart multi-byte
-// characters.
-exports.StringDecoder = StringDecoder;
-function StringDecoder(encoding) {
-  this.encoding = normalizeEncoding(encoding);
-  var nb;
-  switch (this.encoding) {
-    case 'utf16le':
-      this.text = utf16Text;
-      this.end = utf16End;
-      nb = 4;
-      break;
-    case 'utf8':
-      this.fillLast = utf8FillLast;
-      nb = 4;
-      break;
-    case 'base64':
-      this.text = base64Text;
-      this.end = base64End;
-      nb = 3;
-      break;
-    default:
-      this.write = simpleWrite;
-      this.end = simpleEnd;
-      return;
-  }
-  this.lastNeed = 0;
-  this.lastTotal = 0;
-  this.lastChar = Buffer.allocUnsafe(nb);
-}
-
-StringDecoder.prototype.write = function (buf) {
-  if (buf.length === 0) return '';
-  var r;
-  var i;
-  if (this.lastNeed) {
-    r = this.fillLast(buf);
-    if (r === undefined) return '';
-    i = this.lastNeed;
-    this.lastNeed = 0;
-  } else {
-    i = 0;
-  }
-  if (i < buf.length) return r ? r + this.text(buf, i) : this.text(buf, i);
-  return r || '';
-};
-
-StringDecoder.prototype.end = utf8End;
-
-// Returns only complete characters in a Buffer
-StringDecoder.prototype.text = utf8Text;
-
-// Attempts to complete a partial non-UTF-8 character using bytes from a Buffer
-StringDecoder.prototype.fillLast = function (buf) {
-  if (this.lastNeed <= buf.length) {
-    buf.copy(this.lastChar, this.lastTotal - this.lastNeed, 0, this.lastNeed);
-    return this.lastChar.toString(this.encoding, 0, this.lastTotal);
-  }
-  buf.copy(this.lastChar, this.lastTotal - this.lastNeed, 0, buf.length);
-  this.lastNeed -= buf.length;
-};
-
-// Checks the type of a UTF-8 byte, whether it's ASCII, a leading byte, or a
-// continuation byte. If an invalid byte is detected, -2 is returned.
-function utf8CheckByte(byte) {
-  if (byte <= 0x7F) return 0;else if (byte >> 5 === 0x06) return 2;else if (byte >> 4 === 0x0E) return 3;else if (byte >> 3 === 0x1E) return 4;
-  return byte >> 6 === 0x02 ? -1 : -2;
-}
-
-// Checks at most 3 bytes at the end of a Buffer in order to detect an
-// incomplete multi-byte UTF-8 character. The total number of bytes (2, 3, or 4)
-// needed to complete the UTF-8 character (if applicable) are returned.
-function utf8CheckIncomplete(self, buf, i) {
-  var j = buf.length - 1;
-  if (j < i) return 0;
-  var nb = utf8CheckByte(buf[j]);
-  if (nb >= 0) {
-    if (nb > 0) self.lastNeed = nb - 1;
-    return nb;
-  }
-  if (--j < i || nb === -2) return 0;
-  nb = utf8CheckByte(buf[j]);
-  if (nb >= 0) {
-    if (nb > 0) self.lastNeed = nb - 2;
-    return nb;
-  }
-  if (--j < i || nb === -2) return 0;
-  nb = utf8CheckByte(buf[j]);
-  if (nb >= 0) {
-    if (nb > 0) {
-      if (nb === 2) nb = 0;else self.lastNeed = nb - 3;
-    }
-    return nb;
-  }
-  return 0;
-}
-
-// Validates as many continuation bytes for a multi-byte UTF-8 character as
-// needed or are available. If we see a non-continuation byte where we expect
-// one, we "replace" the validated continuation bytes we've seen so far with
-// a single UTF-8 replacement character ('\ufffd'), to match v8's UTF-8 decoding
-// behavior. The continuation byte check is included three times in the case
-// where all of the continuation bytes for a character exist in the same buffer.
-// It is also done this way as a slight performance increase instead of using a
-// loop.
-function utf8CheckExtraBytes(self, buf, p) {
-  if ((buf[0] & 0xC0) !== 0x80) {
-    self.lastNeed = 0;
-    return '\ufffd';
-  }
-  if (self.lastNeed > 1 && buf.length > 1) {
-    if ((buf[1] & 0xC0) !== 0x80) {
-      self.lastNeed = 1;
-      return '\ufffd';
-    }
-    if (self.lastNeed > 2 && buf.length > 2) {
-      if ((buf[2] & 0xC0) !== 0x80) {
-        self.lastNeed = 2;
-        return '\ufffd';
-      }
-    }
-  }
-}
-
-// Attempts to complete a multi-byte UTF-8 character using bytes from a Buffer.
-function utf8FillLast(buf) {
-  var p = this.lastTotal - this.lastNeed;
-  var r = utf8CheckExtraBytes(this, buf, p);
-  if (r !== undefined) return r;
-  if (this.lastNeed <= buf.length) {
-    buf.copy(this.lastChar, p, 0, this.lastNeed);
-    return this.lastChar.toString(this.encoding, 0, this.lastTotal);
-  }
-  buf.copy(this.lastChar, p, 0, buf.length);
-  this.lastNeed -= buf.length;
-}
-
-// Returns all complete UTF-8 characters in a Buffer. If the Buffer ended on a
-// partial character, the character's bytes are buffered until the required
-// number of bytes are available.
-function utf8Text(buf, i) {
-  var total = utf8CheckIncomplete(this, buf, i);
-  if (!this.lastNeed) return buf.toString('utf8', i);
-  this.lastTotal = total;
-  var end = buf.length - (total - this.lastNeed);
-  buf.copy(this.lastChar, 0, end);
-  return buf.toString('utf8', i, end);
-}
-
-// For UTF-8, a replacement character is added when ending on a partial
-// character.
-function utf8End(buf) {
-  var r = buf && buf.length ? this.write(buf) : '';
-  if (this.lastNeed) return r + '\ufffd';
-  return r;
-}
-
-// UTF-16LE typically needs two bytes per character, but even if we have an even
-// number of bytes available, we need to check if we end on a leading/high
-// surrogate. In that case, we need to wait for the next two bytes in order to
-// decode the last character properly.
-function utf16Text(buf, i) {
-  if ((buf.length - i) % 2 === 0) {
-    var r = buf.toString('utf16le', i);
-    if (r) {
-      var c = r.charCodeAt(r.length - 1);
-      if (c >= 0xD800 && c <= 0xDBFF) {
-        this.lastNeed = 2;
-        this.lastTotal = 4;
-        this.lastChar[0] = buf[buf.length - 2];
-        this.lastChar[1] = buf[buf.length - 1];
-        return r.slice(0, -1);
-      }
-    }
-    return r;
-  }
-  this.lastNeed = 1;
-  this.lastTotal = 2;
-  this.lastChar[0] = buf[buf.length - 1];
-  return buf.toString('utf16le', i, buf.length - 1);
-}
-
-// For UTF-16LE we do not explicitly append special replacement characters if we
-// end on a partial character, we simply let v8 handle that.
-function utf16End(buf) {
-  var r = buf && buf.length ? this.write(buf) : '';
-  if (this.lastNeed) {
-    var end = this.lastTotal - this.lastNeed;
-    return r + this.lastChar.toString('utf16le', 0, end);
-  }
-  return r;
-}
-
-function base64Text(buf, i) {
-  var n = (buf.length - i) % 3;
-  if (n === 0) return buf.toString('base64', i);
-  this.lastNeed = 3 - n;
-  this.lastTotal = 3;
-  if (n === 1) {
-    this.lastChar[0] = buf[buf.length - 1];
-  } else {
-    this.lastChar[0] = buf[buf.length - 2];
-    this.lastChar[1] = buf[buf.length - 1];
-  }
-  return buf.toString('base64', i, buf.length - n);
-}
-
-function base64End(buf) {
-  var r = buf && buf.length ? this.write(buf) : '';
-  if (this.lastNeed) return r + this.lastChar.toString('base64', 0, 3 - this.lastNeed);
-  return r;
-}
-
-// Pass bytes on through for single-byte encodings (e.g. ascii, latin1, hex)
-function simpleWrite(buf) {
-  return buf.toString(this.encoding);
-}
-
-function simpleEnd(buf) {
-  return buf && buf.length ? this.write(buf) : '';
-}
-},{"safe-buffer":8}],25:[function(require,module,exports){
-(function (global){(function (){
-
-/**
- * Module exports.
- */
-
-module.exports = deprecate;
-
-/**
- * Mark that a method should not be used.
- * Returns a modified function which warns once by default.
- *
- * If `localStorage.noDeprecation = true` is set, then it is a no-op.
- *
- * If `localStorage.throwDeprecation = true` is set, then deprecated functions
- * will throw an Error when invoked.
- *
- * If `localStorage.traceDeprecation = true` is set, then deprecated functions
- * will invoke `console.trace()` instead of `console.error()`.
- *
- * @param {Function} fn - the function to deprecate
- * @param {String} msg - the string to print to the console when `fn` is invoked
- * @returns {Function} a new "deprecated" version of `fn`
- * @api public
- */
-
-function deprecate (fn, msg) {
-  if (config('noDeprecation')) {
-    return fn;
-  }
-
-  var warned = false;
-  function deprecated() {
-    if (!warned) {
-      if (config('throwDeprecation')) {
-        throw new Error(msg);
-      } else if (config('traceDeprecation')) {
-        console.trace(msg);
-      } else {
-        console.warn(msg);
-      }
-      warned = true;
-    }
-    return fn.apply(this, arguments);
-  }
-
-  return deprecated;
-}
-
-/**
- * Checks `localStorage` for boolean values for the given `name`.
- *
- * @param {String} name
- * @returns {Boolean}
- * @api private
- */
-
-function config (name) {
-  // accessing global.localStorage can trigger a DOMException in sandboxed iframes
-  try {
-    if (!global.localStorage) return false;
-  } catch (_) {
-    return false;
-  }
-  var val = global.localStorage[name];
-  if (null == val) return false;
-  return String(val).toLowerCase() === 'true';
-}
-
-}).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],26:[function(require,module,exports){
-'use strict';
-
-var Buffer = require('safe-buffer').Buffer;
-var Transform = require('stream').Transform;
-var StringDecoder = require('string_decoder').StringDecoder;
-var inherits = require('inherits');
-
-function CipherBase(hashMode) {
-	Transform.call(this);
-	this.hashMode = typeof hashMode === 'string';
-	if (this.hashMode) {
-		this[hashMode] = this._finalOrDigest;
-	} else {
-		this['final'] = this._finalOrDigest;
-	}
-	if (this._final) {
-		this.__final = this._final;
-		this._final = null;
-	}
-	this._decoder = null;
-	this._encoding = null;
-}
-inherits(CipherBase, Transform);
-
-var useUint8Array = typeof Uint8Array !== 'undefined';
-var useArrayBuffer = typeof ArrayBuffer !== 'undefined'
-	&& typeof Uint8Array !== 'undefined'
-	&& ArrayBuffer.isView
-	&& (Buffer.prototype instanceof Uint8Array || Buffer.TYPED_ARRAY_SUPPORT);
-
-function toBuffer(data, encoding) {
-	/*
-	 * No need to do anything for exact instance
-	 * This is only valid when safe-buffer.Buffer === buffer.Buffer, i.e. when Buffer.from/Buffer.alloc existed
-	 */
-	if (data instanceof Buffer) {
-		return data;
-	}
-
-	// Convert strings to Buffer
-	if (typeof data === 'string') {
-		return Buffer.from(data, encoding);
-	}
-
-	/*
-	 * Wrap any TypedArray instances and DataViews
-	 * Makes sense only on engines with full TypedArray support -- let Buffer detect that
-	 */
-	if (useArrayBuffer && ArrayBuffer.isView(data)) {
-		// Bug in Node.js <6.3.1, which treats this as out-of-bounds
-		if (data.byteLength === 0) {
-			return Buffer.alloc(0);
-		}
-
-		var res = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
-		/*
-		 * Recheck result size, as offset/length doesn't work on Node.js <5.10
-		 * We just go to Uint8Array case if this fails
-		 */
-		if (res.byteLength === data.byteLength) {
-			return res;
-		}
-	}
-
-	/*
-	 * Uint8Array in engines where Buffer.from might not work with ArrayBuffer, just copy over
-	 * Doesn't make sense with other TypedArray instances
-	 */
-	if (useUint8Array && data instanceof Uint8Array) {
-		return Buffer.from(data);
-	}
-
-	/*
-	 * Old Buffer polyfill on an engine that doesn't have TypedArray support
-	 * Also, this is from a different Buffer polyfill implementation then we have, as instanceof check failed
-	 * Convert to our current Buffer implementation
-	 */
-	if (
-		Buffer.isBuffer(data)
-			&& data.constructor
-			&& typeof data.constructor.isBuffer === 'function'
-			&& data.constructor.isBuffer(data)
-	) {
-		return Buffer.from(data);
-	}
-
-	throw new TypeError('The "data" argument must be of type string or an instance of Buffer, TypedArray, or DataView.');
-}
-
-CipherBase.prototype.update = function (data, inputEnc, outputEnc) {
-	var bufferData = toBuffer(data, inputEnc); // asserts correct input type
-	var outData = this._update(bufferData);
-	if (this.hashMode) {
-		return this;
-	}
-
-	if (outputEnc) {
-		outData = this._toString(outData, outputEnc);
-	}
-
-	return outData;
-};
-
-CipherBase.prototype.setAutoPadding = function () {};
-CipherBase.prototype.getAuthTag = function () {
-	throw new Error('trying to get auth tag in unsupported state');
-};
-
-CipherBase.prototype.setAuthTag = function () {
-	throw new Error('trying to set auth tag in unsupported state');
-};
-
-CipherBase.prototype.setAAD = function () {
-	throw new Error('trying to set aad in unsupported state');
-};
-
-CipherBase.prototype._transform = function (data, _, next) {
-	var err;
-	try {
-		if (this.hashMode) {
-			this._update(data);
-		} else {
-			this.push(this._update(data));
-		}
-	} catch (e) {
-		err = e;
-	} finally {
-		next(err);
-	}
-};
-CipherBase.prototype._flush = function (done) {
-	var err;
-	try {
-		this.push(this.__final());
-	} catch (e) {
-		err = e;
-	}
-
-	done(err);
-};
-CipherBase.prototype._finalOrDigest = function (outputEnc) {
-	var outData = this.__final() || Buffer.alloc(0);
-	if (outputEnc) {
-		outData = this._toString(outData, outputEnc, true);
-	}
-	return outData;
-};
-
-CipherBase.prototype._toString = function (value, enc, fin) {
-	if (!this._decoder) {
-		this._decoder = new StringDecoder(enc);
-		this._encoding = enc;
-	}
-
-	if (this._encoding !== enc) {
-		throw new Error('can’t switch encodings');
-	}
-
-	var out = this._decoder.write(value);
-	if (fin) {
-		out += this._decoder.end();
-	}
-
-	return out;
-};
-
-module.exports = CipherBase;
-
-},{"inherits":29,"safe-buffer":47,"stream":9,"string_decoder":24}],27:[function(require,module,exports){
-'use strict'
-var inherits = require('inherits')
-var MD5 = require('md5.js')
-var RIPEMD160 = require('ripemd160')
-var sha = require('sha.js')
-var Base = require('cipher-base')
-
-function Hash (hash) {
-  Base.call(this, 'digest')
-
-  this._hash = hash
-}
-
-inherits(Hash, Base)
-
-Hash.prototype._update = function (data) {
-  this._hash.update(data)
-}
-
-Hash.prototype._final = function () {
-  return this._hash.digest()
-}
-
-module.exports = function createHash (alg) {
-  alg = alg.toLowerCase()
-  if (alg === 'md5') return new MD5()
-  if (alg === 'rmd160' || alg === 'ripemd160') return new RIPEMD160()
-
-  return new Hash(sha(alg))
-}
-
-},{"cipher-base":26,"inherits":29,"md5.js":30,"ripemd160":46,"sha.js":49}],28:[function(require,module,exports){
-'use strict'
-var Buffer = require('safe-buffer').Buffer
-var Transform = require('readable-stream').Transform
-var inherits = require('inherits')
-
-function throwIfNotStringOrBuffer (val, prefix) {
-  if (!Buffer.isBuffer(val) && typeof val !== 'string') {
-    throw new TypeError(prefix + ' must be a string or a buffer')
-  }
-}
-
-function HashBase (blockSize) {
-  Transform.call(this)
-
-  this._block = Buffer.allocUnsafe(blockSize)
-  this._blockSize = blockSize
-  this._blockOffset = 0
-  this._length = [0, 0, 0, 0]
-
-  this._finalized = false
-}
-
-inherits(HashBase, Transform)
-
-HashBase.prototype._transform = function (chunk, encoding, callback) {
-  var error = null
-  try {
-    this.update(chunk, encoding)
-  } catch (err) {
-    error = err
-  }
-
-  callback(error)
-}
-
-HashBase.prototype._flush = function (callback) {
-  var error = null
-  try {
-    this.push(this.digest())
-  } catch (err) {
-    error = err
-  }
-
-  callback(error)
-}
-
-HashBase.prototype.update = function (data, encoding) {
-  throwIfNotStringOrBuffer(data, 'Data')
-  if (this._finalized) throw new Error('Digest already called')
-  if (!Buffer.isBuffer(data)) data = Buffer.from(data, encoding)
-
-  // consume data
-  var block = this._block
-  var offset = 0
-  while (this._blockOffset + data.length - offset >= this._blockSize) {
-    for (var i = this._blockOffset; i < this._blockSize;) block[i++] = data[offset++]
-    this._update()
-    this._blockOffset = 0
-  }
-  while (offset < data.length) block[this._blockOffset++] = data[offset++]
-
-  // update length
-  for (var j = 0, carry = data.length * 8; carry > 0; ++j) {
-    this._length[j] += carry
-    carry = (this._length[j] / 0x0100000000) | 0
-    if (carry > 0) this._length[j] -= 0x0100000000 * carry
-  }
-
-  return this
-}
-
-HashBase.prototype._update = function () {
-  throw new Error('_update is not implemented')
-}
-
-HashBase.prototype.digest = function (encoding) {
-  if (this._finalized) throw new Error('Digest already called')
-  this._finalized = true
-
-  var digest = this._digest()
-  if (encoding !== undefined) digest = digest.toString(encoding)
-
-  // reset state
-  this._block.fill(0)
-  this._blockOffset = 0
-  for (var i = 0; i < 4; ++i) this._length[i] = 0
-
-  return digest
-}
-
-HashBase.prototype._digest = function () {
-  throw new Error('_digest is not implemented')
-}
-
-module.exports = HashBase
-
-},{"inherits":29,"readable-stream":45,"safe-buffer":47}],29:[function(require,module,exports){
-arguments[4][6][0].apply(exports,arguments)
-},{"dup":6}],30:[function(require,module,exports){
-'use strict'
-var inherits = require('inherits')
-var HashBase = require('hash-base')
-var Buffer = require('safe-buffer').Buffer
-
-var ARRAY16 = new Array(16)
-
-function MD5 () {
-  HashBase.call(this, 64)
-
-  // state
-  this._a = 0x67452301
-  this._b = 0xefcdab89
-  this._c = 0x98badcfe
-  this._d = 0x10325476
-}
-
-inherits(MD5, HashBase)
-
-MD5.prototype._update = function () {
-  var M = ARRAY16
-  for (var i = 0; i < 16; ++i) M[i] = this._block.readInt32LE(i * 4)
-
-  var a = this._a
-  var b = this._b
-  var c = this._c
-  var d = this._d
-
-  a = fnF(a, b, c, d, M[0], 0xd76aa478, 7)
-  d = fnF(d, a, b, c, M[1], 0xe8c7b756, 12)
-  c = fnF(c, d, a, b, M[2], 0x242070db, 17)
-  b = fnF(b, c, d, a, M[3], 0xc1bdceee, 22)
-  a = fnF(a, b, c, d, M[4], 0xf57c0faf, 7)
-  d = fnF(d, a, b, c, M[5], 0x4787c62a, 12)
-  c = fnF(c, d, a, b, M[6], 0xa8304613, 17)
-  b = fnF(b, c, d, a, M[7], 0xfd469501, 22)
-  a = fnF(a, b, c, d, M[8], 0x698098d8, 7)
-  d = fnF(d, a, b, c, M[9], 0x8b44f7af, 12)
-  c = fnF(c, d, a, b, M[10], 0xffff5bb1, 17)
-  b = fnF(b, c, d, a, M[11], 0x895cd7be, 22)
-  a = fnF(a, b, c, d, M[12], 0x6b901122, 7)
-  d = fnF(d, a, b, c, M[13], 0xfd987193, 12)
-  c = fnF(c, d, a, b, M[14], 0xa679438e, 17)
-  b = fnF(b, c, d, a, M[15], 0x49b40821, 22)
-
-  a = fnG(a, b, c, d, M[1], 0xf61e2562, 5)
-  d = fnG(d, a, b, c, M[6], 0xc040b340, 9)
-  c = fnG(c, d, a, b, M[11], 0x265e5a51, 14)
-  b = fnG(b, c, d, a, M[0], 0xe9b6c7aa, 20)
-  a = fnG(a, b, c, d, M[5], 0xd62f105d, 5)
-  d = fnG(d, a, b, c, M[10], 0x02441453, 9)
-  c = fnG(c, d, a, b, M[15], 0xd8a1e681, 14)
-  b = fnG(b, c, d, a, M[4], 0xe7d3fbc8, 20)
-  a = fnG(a, b, c, d, M[9], 0x21e1cde6, 5)
-  d = fnG(d, a, b, c, M[14], 0xc33707d6, 9)
-  c = fnG(c, d, a, b, M[3], 0xf4d50d87, 14)
-  b = fnG(b, c, d, a, M[8], 0x455a14ed, 20)
-  a = fnG(a, b, c, d, M[13], 0xa9e3e905, 5)
-  d = fnG(d, a, b, c, M[2], 0xfcefa3f8, 9)
-  c = fnG(c, d, a, b, M[7], 0x676f02d9, 14)
-  b = fnG(b, c, d, a, M[12], 0x8d2a4c8a, 20)
-
-  a = fnH(a, b, c, d, M[5], 0xfffa3942, 4)
-  d = fnH(d, a, b, c, M[8], 0x8771f681, 11)
-  c = fnH(c, d, a, b, M[11], 0x6d9d6122, 16)
-  b = fnH(b, c, d, a, M[14], 0xfde5380c, 23)
-  a = fnH(a, b, c, d, M[1], 0xa4beea44, 4)
-  d = fnH(d, a, b, c, M[4], 0x4bdecfa9, 11)
-  c = fnH(c, d, a, b, M[7], 0xf6bb4b60, 16)
-  b = fnH(b, c, d, a, M[10], 0xbebfbc70, 23)
-  a = fnH(a, b, c, d, M[13], 0x289b7ec6, 4)
-  d = fnH(d, a, b, c, M[0], 0xeaa127fa, 11)
-  c = fnH(c, d, a, b, M[3], 0xd4ef3085, 16)
-  b = fnH(b, c, d, a, M[6], 0x04881d05, 23)
-  a = fnH(a, b, c, d, M[9], 0xd9d4d039, 4)
-  d = fnH(d, a, b, c, M[12], 0xe6db99e5, 11)
-  c = fnH(c, d, a, b, M[15], 0x1fa27cf8, 16)
-  b = fnH(b, c, d, a, M[2], 0xc4ac5665, 23)
-
-  a = fnI(a, b, c, d, M[0], 0xf4292244, 6)
-  d = fnI(d, a, b, c, M[7], 0x432aff97, 10)
-  c = fnI(c, d, a, b, M[14], 0xab9423a7, 15)
-  b = fnI(b, c, d, a, M[5], 0xfc93a039, 21)
-  a = fnI(a, b, c, d, M[12], 0x655b59c3, 6)
-  d = fnI(d, a, b, c, M[3], 0x8f0ccc92, 10)
-  c = fnI(c, d, a, b, M[10], 0xffeff47d, 15)
-  b = fnI(b, c, d, a, M[1], 0x85845dd1, 21)
-  a = fnI(a, b, c, d, M[8], 0x6fa87e4f, 6)
-  d = fnI(d, a, b, c, M[15], 0xfe2ce6e0, 10)
-  c = fnI(c, d, a, b, M[6], 0xa3014314, 15)
-  b = fnI(b, c, d, a, M[13], 0x4e0811a1, 21)
-  a = fnI(a, b, c, d, M[4], 0xf7537e82, 6)
-  d = fnI(d, a, b, c, M[11], 0xbd3af235, 10)
-  c = fnI(c, d, a, b, M[2], 0x2ad7d2bb, 15)
-  b = fnI(b, c, d, a, M[9], 0xeb86d391, 21)
-
-  this._a = (this._a + a) | 0
-  this._b = (this._b + b) | 0
-  this._c = (this._c + c) | 0
-  this._d = (this._d + d) | 0
-}
-
-MD5.prototype._digest = function () {
-  // create padding and handle blocks
-  this._block[this._blockOffset++] = 0x80
-  if (this._blockOffset > 56) {
-    this._block.fill(0, this._blockOffset, 64)
-    this._update()
-    this._blockOffset = 0
-  }
-
-  this._block.fill(0, this._blockOffset, 56)
-  this._block.writeUInt32LE(this._length[0], 56)
-  this._block.writeUInt32LE(this._length[1], 60)
-  this._update()
-
-  // produce result
-  var buffer = Buffer.allocUnsafe(16)
-  buffer.writeInt32LE(this._a, 0)
-  buffer.writeInt32LE(this._b, 4)
-  buffer.writeInt32LE(this._c, 8)
-  buffer.writeInt32LE(this._d, 12)
-  return buffer
-}
-
-function rotl (x, n) {
-  return (x << n) | (x >>> (32 - n))
-}
-
-function fnF (a, b, c, d, m, k, s) {
-  return (rotl((a + ((b & c) | ((~b) & d)) + m + k) | 0, s) + b) | 0
-}
-
-function fnG (a, b, c, d, m, k, s) {
-  return (rotl((a + ((b & d) | (c & (~d))) + m + k) | 0, s) + b) | 0
-}
-
-function fnH (a, b, c, d, m, k, s) {
-  return (rotl((a + (b ^ c ^ d) + m + k) | 0, s) + b) | 0
-}
-
-function fnI (a, b, c, d, m, k, s) {
-  return (rotl((a + ((c ^ (b | (~d)))) + m + k) | 0, s) + b) | 0
-}
-
-module.exports = MD5
-
-},{"hash-base":28,"inherits":29,"safe-buffer":47}],31:[function(require,module,exports){
-arguments[4][10][0].apply(exports,arguments)
-},{"dup":10}],32:[function(require,module,exports){
-arguments[4][11][0].apply(exports,arguments)
-},{"./_stream_readable":34,"./_stream_writable":36,"_process":7,"dup":11,"inherits":29}],33:[function(require,module,exports){
-arguments[4][12][0].apply(exports,arguments)
-},{"./_stream_transform":35,"dup":12,"inherits":29}],34:[function(require,module,exports){
-arguments[4][13][0].apply(exports,arguments)
-},{"../errors":31,"./_stream_duplex":32,"./internal/streams/async_iterator":37,"./internal/streams/buffer_list":38,"./internal/streams/destroy":39,"./internal/streams/from":41,"./internal/streams/state":43,"./internal/streams/stream":44,"_process":7,"buffer":3,"dup":13,"events":4,"inherits":29,"string_decoder/":56,"util":2}],35:[function(require,module,exports){
-arguments[4][14][0].apply(exports,arguments)
-},{"../errors":31,"./_stream_duplex":32,"dup":14,"inherits":29}],36:[function(require,module,exports){
-arguments[4][15][0].apply(exports,arguments)
-},{"../errors":31,"./_stream_duplex":32,"./internal/streams/destroy":39,"./internal/streams/state":43,"./internal/streams/stream":44,"_process":7,"buffer":3,"dup":15,"inherits":29,"util-deprecate":57}],37:[function(require,module,exports){
-arguments[4][16][0].apply(exports,arguments)
-},{"./end-of-stream":40,"_process":7,"dup":16}],38:[function(require,module,exports){
-arguments[4][17][0].apply(exports,arguments)
-},{"buffer":3,"dup":17,"util":2}],39:[function(require,module,exports){
-arguments[4][18][0].apply(exports,arguments)
-},{"_process":7,"dup":18}],40:[function(require,module,exports){
-arguments[4][19][0].apply(exports,arguments)
-},{"../../../errors":31,"dup":19}],41:[function(require,module,exports){
-arguments[4][20][0].apply(exports,arguments)
-},{"dup":20}],42:[function(require,module,exports){
-arguments[4][21][0].apply(exports,arguments)
-},{"../../../errors":31,"./end-of-stream":40,"dup":21}],43:[function(require,module,exports){
-arguments[4][22][0].apply(exports,arguments)
-},{"../../../errors":31,"dup":22}],44:[function(require,module,exports){
-arguments[4][23][0].apply(exports,arguments)
-},{"dup":23,"events":4}],45:[function(require,module,exports){
+},{"events":9}],29:[function(require,module,exports){
 exports = module.exports = require('./lib/_stream_readable.js');
 exports.Stream = exports;
 exports.Readable = exports;
@@ -6619,7 +6489,7 @@ exports.PassThrough = require('./lib/_stream_passthrough.js');
 exports.finished = require('./lib/internal/streams/end-of-stream.js');
 exports.pipeline = require('./lib/internal/streams/pipeline.js');
 
-},{"./lib/_stream_duplex.js":32,"./lib/_stream_passthrough.js":33,"./lib/_stream_readable.js":34,"./lib/_stream_transform.js":35,"./lib/_stream_writable.js":36,"./lib/internal/streams/end-of-stream.js":40,"./lib/internal/streams/pipeline.js":42}],46:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":16,"./lib/_stream_passthrough.js":17,"./lib/_stream_readable.js":18,"./lib/_stream_transform.js":19,"./lib/_stream_writable.js":20,"./lib/internal/streams/end-of-stream.js":24,"./lib/internal/streams/pipeline.js":26}],30:[function(require,module,exports){
 'use strict'
 var Buffer = require('buffer').Buffer
 var inherits = require('inherits')
@@ -6784,9 +6654,74 @@ function fn5 (a, b, c, d, e, m, k, s) {
 
 module.exports = RIPEMD160
 
-},{"buffer":3,"hash-base":28,"inherits":29}],47:[function(require,module,exports){
-arguments[4][8][0].apply(exports,arguments)
-},{"buffer":3,"dup":8}],48:[function(require,module,exports){
+},{"buffer":5,"hash-base":10,"inherits":12}],31:[function(require,module,exports){
+/*! safe-buffer. MIT License. Feross Aboukhadijeh <https://feross.org/opensource> */
+/* eslint-disable node/no-deprecated-api */
+var buffer = require('buffer')
+var Buffer = buffer.Buffer
+
+// alternative to using Object.keys for old browsers
+function copyProps (src, dst) {
+  for (var key in src) {
+    dst[key] = src[key]
+  }
+}
+if (Buffer.from && Buffer.alloc && Buffer.allocUnsafe && Buffer.allocUnsafeSlow) {
+  module.exports = buffer
+} else {
+  // Copy properties from require('buffer')
+  copyProps(buffer, exports)
+  exports.Buffer = SafeBuffer
+}
+
+function SafeBuffer (arg, encodingOrOffset, length) {
+  return Buffer(arg, encodingOrOffset, length)
+}
+
+SafeBuffer.prototype = Object.create(Buffer.prototype)
+
+// Copy static methods from Buffer
+copyProps(Buffer, SafeBuffer)
+
+SafeBuffer.from = function (arg, encodingOrOffset, length) {
+  if (typeof arg === 'number') {
+    throw new TypeError('Argument must not be a number')
+  }
+  return Buffer(arg, encodingOrOffset, length)
+}
+
+SafeBuffer.alloc = function (size, fill, encoding) {
+  if (typeof size !== 'number') {
+    throw new TypeError('Argument must be a number')
+  }
+  var buf = Buffer(size)
+  if (fill !== undefined) {
+    if (typeof encoding === 'string') {
+      buf.fill(fill, encoding)
+    } else {
+      buf.fill(fill)
+    }
+  } else {
+    buf.fill(0)
+  }
+  return buf
+}
+
+SafeBuffer.allocUnsafe = function (size) {
+  if (typeof size !== 'number') {
+    throw new TypeError('Argument must be a number')
+  }
+  return Buffer(size)
+}
+
+SafeBuffer.allocUnsafeSlow = function (size) {
+  if (typeof size !== 'number') {
+    throw new TypeError('Argument must be a number')
+  }
+  return buffer.SlowBuffer(size)
+}
+
+},{"buffer":5}],32:[function(require,module,exports){
 var Buffer = require('safe-buffer').Buffer
 
 // prototype class for hash functions
@@ -6869,7 +6804,7 @@ Hash.prototype._update = function () {
 
 module.exports = Hash
 
-},{"safe-buffer":47}],49:[function(require,module,exports){
+},{"safe-buffer":31}],33:[function(require,module,exports){
 var exports = module.exports = function SHA (algorithm) {
   algorithm = algorithm.toLowerCase()
 
@@ -6886,7 +6821,7 @@ exports.sha256 = require('./sha256')
 exports.sha384 = require('./sha384')
 exports.sha512 = require('./sha512')
 
-},{"./sha":50,"./sha1":51,"./sha224":52,"./sha256":53,"./sha384":54,"./sha512":55}],50:[function(require,module,exports){
+},{"./sha":34,"./sha1":35,"./sha224":36,"./sha256":37,"./sha384":38,"./sha512":39}],34:[function(require,module,exports){
 /*
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-0, as defined
  * in FIPS PUB 180-1
@@ -6982,7 +6917,7 @@ Sha.prototype._hash = function () {
 
 module.exports = Sha
 
-},{"./hash":48,"inherits":29,"safe-buffer":47}],51:[function(require,module,exports){
+},{"./hash":32,"inherits":12,"safe-buffer":31}],35:[function(require,module,exports){
 /*
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-1, as defined
  * in FIPS PUB 180-1
@@ -7083,7 +7018,7 @@ Sha1.prototype._hash = function () {
 
 module.exports = Sha1
 
-},{"./hash":48,"inherits":29,"safe-buffer":47}],52:[function(require,module,exports){
+},{"./hash":32,"inherits":12,"safe-buffer":31}],36:[function(require,module,exports){
 /**
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-256, as defined
  * in FIPS 180-2
@@ -7138,7 +7073,7 @@ Sha224.prototype._hash = function () {
 
 module.exports = Sha224
 
-},{"./hash":48,"./sha256":53,"inherits":29,"safe-buffer":47}],53:[function(require,module,exports){
+},{"./hash":32,"./sha256":37,"inherits":12,"safe-buffer":31}],37:[function(require,module,exports){
 /**
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-256, as defined
  * in FIPS 180-2
@@ -7275,7 +7210,7 @@ Sha256.prototype._hash = function () {
 
 module.exports = Sha256
 
-},{"./hash":48,"inherits":29,"safe-buffer":47}],54:[function(require,module,exports){
+},{"./hash":32,"inherits":12,"safe-buffer":31}],38:[function(require,module,exports){
 var inherits = require('inherits')
 var SHA512 = require('./sha512')
 var Hash = require('./hash')
@@ -7334,7 +7269,7 @@ Sha384.prototype._hash = function () {
 
 module.exports = Sha384
 
-},{"./hash":48,"./sha512":55,"inherits":29,"safe-buffer":47}],55:[function(require,module,exports){
+},{"./hash":32,"./sha512":39,"inherits":12,"safe-buffer":31}],39:[function(require,module,exports){
 var inherits = require('inherits')
 var Hash = require('./hash')
 var Buffer = require('safe-buffer').Buffer
@@ -7596,11 +7531,211 @@ Sha512.prototype._hash = function () {
 
 module.exports = Sha512
 
-},{"./hash":48,"inherits":29,"safe-buffer":47}],56:[function(require,module,exports){
-arguments[4][24][0].apply(exports,arguments)
-},{"dup":24,"safe-buffer":47}],57:[function(require,module,exports){
-arguments[4][25][0].apply(exports,arguments)
-},{"dup":25}],58:[function(require,module,exports){
+},{"./hash":32,"inherits":12,"safe-buffer":31}],40:[function(require,module,exports){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+module.exports = Stream;
+
+var EE = require('events').EventEmitter;
+var inherits = require('inherits');
+
+inherits(Stream, EE);
+Stream.Readable = require('readable-stream/lib/_stream_readable.js');
+Stream.Writable = require('readable-stream/lib/_stream_writable.js');
+Stream.Duplex = require('readable-stream/lib/_stream_duplex.js');
+Stream.Transform = require('readable-stream/lib/_stream_transform.js');
+Stream.PassThrough = require('readable-stream/lib/_stream_passthrough.js');
+Stream.finished = require('readable-stream/lib/internal/streams/end-of-stream.js')
+Stream.pipeline = require('readable-stream/lib/internal/streams/pipeline.js')
+
+// Backwards-compat with node 0.4.x
+Stream.Stream = Stream;
+
+
+
+// old-style streams.  Note that the pipe method (the only relevant
+// part of this class) is overridden in the Readable class.
+
+function Stream() {
+  EE.call(this);
+}
+
+Stream.prototype.pipe = function(dest, options) {
+  var source = this;
+
+  function ondata(chunk) {
+    if (dest.writable) {
+      if (false === dest.write(chunk) && source.pause) {
+        source.pause();
+      }
+    }
+  }
+
+  source.on('data', ondata);
+
+  function ondrain() {
+    if (source.readable && source.resume) {
+      source.resume();
+    }
+  }
+
+  dest.on('drain', ondrain);
+
+  // If the 'end' option is not supplied, dest.end() will be called when
+  // source gets the 'end' or 'close' events.  Only dest.end() once.
+  if (!dest._isStdio && (!options || options.end !== false)) {
+    source.on('end', onend);
+    source.on('close', onclose);
+  }
+
+  var didOnEnd = false;
+  function onend() {
+    if (didOnEnd) return;
+    didOnEnd = true;
+
+    dest.end();
+  }
+
+
+  function onclose() {
+    if (didOnEnd) return;
+    didOnEnd = true;
+
+    if (typeof dest.destroy === 'function') dest.destroy();
+  }
+
+  // don't leave dangling pipes when there are errors.
+  function onerror(er) {
+    cleanup();
+    if (EE.listenerCount(this, 'error') === 0) {
+      throw er; // Unhandled stream error in pipe.
+    }
+  }
+
+  source.on('error', onerror);
+  dest.on('error', onerror);
+
+  // remove all the event listeners that were added.
+  function cleanup() {
+    source.removeListener('data', ondata);
+    dest.removeListener('drain', ondrain);
+
+    source.removeListener('end', onend);
+    source.removeListener('close', onclose);
+
+    source.removeListener('error', onerror);
+    dest.removeListener('error', onerror);
+
+    source.removeListener('end', cleanup);
+    source.removeListener('close', cleanup);
+
+    dest.removeListener('close', cleanup);
+  }
+
+  source.on('end', cleanup);
+  source.on('close', cleanup);
+
+  dest.on('close', cleanup);
+
+  dest.emit('pipe', source);
+
+  // Allow for unix-like usage: A.pipe(B).pipe(C)
+  return dest;
+};
+
+},{"events":9,"inherits":12,"readable-stream/lib/_stream_duplex.js":16,"readable-stream/lib/_stream_passthrough.js":17,"readable-stream/lib/_stream_readable.js":18,"readable-stream/lib/_stream_transform.js":19,"readable-stream/lib/_stream_writable.js":20,"readable-stream/lib/internal/streams/end-of-stream.js":24,"readable-stream/lib/internal/streams/pipeline.js":26}],41:[function(require,module,exports){
+arguments[4][4][0].apply(exports,arguments)
+},{"dup":4,"safe-buffer":31}],42:[function(require,module,exports){
+(function (global){(function (){
+
+/**
+ * Module exports.
+ */
+
+module.exports = deprecate;
+
+/**
+ * Mark that a method should not be used.
+ * Returns a modified function which warns once by default.
+ *
+ * If `localStorage.noDeprecation = true` is set, then it is a no-op.
+ *
+ * If `localStorage.throwDeprecation = true` is set, then deprecated functions
+ * will throw an Error when invoked.
+ *
+ * If `localStorage.traceDeprecation = true` is set, then deprecated functions
+ * will invoke `console.trace()` instead of `console.error()`.
+ *
+ * @param {Function} fn - the function to deprecate
+ * @param {String} msg - the string to print to the console when `fn` is invoked
+ * @returns {Function} a new "deprecated" version of `fn`
+ * @api public
+ */
+
+function deprecate (fn, msg) {
+  if (config('noDeprecation')) {
+    return fn;
+  }
+
+  var warned = false;
+  function deprecated() {
+    if (!warned) {
+      if (config('throwDeprecation')) {
+        throw new Error(msg);
+      } else if (config('traceDeprecation')) {
+        console.trace(msg);
+      } else {
+        console.warn(msg);
+      }
+      warned = true;
+    }
+    return fn.apply(this, arguments);
+  }
+
+  return deprecated;
+}
+
+/**
+ * Checks `localStorage` for boolean values for the given `name`.
+ *
+ * @param {String} name
+ * @returns {Boolean}
+ * @api private
+ */
+
+function config (name) {
+  // accessing global.localStorage can trigger a DOMException in sandboxed iframes
+  try {
+    if (!global.localStorage) return false;
+  } catch (_) {
+    return false;
+  }
+  var val = global.localStorage[name];
+  if (null == val) return false;
+  return String(val).toLowerCase() === 'true';
+}
+
+}).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],43:[function(require,module,exports){
 const FontStyle = {
     ["Thin"]: {
         Weight: 100,
@@ -7860,7 +7995,7 @@ module.exports = {
         "Border"
     ]
 }
-},{}],59:[function(require,module,exports){
+},{}],44:[function(require,module,exports){
 const Conversions = require("./Conversions");
 const { Flags, QuickClose } = require("./Utilities");
 const createHash = require("create-hash/browser");
@@ -8012,24 +8147,19 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
     }
     
     ExportNode.exportAsync(CustomExport || Settings.DefaultExport).then(Bytes => {
-        const Format = (CustomExport ? CustomExport.format : "PNG").toLowerCase();
-        var IgnoreUpload = false;
-
-        for (const [key, value] in ImageExports) {
-            if (value.Bytes == Bytes) {
-                IgnoreUpload = true;
-                UploadId = key
-                Properties.Image = `{FTR_${key}}`
-                ImagesRemaining += 1;
-                break;
-            };
-        }
-
         Node.setPluginData("AssetId", "");
         Node.setPluginData("OperationId", "");
 
-        if (IgnoreUpload) return
-        else if (!ForceReupload && !Flags.ForceUploadImages && !Properties._ImageHash) {
+        for (const [key, value] in ImageExports) {
+            if (value.Bytes == Bytes) {
+                UploadId = key
+                Properties.Image = `{FTR_${key}}`
+                ImagesRemaining += 1;
+                return;
+            };
+        }
+
+        if (!ForceReupload && !Flags.ForceUploadImages && !Properties._ImageHash) {
             if (!ImageExports[UploadId]) {
                 ImageExports[UploadId] = {
                     Node: Node,
@@ -8057,6 +8187,13 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
 
                 Node.setPluginData("ImageHash", _ImageHash);
             }
+        } else if (!ImageExports[UploadId]) {
+            ImageExports[UploadId] = {
+                Node: Node,
+                Properties: Properties,
+                Bytes: Bytes, // Uint8Array
+                UploadId: UploadId
+            }
         }
 
         // Test post image upload with template data
@@ -8068,7 +8205,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                 Data: Bytes,
                 Id: UploadId,
                 Name: Properties.Name.substr(0, 30),
-                Format: Format
+                Format: (CustomExport ? CustomExport.format : "PNG").toLowerCase()
             }
         })
     });
@@ -8187,7 +8324,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         //     return;
         // };
         
-        if (Flags.AlwaysExportImages && Fill.type === "IMAGE") {
+        if (Fill.type === "IMAGE" && (Settings.UploadImages || Flags.AlwaysExportImages)) {
             // Export image
             Object._ImageHash = Fill.imageHash;
             Object.Class = "ImageLabel"; // or ImageButton?!
@@ -9224,90 +9361,173 @@ module.exports = {
     GetImageFromOperation,
     IsDone
 }
-},{"./Conversions":58,"./Utilities":61,"create-hash/browser":27}],60:[function(require,module,exports){
-
-const { Flags } = require('../Utilities.js');
+},{"./Conversions":43,"./Utilities":46,"create-hash/browser":7}],45:[function(require,module,exports){
+const Debounce = require("debounce");
 
 var HighlightedNodes = [];
 var CurrentGroup;
+var RecentMoves = {}
+var IsFirst;
+
+const NodeChangeDebounce = Debounce((data) => {
+    if (data.nodeChanges) {
+        data.nodeChanges.forEach(nodeChange => {
+            if (RecentMoves[nodeChange]) return;
+            RecentMoves[nodeChange] = true
+
+            if (nodeChange.origin == "LOCAL"
+                && nodeChange.type == "PROPERTY_CHANGE"
+                && nodeChange.properties.find(p => p == "name" || p == "x" || p == "y" || p == "height" || p == "width")
+                && !HighlightedNodes.find(hen => hen == nodeChange.node)
+            ) {
+                if (nodeChange.node.name.match(/btn|button|scrl|scroll|img|image/i)) HighlightNode(nodeChange.node);
+                else if (NodeId) nodeChange.node.setPluginData("NodeId", "");
+            }
+        })
+
+        if (IsFirst) {
+            IsFirst = false
+            setTimeout(() => {
+                RecentMoves = [];
+                IsFirst = true
+            }, 500)
+        }
+    }
+}, 2000)
 
 const Types = {
-    btn: {
+    button: {
         text: "Button",
+        alt: "btn",
         color: {r: 0.25, g: 0.5, b: 0.8},
-        opacity: 0.94,
         textWidth: 57,
     },
-    img: {
+    image: {
         text: "Image",
+        alt: "img",
         color: {r: 0.4, g: 0.9, b: 0.5},
         textColor: {r: 0.1, g: 0.1, b: 0.1},
-        opacity: 0.94,
         textWidth: 52,
     },
-    scrl: {
+    scroll: {
         text: "Scrolling Frame",
+        alt: "scrl",
         color: {r: 0.8, g: 0.8, b: 0.4},
-        opacity: 0.94,
         textWidth: 132,
     }
 }
 
+for (var [type, value] of Object.entries(Types)) {
+    Types[value.alt] = value;
+}
+
 function HighlightNode(node) {
-    const TypeFlags = node.name.toLowerCase().match(/btn|img|scrl/g);
+    const TypeFlags = node.name.toLowerCase().match(/btn|button|img|image|scrl|scroll/g);
     
     if (!TypeFlags || node.parent && node.parent.name.match(/btn|button|img|image/i)) return;
 
-    const NodeId = node.name.replace(/btn|scrl|img/ig, "") + node.id;
+    var NodeId = node.name.match(/[%d]+:[%d]+/);
 
-    node.setPluginData("NodeId", NodeId);
+    if (NodeId) {
+        NodeId = NodeId[0]
+        var ReuseHighlight;
 
-    const NodeType = Types[TypeFlags[0]]
+        HighlightedNodes = HighlightedNodes.filter((Node) => {
+            if (Node.parent) {
+                if (Node.name.match(NodeId)) {
+                    ReuseHighlight = true;
+
+                    switch (Node.name.substr(-1, 1)) {
+                        case "B": // Background
+                            Node.x = node.absoluteBoundingBox.x - 2;
+                            Node.y = node.absoluteBoundingBox.y - 2;
+                            Node.resize(node.width + 4, node.height + 4);
+                            break;
+                        case "C": // Text Background (Card)
+                            Node.x = node.absoluteBoundingBox.x;
+                            Node.y = node.absoluteBoundingBox.y + node.height + 8;
+                            break;
+                        case "T": // Text
+                            Node.x = node.absoluteBoundingBox.x + 10;
+                            Node.y = node.absoluteBoundingBox.y + node.height + 8;
+                            break;
+                    }
+                }
+
+                return false
+            }
+
+            return true
+        });
+
+        if (ReuseHighlight) return;
+    } else NodeId = node.id;
+
+    node.setPluginData("NodeId", ""); // NodeId
+
+    var TextHeight = 0;
+    var TextWidth = 0;
+    var Text = "";
+    var FirstNode;
+
+    for (var i=0; i< TypeFlags.length; i++) {
+        const NodeType = Types[TypeFlags[i]];
+
+        if (NodeType.textWidth > TextWidth) TextWidth = NodeType.textWidth;
+        if (i == 0) FirstNode = NodeType;
+        else Text += "\n";
+
+        TextHeight += 20;
+        Text += NodeType.text;
+    }
+    
     const HighlightRect = figma.createRectangle();
     HighlightedNodes.push(HighlightRect);
-    HighlightRect.name = NodeId;
+    HighlightRect.name = NodeId + "B";
     HighlightRect.x = node.absoluteBoundingBox.x - 2;
     HighlightRect.y = node.absoluteBoundingBox.y - 2;
     HighlightRect.resize(node.width + 4, node.height + 4);
     HighlightRect.fills = [];
     HighlightRect.strokes = [{
         type: "SOLID",
-        color: NodeType.color,
-        opacity: NodeType.opacity || 0.8,
+        color: FirstNode.color,
+        opacity: FirstNode.opacity || 0.8,
     }];
     HighlightRect.strokeWeight = 3;
     HighlightRect.strokeAlign = "OUTSIDE";
-
+    
     const BodyRect = figma.createRectangle();
     HighlightedNodes.push(BodyRect);
-    BodyRect.name = NodeId;
+    BodyRect.name = NodeId + "C";
     BodyRect.x = node.absoluteBoundingBox.x;
     BodyRect.y = node.absoluteBoundingBox.y + node.height + 8;
     BodyRect.resize(0, 0);
     BodyRect.cornerRadius = 4;
     BodyRect.fills = [{
         type: "SOLID",
-        color: NodeType.color,
+        color: FirstNode.color,
         opacity: 0.8,
     }];
 
     const BodyTextRect = figma.createText();
     HighlightedNodes.push(BodyTextRect);
-    BodyTextRect.name = NodeId;
+    BodyTextRect.name = NodeId + "T";
     BodyTextRect.x = node.absoluteBoundingBox.x + 10;
     BodyTextRect.y = node.absoluteBoundingBox.y + node.height + 8;
     BodyTextRect.resize(0, 0);
     BodyTextRect.fills = [{
         type: "SOLID",
-        color: NodeType.textColor || {r: 1, g: 1, b: 1},
+        color: FirstNode.textColor || {r: 1, g: 1, b: 1},
         opacity: 1,
     }];
 
     figma.loadFontAsync(BodyTextRect.fontName).then(() => {
+        //if (TypeFlags[1] == "img") TODO: have 'Image Button' and not Image and/or Button, or have multiple texts in the Y axis
+
         BodyTextRect.fontSize = 18
-        BodyTextRect.characters = NodeType.text //"BUTTON"
-        BodyTextRect.resize(NodeType.textWidth, 20); // Math.max(NodeType.textWidth, Math.min(node.width - 20, 200))
-        BodyRect.resize(NodeType.textWidth + 20, 24);
+        BodyTextRect.characters = Text //"BUTTON"
+        BodyTextRect.resize(TextWidth, TextHeight); // Math.max(TextWidth, Math.min(node.width - 20, 200))
+        BodyRect.resize(TextWidth + 20, TextHeight + 4);
     });
 
     if (CurrentGroup && CurrentGroup.parent) {
@@ -9320,7 +9540,8 @@ function HighlightNode(node) {
 function HighlightNodes() {
     const nodes = figma.currentPage.findAll(node => {
         if (node.name === "FigmaToRoblox_TEMP") CurrentGroup = node;
-        return node.name.match(/btn|scrl|img/i);
+
+        return node.name.match(/btn|button|scrl|scroll|img|image/i);
     })
 
     if (CurrentGroup && CurrentGroup.parent) CurrentGroup.remove();
@@ -9331,6 +9552,8 @@ function HighlightNodes() {
 
     CurrentGroup = figma.group(HighlightedNodes, figma.currentPage);
     CurrentGroup.name = "FigmaToRoblox_TEMP"
+    CurrentGroup.locked = true;
+    NodeChangeDebounce.clear();
 }
 
 function close() {
@@ -9339,39 +9562,14 @@ function close() {
     CurrentGroup = undefined;
 }
 
-figma.currentPage.on("nodechange", (data) => {
-    if (data.nodeChanges) {
-        data.nodeChanges.forEach(nodeChange => {
-            if (nodeChange.origin == "LOCAL" && nodeChange.type == "PROPERTY_CHANGE" && nodeChange.properties.find(p => p == "name") && !HighlightedNodes.find(hen => hen == nodeChange.node)) {
-                const NodeId = nodeChange.node.getPluginData("NodeId");
-
-                if (NodeId) {
-                    HighlightedNodes = HighlightedNodes.filter((Node) => {
-                        if (Node.parent) {
-                            if (Node.name === NodeId) {
-                                Node.remove();
-                            }
-
-                            return false
-                        }
-
-                        return true
-                    });
-                }
-                
-                if (nodeChange.node.name.match(/btn|scrl|img/i)) HighlightNode(nodeChange.node);
-                else if (NodeId) nodeChange.node.setPluginData("NodeId", "");
-            }
-        })
-    }
-})
+figma.currentPage.on("nodechange", NodeChangeDebounce);
 
 module.exports = {
     name: "ShowHighlights",
     start: HighlightNodes,
     stop: close,
 }
-},{"../Utilities.js":61}],61:[function(require,module,exports){
+},{"debounce":8}],46:[function(require,module,exports){
 var CurrentNotification;
 
 var Flags = {
@@ -9438,7 +9636,7 @@ module.exports = {
     QuickClose,
     Notify
 }
-},{}],62:[function(require,module,exports){
+},{}],47:[function(require,module,exports){
 /*
     @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@bbbbbbbb@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -10118,4 +10316,4 @@ switch (figma.command) {
     default:
         console.warn(`[Figma To Roblox] Unknown command "${figma.command}"`)
 }
-},{"./Conversions.js":58,"./Converters.js":59,"./Flags/HighlightNodes.js":60,"./Utilities.js":61}]},{},[62]);
+},{"./Conversions.js":43,"./Converters.js":44,"./Flags/HighlightNodes.js":45,"./Utilities.js":46}]},{},[47]);

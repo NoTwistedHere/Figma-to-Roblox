@@ -1,86 +1,169 @@
-
-const { Flags } = require('../Utilities.js');
+const Debounce = require("debounce");
 
 var HighlightedNodes = [];
 var CurrentGroup;
+var RecentMoves = {}
+var IsFirst;
+
+const NodeChangeDebounce = Debounce((data) => {
+    if (data.nodeChanges) {
+        data.nodeChanges.forEach(nodeChange => {
+            if (RecentMoves[nodeChange]) return;
+            RecentMoves[nodeChange] = true
+
+            if (nodeChange.origin == "LOCAL"
+                && nodeChange.type == "PROPERTY_CHANGE"
+                && nodeChange.properties.find(p => p == "name" || p == "x" || p == "y" || p == "height" || p == "width")
+                && !HighlightedNodes.find(hen => hen == nodeChange.node)
+            ) {
+                if (nodeChange.node.name.match(/btn|button|scrl|scroll|img|image/i)) HighlightNode(nodeChange.node);
+                else if (NodeId) nodeChange.node.setPluginData("NodeId", "");
+            }
+        })
+
+        if (IsFirst) {
+            IsFirst = false
+            setTimeout(() => {
+                RecentMoves = [];
+                IsFirst = true
+            }, 500)
+        }
+    }
+}, 2000)
 
 const Types = {
-    btn: {
+    button: {
         text: "Button",
+        alt: "btn",
         color: {r: 0.25, g: 0.5, b: 0.8},
-        opacity: 0.94,
         textWidth: 57,
     },
-    img: {
+    image: {
         text: "Image",
+        alt: "img",
         color: {r: 0.4, g: 0.9, b: 0.5},
         textColor: {r: 0.1, g: 0.1, b: 0.1},
-        opacity: 0.94,
         textWidth: 52,
     },
-    scrl: {
+    scroll: {
         text: "Scrolling Frame",
+        alt: "scrl",
         color: {r: 0.8, g: 0.8, b: 0.4},
-        opacity: 0.94,
         textWidth: 132,
     }
 }
 
+for (var [type, value] of Object.entries(Types)) {
+    Types[value.alt] = value;
+}
+
 function HighlightNode(node) {
-    const TypeFlags = node.name.toLowerCase().match(/btn|img|scrl/g);
+    const TypeFlags = node.name.toLowerCase().match(/btn|button|img|image|scrl|scroll/g);
     
     if (!TypeFlags || node.parent && node.parent.name.match(/btn|button|img|image/i)) return;
 
-    const NodeId = node.name.replace(/btn|scrl|img/ig, "") + node.id;
+    var NodeId = node.name.match(/[%d]+:[%d]+/);
 
-    node.setPluginData("NodeId", NodeId);
+    if (NodeId) {
+        NodeId = NodeId[0]
+        var ReuseHighlight;
 
-    const NodeType = Types[TypeFlags[0]]
+        HighlightedNodes = HighlightedNodes.filter((Node) => {
+            if (Node.parent) {
+                if (Node.name.match(NodeId)) {
+                    ReuseHighlight = true;
+
+                    switch (Node.name.substr(-1, 1)) {
+                        case "B": // Background
+                            Node.x = node.absoluteBoundingBox.x - 2;
+                            Node.y = node.absoluteBoundingBox.y - 2;
+                            Node.resize(node.width + 4, node.height + 4);
+                            break;
+                        case "C": // Text Background (Card)
+                            Node.x = node.absoluteBoundingBox.x;
+                            Node.y = node.absoluteBoundingBox.y + node.height + 8;
+                            break;
+                        case "T": // Text
+                            Node.x = node.absoluteBoundingBox.x + 10;
+                            Node.y = node.absoluteBoundingBox.y + node.height + 8;
+                            break;
+                    }
+                }
+
+                return false
+            }
+
+            return true
+        });
+
+        if (ReuseHighlight) return;
+    } else NodeId = node.id;
+
+    node.setPluginData("NodeId", ""); // NodeId
+
+    var TextHeight = 0;
+    var TextWidth = 0;
+    var Text = "";
+    var FirstNode;
+
+    for (var i=0; i< TypeFlags.length; i++) {
+        const NodeType = Types[TypeFlags[i]];
+
+        if (NodeType.textWidth > TextWidth) TextWidth = NodeType.textWidth;
+        if (i == 0) FirstNode = NodeType;
+        else Text += "\n";
+
+        TextHeight += 20;
+        Text += NodeType.text;
+    }
+    
     const HighlightRect = figma.createRectangle();
     HighlightedNodes.push(HighlightRect);
-    HighlightRect.name = NodeId;
+    HighlightRect.name = NodeId + "B";
     HighlightRect.x = node.absoluteBoundingBox.x - 2;
     HighlightRect.y = node.absoluteBoundingBox.y - 2;
     HighlightRect.resize(node.width + 4, node.height + 4);
     HighlightRect.fills = [];
     HighlightRect.strokes = [{
         type: "SOLID",
-        color: NodeType.color,
-        opacity: NodeType.opacity || 0.8,
+        color: FirstNode.color,
+        opacity: FirstNode.opacity || 0.8,
     }];
     HighlightRect.strokeWeight = 3;
     HighlightRect.strokeAlign = "OUTSIDE";
-
+    
     const BodyRect = figma.createRectangle();
     HighlightedNodes.push(BodyRect);
-    BodyRect.name = NodeId;
+    BodyRect.name = NodeId + "C";
     BodyRect.x = node.absoluteBoundingBox.x;
     BodyRect.y = node.absoluteBoundingBox.y + node.height + 8;
     BodyRect.resize(0, 0);
     BodyRect.cornerRadius = 4;
     BodyRect.fills = [{
         type: "SOLID",
-        color: NodeType.color,
+        color: FirstNode.color,
         opacity: 0.8,
     }];
 
     const BodyTextRect = figma.createText();
     HighlightedNodes.push(BodyTextRect);
-    BodyTextRect.name = NodeId;
+    BodyTextRect.name = NodeId + "T";
     BodyTextRect.x = node.absoluteBoundingBox.x + 10;
     BodyTextRect.y = node.absoluteBoundingBox.y + node.height + 8;
     BodyTextRect.resize(0, 0);
     BodyTextRect.fills = [{
         type: "SOLID",
-        color: NodeType.textColor || {r: 1, g: 1, b: 1},
+        color: FirstNode.textColor || {r: 1, g: 1, b: 1},
         opacity: 1,
     }];
 
     figma.loadFontAsync(BodyTextRect.fontName).then(() => {
+        //if (TypeFlags[1] == "img") TODO: have 'Image Button' and not Image and/or Button, or have multiple texts in the Y axis
+
         BodyTextRect.fontSize = 18
-        BodyTextRect.characters = NodeType.text //"BUTTON"
-        BodyTextRect.resize(NodeType.textWidth, 20); // Math.max(NodeType.textWidth, Math.min(node.width - 20, 200))
-        BodyRect.resize(NodeType.textWidth + 20, 24);
+        BodyTextRect.characters = Text //"BUTTON"
+        BodyTextRect.resize(TextWidth, TextHeight); // Math.max(TextWidth, Math.min(node.width - 20, 200))
+        BodyRect.resize(TextWidth + 20, TextHeight + 4);
     });
 
     if (CurrentGroup && CurrentGroup.parent) {
@@ -93,7 +176,8 @@ function HighlightNode(node) {
 function HighlightNodes() {
     const nodes = figma.currentPage.findAll(node => {
         if (node.name === "FigmaToRoblox_TEMP") CurrentGroup = node;
-        return node.name.match(/btn|scrl|img/i);
+
+        return node.name.match(/btn|button|scrl|scroll|img|image/i);
     })
 
     if (CurrentGroup && CurrentGroup.parent) CurrentGroup.remove();
@@ -104,6 +188,8 @@ function HighlightNodes() {
 
     CurrentGroup = figma.group(HighlightedNodes, figma.currentPage);
     CurrentGroup.name = "FigmaToRoblox_TEMP"
+    CurrentGroup.locked = true;
+    NodeChangeDebounce.clear();
 }
 
 function close() {
@@ -112,32 +198,7 @@ function close() {
     CurrentGroup = undefined;
 }
 
-figma.currentPage.on("nodechange", (data) => {
-    if (data.nodeChanges) {
-        data.nodeChanges.forEach(nodeChange => {
-            if (nodeChange.origin == "LOCAL" && nodeChange.type == "PROPERTY_CHANGE" && nodeChange.properties.find(p => p == "name") && !HighlightedNodes.find(hen => hen == nodeChange.node)) {
-                const NodeId = nodeChange.node.getPluginData("NodeId");
-
-                if (NodeId) {
-                    HighlightedNodes = HighlightedNodes.filter((Node) => {
-                        if (Node.parent) {
-                            if (Node.name === NodeId) {
-                                Node.remove();
-                            }
-
-                            return false
-                        }
-
-                        return true
-                    });
-                }
-                
-                if (nodeChange.node.name.match(/btn|scrl|img/i)) HighlightNode(nodeChange.node);
-                else if (NodeId) nodeChange.node.setPluginData("NodeId", "");
-            }
-        })
-    }
-})
+figma.currentPage.on("nodechange", NodeChangeDebounce);
 
 module.exports = {
     name: "ShowHighlights",

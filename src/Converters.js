@@ -149,24 +149,19 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
     }
     
     ExportNode.exportAsync(CustomExport || Settings.DefaultExport).then(Bytes => {
-        const Format = (CustomExport ? CustomExport.format : "PNG").toLowerCase();
-        var IgnoreUpload = false;
-
-        for (const [key, value] in ImageExports) {
-            if (value.Bytes == Bytes) {
-                IgnoreUpload = true;
-                UploadId = key
-                Properties.Image = `{FTR_${key}}`
-                ImagesRemaining += 1;
-                break;
-            };
-        }
-
         Node.setPluginData("AssetId", "");
         Node.setPluginData("OperationId", "");
 
-        if (IgnoreUpload) return
-        else if (!ForceReupload && !Flags.ForceUploadImages && !Properties._ImageHash) {
+        for (const [key, value] in ImageExports) {
+            if (value.Bytes == Bytes) {
+                UploadId = key
+                Properties.Image = `{FTR_${key}}`
+                ImagesRemaining += 1;
+                return;
+            };
+        }
+
+        if (!ForceReupload && !Flags.ForceUploadImages && !Properties._ImageHash) {
             if (!ImageExports[UploadId]) {
                 ImageExports[UploadId] = {
                     Node: Node,
@@ -194,6 +189,13 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
 
                 Node.setPluginData("ImageHash", _ImageHash);
             }
+        } else if (!ImageExports[UploadId]) {
+            ImageExports[UploadId] = {
+                Node: Node,
+                Properties: Properties,
+                Bytes: Bytes, // Uint8Array
+                UploadId: UploadId
+            }
         }
 
         // Test post image upload with template data
@@ -205,7 +207,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                 Data: Bytes,
                 Id: UploadId,
                 Name: Properties.Name.substr(0, 30),
-                Format: Format
+                Format: (CustomExport ? CustomExport.format : "PNG").toLowerCase()
             }
         })
     });
@@ -324,7 +326,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         //     return;
         // };
         
-        if (Flags.AlwaysExportImages && Fill.type === "IMAGE") {
+        if (Fill.type === "IMAGE" && (Settings.UploadImages || Flags.AlwaysExportImages)) {
             // Export image
             Object._ImageHash = Fill.imageHash;
             Object.Class = "ImageLabel"; // or ImageButton?!

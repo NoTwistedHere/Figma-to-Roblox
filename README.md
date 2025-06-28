@@ -89,6 +89,11 @@ NOTE: This might be missing some things
     have "Scroll" or "SCRL" in the name, not case sensitive
     List Layouts are supported
 
+
+### Images
+    All nodes support this tag,
+    include either "Image" or "IMG" in the name, not case sensitive
+
 ### UI List & UI Grids
 
 <br>

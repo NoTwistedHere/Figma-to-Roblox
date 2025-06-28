@@ -10,6 +10,7 @@
     "dependencies": {
         "browserify": "^17.0.1",
         "create-hash": "^1.2.0",
+        "debounce": "^2.2.0",
         "nodemon": "^3.1.9"
     }
 }

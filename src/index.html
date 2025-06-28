@@ -131,8 +131,8 @@
                     Plugin Help
                 </summary>
                 <p style="font-size: small">You can often find more detailed information on <a href="https://github.com/NoTwistedHere/Figma-to-Roblox/blob/main/README.md" target="_blank">github</a></p>
-                <h4>Not case sensitive, alt names don't get exported</h4>
-                Tags:
+                <h4>Tags are not case sensitive. Alternative names (alt tags) are removed from name on export</h4>
+                Supported Tags:
                 <ul>
                     <li>Image (alt: <b>IMG</b>)</li>
                     <li>Button (alt: <b>BTN</b>)</li>
@@ -273,6 +273,18 @@
                             });
                         }
                     };
+                }
+            });
+
+            window.addEventListener("keydown", (Event) => {
+                if (Event.key === "F8") {
+                    Settings.ShowHighlights = !Settings.ShowHighlights;
+                    document.getElementById("HighlightNodes").checked = Settings.ShowHighlights;
+                    PostMessage({
+                        type: "SetAsync",
+                        key: "ShowHighlights",
+                        value: Settings.ShowHighlights
+                    });
                 }
             });
 
