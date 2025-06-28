@@ -9453,8 +9453,10 @@ function HighlightNodes() {
     NodeHighlightsTEMP = []
 
     const nodes = figma.currentPage.findAll(node => {
-        if (node.name === "FigmaToRoblox_TEMP") CurrentGroup = node;
-        else if (node.name.match(/@FtR[0-9]+:[0-9]+/i)) {
+        if (node.name === "FigmaToRoblox_TEMP") {
+            node.remove();
+            return;
+        } else if (node.name.match(/@FtR[0-9]+:[0-9]+/i)) {
             NodeHighlightsTEMP.push(node)
             return;
         }
@@ -9462,8 +9464,12 @@ function HighlightNodes() {
         return node.name.match(/btn|button|scrl|scroll|img|image/i);
     })
     
-    if (CurrentGroup && CurrentGroup.parent) CurrentGroup.remove();
-    CurrentGroup = undefined
+    if (CurrentGroup) {
+        try {
+            CurrentGroup.remove();
+        } catch (e) {}
+        CurrentGroup = undefined
+    }
 
     for (var i=0; i< NodeHighlightsTEMP.length; i++) {
         NodeHighlightsTEMP[i].remove();
