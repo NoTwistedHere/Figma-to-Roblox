@@ -136,7 +136,7 @@
                 <summary>
                     Plugin Help
                 </summary>
-                <p style="font-size: small">You can often find more detailed information on <a href="https://github.com/NoTwistedHere/Figma-to-Roblox/blob/main/README.md" target="_blank">github</a></p>
+                <p>You can often find more detailed information on <a href="https://github.com/NoTwistedHere/Figma-to-Roblox/blob/main/README.md" target="_blank">github</a></p>
                 <h4>Tags are not case sensitive. Alternative names (alt tags) are removed from name on export</h4>
                 Supported Tags:
                 <ul>
@@ -155,7 +155,10 @@
         <h5>
             <span>Made by NoTwistedHere,</span>
             <br>
-            <span>report any issues via <a href="https://github.com/NoTwistedHere/Figma-to-Roblox/issues" target="_blank">Github</a> or Discord (notwistedhere)</span>
+            <span>
+                Please report bugs, and/or make suggestions in our <a href="https://discord.gg/DWCGss4vry" target="_blank">Discord server</a>.
+            </span>
+            <button id="copy_config">Copy Config to Clipboard</button>
         </h5>
 
         <script>
@@ -299,6 +302,42 @@
                     });
                 }
             });
+
+            document.getElementById("copy_config").onclick = () => {
+                const TempSanitisedSettings = {}
+
+                for (var [key, value] of Object.entries(Settings)) {
+                    switch (key) {
+                        case "ImageUploadTestData":
+                        case "CloudApiKey":
+                        case "DefaultExport":
+                            break;
+                        default:
+                            if (typeof(value) !== "string" || value.substr(0, 2) !== "n+") TempSanitisedSettings[key] = value;
+                            break;
+                    }
+                }
+                
+                // Clipboard Stolen from Alex_FG on https://forum.figma.com/ask-the-community-7/write-to-clipboard-from-custom-plugin-23974
+                const prevActive = document.activeElement;
+                const textArea   = document.createElement('textarea');
+
+                textArea.value = "## Config:\n```json\n" + JSON.stringify(TempSanitisedSettings, null, 4) + "```";
+                textArea.style.position = 'fixed';
+                textArea.style.left     = '-999999px';
+                textArea.style.top      = '-999999px';
+                
+                document.body.appendChild(textArea);
+                
+                textArea.focus();
+                textArea.select();
+
+                if (document.execCommand('copy')) PostMessage({ type: "Notify", message: "Successfully copied config to clipboard!" })
+                else PostMessage({ type: "Notify", error: true, message: "FAILED to copy config to clipboard!" });
+            
+                textArea.remove();
+                prevActive.focus();
+            }
 
             document.getElementById("convselect").onclick = () => {
                 Options.forEach(Option => {

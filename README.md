@@ -1,6 +1,6 @@
 # [Figma to Roblox](https://www.figma.com/community/plugin/1221497650571322872)
 
-If you encounter any bugs/issues please let me know through [github](https://github.com/NoTwistedHere/Figma-to-Roblox/issues) or [discord](https://discord.com/users/361124141518159882)
+If you encounter any bugs/issues please let me know through [github](https://github.com/NoTwistedHere/Figma-to-Roblox/issues) or [discord](https://discord.gg/DWCGss4vry)
 
 
 ## How to build:
