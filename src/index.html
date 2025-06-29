@@ -51,6 +51,16 @@
             <label for="ApplyAspectRatio">Apply AspectRatio globally</label>
             <div></div>
 
+            <label for="ApplyAnchorPoint">
+                <input type="checkbox" id="ApplyAnchorPoint" name="Apply AnchorPoint" />
+                Apply AnchorPoint globally
+            </label>
+            <label for="SnapAnchorPoint">
+                <input type="checkbox" id="SnapAnchorPoint" name="Snap AnchorPoint" />
+                Snap AnchorPoint to a 2x2 grid
+            </label>
+            <div></div>
+
             <label for="ConvertOffsetToScale">
                 <input type="checkbox" id="ConvertOffsetToScale" name="Convert to Scale" />
                 Convert to Scale
@@ -62,12 +72,6 @@
                 Recentre
             </label>
             <div></div>
-
-            <!-- <label for="DetectAnchorPoint">
-                <input type="checkbox" id="DetectAnchorPoint" name="Detect AnchorPoint" />
-                Detect AnchorPoint (WIP)
-            </label>
-            <div></div> -->
             
             <label for="IgnoreInvisible">
                 <input type="checkbox" id="IgnoreInvisible" name="Ignore Invisible" />
@@ -143,6 +147,10 @@
                     <li>Image (alt: <b>IMG</b>)</li>
                     <li>Button (alt: <b>BTN</b>)</li>
                     <li>Scroll (alt: <b>SCRL</b>)</li>
+                </ul>
+                Supported Modifiers:
+                <ul>
+                    <li><b>|ANCHOR</b> - Enable AnchorPoint</li>
                 </ul>
                 <p style="font-size: small">With tags you can add the same to both TextLabel (or Buttons) and its parent Group, for better linking</p>
                 <p style="font-size: small">Frames with the name <b>'Background'</b> will override their parent group's apperance once exported.</p>
@@ -241,11 +249,16 @@
                     id: "ConvertOffsetToScale",
                     type: "checkbox",
                 },
-                // {
-                //     name: "DetectAnchorPoint",
-                //     id: "DetectAnchorPoint",
-                //     type: "checkbox",
-                // },
+                {
+                    name: "ApplyAnchorPoint",
+                    id: "ApplyAnchorPoint",
+                    type: "checkbox",
+                },
+                {
+                    name: "SnapAnchorPoint",
+                    id: "SnapAnchorPoint",
+                    type: "checkbox",
+                },
                 {
                     name: "IgnoreInvisible",
                     id: "IgnoreInvisible",

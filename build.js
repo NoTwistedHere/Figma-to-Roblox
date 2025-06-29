@@ -9085,7 +9085,7 @@ function LoopTable(TObject) {
 
     for (var [Key, Value] of Object.entries(TObject)) {
         if (Key === "XO" || Key === "YO") Xml += `<${Key}>${Round(Value, 1)}</${Key}>`; // UDim(2) Offset is an int
-        if (Key === "XS" || Key === "YS") Xml += `<${Key}>${Round(Value, 100000)}</${Key}>`; // UDim(2) Offset is an int
+        if (Key === "XS" || Key === "YS" || Key === "X" || Key === "Y") Xml += `<${Key}>${Round(Value, 100000)}</${Key}>`; // UDim(2) Scale & Vector2 is an float
         else if (typeof(Value) === "number") Xml += `<${Key}>${Round(Value, 1000)}</${Key}>`;
         else Xml += `<${Key}>${Value}</${Key}>`;
     }
@@ -9175,14 +9175,6 @@ const XMLTypes = {
             });
 
             return `<ColorSequence name="${Name}">${Sequence}</ColorSequence>`
-        } else if (Value[0] && Value[0].Transparency !== undefined) {
-            var Sequence = ""
-
-            Value.forEach(Stop => {
-                Sequence += `${Stop.TimePosition} ${Stop.Transparency} 0 `;
-            });
-
-            return `<NumberSequence name="${Name}">${Sequence}</NumberSequence>`
         } else if (Value.Family) {
             return `<Font name="${Name}">${LoopTable(Value)}</Font>`
         } else {
@@ -9521,7 +9513,8 @@ var Flags = {
     UseSelectionPositionRelativeToScene: true, // True: Will use the (x,y) position of the Upmost Group(s) (should be no.1); False: Set the Upmost Group(s) Position to (0,0) !! note: named "Recentre" !!
     ScrollFrame_ScaleDominantAxis: true, // True: Only scales the dominant axis for elements of scrolling frames (in a list, only the Y axis will be scaled, X will remain using offset)
     TextSizeAdjustment: 1.05, // True: Adjusts the text size (of exported text) to be more accurately match what is seen in figma - why is this even needed, but if you do find yourself needing to adjust/remove I would love to know why & your use case
-    DetectAnchorPoint: false, // Will set AnchorPoint to Left/Top, Centre or Right/Bottom
+    ApplyAnchorPoint: false, // True: Anchors weirdly..
+    SnapAnchorPoint: true, // True: Snaps anchor point to nearest edge (or center), Number: snaps to multiples of number
     TextScaled: false, // Enables TextScaled on TextLabels (should be done on a per basis)
     GeneratePaths: false, // !! TODO !! Not Implemented Yet - Creates a ModuleScript with all Prefixed elements (WIP)
     IgnoreInvisible: true, // Will skip over (/ignore) invisible elements
@@ -9775,11 +9768,19 @@ function ConvertObject(Properties, ParentObject) {
             case "TextTransparency":
             case "ImageTransparency":
                 // Should always be parented to a group as only groups and sections allow children
-                if (typeof(Value) !== "number") continue; // should be a NumberSequence, let it be handled by object type
+                if (typeof(Value) == "number") {
+                    Value = Properties._Transparency * Value;
+                    XML += XMLTypes.number(Key, 1 - Value, false, 10000);
+                    break;
+                } else if (Value[0] && Value[0].Transparency !== undefined) {
+                    var Sequence = ""
 
-                Value = Properties._Transparency * Value;
-                XML += XMLTypes.number(Key, 1 - Value, false, 10000);
-                break
+                    Value.forEach(Stop => {
+                        Sequence += `${Stop.TimePosition} ${Stop.Transparency} 0 `;
+                    });
+                    XML += `<NumberSequence name="${Key}">${Sequence}</NumberSequence>`
+                    break;
+                }
             case "TextSize":
                 XML += XMLTypes.number(Key, Value * Flags.TextSizeAdjustment, false, 20);
                 break;
@@ -9853,6 +9854,11 @@ function LoopNodes(Nodes, ParentObject) {
         
         const lowercaseName = Properties.Name.toLowerCase();
         const removeNameAbriv = lowercaseName.match("btn") || lowercaseName.match("scrl");
+
+        if (lowercaseName.match(/\|anchor/)) {
+            Properties._ApplyAnchorPoint = true;
+            Properties.Name = Properties.Name.replace(/\|anchor/i, "");
+        }
 
         if (ParentObject && (lowercaseName == Flags.GroupBackgroundFrameName /*|| (
             Node.type === "RECTANGLE" && Properties.BackgroundTransparency == 0
@@ -10005,6 +10011,28 @@ function LoopNodes(Nodes, ParentObject) {
             }
         }
 
+        const ConvertAnchorPoint = function(SizeX, SizeY) {
+            var AX = (Properties.Position.XO + Properties.Size.XO / 2) / SizeX;
+            var AY = (Properties.Position.YO + Properties.Size.YO / 2) / SizeY;
+
+            if (!isNaN(AX) && !isNaN(AY)) {
+                if (Flags.SnapAnchorPoint) {
+                    const Snap = Flags.SnapAnchorPoint == true ? 0.5 : Flags.SnapAnchorPoint;
+
+                    AX = Math.round(AX / Snap) * Snap;
+                    AY = Math.round(AY / Snap) * Snap;
+                }
+
+                Properties.AnchorPoint = {
+                    X: AX,
+                    Y: AY
+                }
+
+                Properties.Position.YO += Properties.Size.YO * AY;
+                Properties.Position.XO += Properties.Size.XO * AX;
+            }
+        }
+
         if (ParentObject) {
             if (ParentObject._OriginalPosition && ParentObject.Node.type !== "FRAME" && ParentObject.Node.type !== "INSTANCE" && ParentObject.Node.type !== "COMPONENT") {
                 // Get Position relative to Parent
@@ -10012,76 +10040,12 @@ function LoopNodes(Nodes, ParentObject) {
                 Properties.Position.YO = Properties.Position.YO - ParentObject._OriginalPosition.YO;
             }
             
-            // Convert Offset (Pixels) to Scale
-            // What am I going to do about anchor points :()
-            // ^^ I do actually have 2 potential ideas
-
             const PSX = ParentObject.Size.XO;
             const PSY = ParentObject.Size.YO;
-
-            if (Flags.DetectAnchorPoint) {
-                var PX = Properties.Position.XO;
-                var PY = Properties.Position.YO;
-                var SX = Properties.Size.XO;
-                var SY = Properties.Size.YO;
-
-                var AX = 0;
-                var AY = 0;
-                
-                var LeftX = PX / PSX
-                var RightX = (PX + SX) / PSX
-                var LeftY = PY / PSY
-                var RightY = (PY + SY) / PSY
-                
-                // Can do X + SX  
-                //
-                //
-
-                var Test2X = LeftX + RightX
-                var Test2Y = LeftY + RightY
-
-                //console.log(Properties, LeftX, RightX, Test2)
-                //console.log(PX, SX, ParentObject)
-
-                // if (LeftX > 0.5) {
-                //     AX = 1
-                // } else if (TestRx > 0.5) {
-                //     AX = 0
-                // } else if (TestRx >= 0 && TestRx) { // Should maybe be matching if (Lx) - (1 - Rx)
-                //     AX = 0.5
-                // }
-
-                // AX = Test2 / 2
-
-                if (Test2X > 1.5) {
-                    AX = 1;
-                } else if (Test2X > 0.5) {
-                    AX = 0.5;
-                } else {
-                    AX = 0;
-                }
-
-                if (Test2Y > 1.5) {
-                    AY = 1;
-                } else if (Test2Y > 0.5) {
-                    AY = 0.5;
-                } else {
-                    AY = 0;
-                }
-
-                //console.log(AX, AY)
-
-                if (AX || AY) {
-                    Properties.AnchorPoint = {
-                        X: AX,
-                        Y: AY
-                    }
-
-                    // Properties.Position.YO += Properties.Size.YO * AY;
-                    // Properties.Position.XO += Properties.Size.XO * AX;
-                }
-            }
+            // Convert Anchor Point
+            if (Flags.ApplyAnchorPoint || Properties._ApplyAnchorPoint) ConvertAnchorPoint(PSX, PSY);
             
+            // Convert Offset (Pixels) to Scale
             if (Flags.ConvertOffsetToScale) {
                 //console.log(Properties.Position, "X:", PSX, "Y:", PSY)
                 Properties.Position.XS = Properties.Position.XO / PSX;
@@ -10161,11 +10125,10 @@ function LoopNodes(Nodes, ParentObject) {
             // Set Position of upmost Element (most likely a Group) to (0,0)
             Properties.Position.XO -= Node.x;
             Properties.Position.YO -= Node.y;
-        } else if (Node.parent) {
+        } else if (Node.parent && Node.parent.type !== "PAGE") {
             // Convert user-selected frame to scale
-            Properties.Position.XO -= Node.parent.x;
-            Properties.Position.YO -= Node.parent.y;
-
+            if (Flags.ApplyAnchorPoint || Properties._ApplyAnchorPoint) ConvertAnchorPoint(Node.parent.width, Node.parent.height);
+            
             if (Flags.ConvertOffsetToScale) {
                 const PSX = Node.parent.width
                 const PSY = Node.parent.height
@@ -10184,7 +10147,6 @@ function LoopNodes(Nodes, ParentObject) {
         }
         
         // Convert to XML
-
         FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
         FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n" + New;
         FileContent += "</Item>\n";
@@ -10298,7 +10260,7 @@ figma.ui.onmessage = msg => {
         case "UploadError":
             var Suggestion = ImageUploadErrorSuggestions[msg.code] || "";
             
-            NotifyError(`FAILED to upload image, got error '${msg.code}: ${msg.message}'${Suggestion ? ",\r\n" + Suggestion : ""}`, false, {
+            NotifyError(`FAILED to upload image, got error '${msg.code}: ${msg.message}'${Suggestion ? ",\r\n" + Suggestion : ""}. Help can found in discord server https://discord.gg/DWCGss4vry`, false, {
                 timeout: 5000,
                 error: true,
             });

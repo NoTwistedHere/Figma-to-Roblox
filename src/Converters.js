@@ -1192,7 +1192,7 @@ function LoopTable(TObject) {
 
     for (var [Key, Value] of Object.entries(TObject)) {
         if (Key === "XO" || Key === "YO") Xml += `<${Key}>${Round(Value, 1)}</${Key}>`; // UDim(2) Offset is an int
-        if (Key === "XS" || Key === "YS") Xml += `<${Key}>${Round(Value, 100000)}</${Key}>`; // UDim(2) Offset is an int
+        if (Key === "XS" || Key === "YS" || Key === "X" || Key === "Y") Xml += `<${Key}>${Round(Value, 100000)}</${Key}>`; // UDim(2) Scale & Vector2 is an float
         else if (typeof(Value) === "number") Xml += `<${Key}>${Round(Value, 1000)}</${Key}>`;
         else Xml += `<${Key}>${Value}</${Key}>`;
     }
@@ -1282,14 +1282,6 @@ const XMLTypes = {
             });
 
             return `<ColorSequence name="${Name}">${Sequence}</ColorSequence>`
-        } else if (Value[0] && Value[0].Transparency !== undefined) {
-            var Sequence = ""
-
-            Value.forEach(Stop => {
-                Sequence += `${Stop.TimePosition} ${Stop.Transparency} 0 `;
-            });
-
-            return `<NumberSequence name="${Name}">${Sequence}</NumberSequence>`
         } else if (Value.Family) {
             return `<Font name="${Name}">${LoopTable(Value)}</Font>`
         } else {
