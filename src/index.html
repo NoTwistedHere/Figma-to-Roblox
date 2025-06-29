@@ -498,7 +498,7 @@
                             // Update the origin node so if we fail to finish it can be recovered from the node's plugin properties
                             PostMessage({ type: "UpdateOperationId", id: data.Id, data: InitialResponse.operationId });
 
-                            Sleep(500);
+                            Sleep(1000);
 
                             for (var i = 0; i < 40; i++) {
                                 const UploadResponse = await (await fetch(`https://apis.roblox.com/assets/v1/${InitialResponse.path}`, {
@@ -518,7 +518,7 @@
 
                                         // Admit defeat
                                         if (i === 40) PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status })
-                                        else Sleep(5000);
+                                        else Sleep(7500);
 
                                         continue;
                                     }
@@ -527,7 +527,7 @@
                                     return;
                                 }
 
-                                Sleep(2000);
+                                Sleep(3000);
                             }
                         });
 

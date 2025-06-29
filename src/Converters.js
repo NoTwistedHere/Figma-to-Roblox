@@ -1,5 +1,5 @@
 const Conversions = require("./Conversions");
-const { Flags, NotifyError } = require("./Utilities");
+const { Flags, NotifyError, Notify } = require("./Utilities");
 const createHash = require("create-hash/browser");
 
 var ImagesRemaining = 0;
@@ -154,7 +154,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
             if (value.Bytes == Bytes) {
                 UploadId = key
                 Properties.Image = `{FTR_${key}}`
-                ImagesRemaining += 1;
+                ImagesRemaining -= 1;
                 return;
             };
         }
@@ -183,7 +183,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                         "state": "Active"
                     }});
                     return;
-                }
+                } else if (AssetId) console.warn("Node's image has changed, uploading")
 
                 Node.setPluginData("ImageHash", _ImageHash);
             }
@@ -199,15 +199,17 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
         // Test post image upload with template data
         if (Flags.ImageUploadTesting) UpdateImage({id: UploadId, data: Flags.ImageUploadBoilerplate});
         // Upload Image
-        else figma.ui.postMessage({
-            type: "UploadImage",
-            data: {
-                Data: Bytes,
-                Id: UploadId,
-                Name: Properties.Name.substr(0, 30),
-                Format: (CustomExport ? CustomExport.format : "PNG").toLowerCase()
-            }
-        })
+        else setTimeout(() => {
+            figma.ui.postMessage({
+                type: "UploadImage",
+                data: {
+                    Data: Bytes,
+                    Id: UploadId,
+                    Name: Properties.Name.substr(0, 30),
+                    Format: (CustomExport ? CustomExport.format : "PNG").toLowerCase()
+                }
+            })
+        }, ImagesRemaining > 3 ? (ImagesRemaining / 5) * 1000 : 0)
     });
 
     return UploadId
@@ -366,7 +368,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         }
     },
     ["effects"]: (Value, Object, Node) => {
-        if (!Settings.UploadImages || Settings.UploadEffects) return; // UploadImages is disabled, ignore?
+        if (!Settings.UploadImages || !Settings.UploadEffects) return; // UploadImages is disabled, ignore?
 
         Value.forEach(Effect => {
             function clamp(OldOffset, X, Y) {
@@ -380,11 +382,13 @@ const PropertyTypes = {// the only return value should be nothing or an object c
                 return NewOffset;
             }
 
-            if (Effect.offset) {
-                Object.EffectRadius = clamp(Object.EffectRadius, Effect.offset.x, Effect.offset.y);
-            } else if (Effect.radius) {
+            console.log(Object.EffectRadius, Effect)
+
+            if (Effect.radius) {
                 Object.EffectRadius = clamp(Object.EffectRadius, Effect.radius, Effect.radius);
-            }
+            } else if (Effect.offset) {
+                Object.EffectRadius = clamp(Object.EffectRadius, Effect.offset.x, Effect.offset.y);
+            } 
 
             switch (Effect.type) {
                 /*case "DROP_SHADOW":
