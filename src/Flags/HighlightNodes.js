@@ -168,31 +168,25 @@ const NodeChangeDebounce = Debounce((data) => {
             if (RecentMoves[nodeChange.node] || nodeChange.origin !== "LOCAL") return;
             RecentMoves[nodeChange.node] = true;
 
-            if (
-                nodeChange.type == "CREATE"
-                || (nodeChange.type == "PROPERTY_CHANGE"
-                && nodeChange.properties
-                && nodeChange.properties.find(p => p == "name" || p == "x" || p == "y" || p == "height" || p == "width")
-                && !NodeHighlightsTEMP.find(hen => hen == nodeChange.node))
-            ) {
-                HighlightNode(nodeChange.node);
-
-                /*if (nodeChange.node.name.toLowerCase().match(/btn|button|scrl|scroll|img|image/)) HighlightNode(nodeChange.node);
-                else if (HighlightedNodes.find(N => N === nodeChange.node)) {
-                    const NodeId = nodeChange.node.name
-
-                    NodeHighlightsTEMP = NodeHighlightsTEMP.filter((Node) => {
-                        if (Node.parent && Node.name.match(NodeId)) {
-                            Node.remove();
-                            return false;
-                        }
-
-                        return true
-                    });
-                    
-                    nodeChange.node.setPluginData("NodeId", "");
-                }*/
-            } else if (nodeChange.type == "DELETE") HighlightNode(nodeChange.node, true);
+            switch (nodeChange.type) {
+                case "PROPERTY_CHANGE":
+                    if (nodeChange.properties
+                        && nodeChange.properties.find(p => p == "name" || p == "x" || p == "y" || p == "height" || p == "width")
+                        && !NodeHighlightsTEMP.find(hen => hen == nodeChange.node)
+                    ) {
+                        HighlightNode(nodeChange.node);
+                    }
+                    break;
+                case "CREATE":
+                    if (!nodeChange.properties) figma.currentPage.appendChild(CurrentGroup);
+                    HighlightNode(nodeChange.node);
+                    break;
+                case "DELETE":
+                    HighlightNode(nodeChange.node, true);
+                    break;
+                default:
+                    break;
+            }
         })
     }
 }, 800, {

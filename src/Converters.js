@@ -353,7 +353,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         }
     },
     ["cornerRadius"]: (Value, Object) => {
-        if (Value !== 0) {
+        if (Value !== 0 && Value !== figma.mixed) {
             Object._HasCorners = true;
             Object.Children.push({
                 Class: "UICorner",
@@ -1188,11 +1188,12 @@ function Round(Number, To) {
 }
 
 function LoopTable(TObject) {
-    var Xml = "";
+    let Xml = "";
 
-    for (var [Key, Value] of Object.entries(TObject)) {
-        if (Key === "XO" || Key === "YO") Xml += `<${Key}>${Round(Value, 1)}</${Key}>`; // UDim(2) Offset is an int
-        if (Key === "XS" || Key === "YS" || Key === "X" || Key === "Y") Xml += `<${Key}>${Round(Value, 100000)}</${Key}>`; // UDim(2) Scale & Vector2 is an float
+    for (const [Key, Value] of Object.entries(TObject)) {
+        if (Value === figma.mixed) Xml += `<${Key}>0</${Key}>`; // ignore symbols, default to 0
+        else if (Key === "XO" || Key === "YO") Xml += `<${Key}>${Round(Value, 1)}</${Key}>`; // UDim(2) Offset is an int
+        else if (Key === "XS" || Key === "YS" || Key === "X" || Key === "Y") Xml += `<${Key}>${Round(Value, 100000)}</${Key}>`; // UDim(2) Scale & Vector2 is an float
         else if (typeof(Value) === "number") Xml += `<${Key}>${Round(Value, 1000)}</${Key}>`;
         else Xml += `<${Key}>${Value}</${Key}>`;
     }

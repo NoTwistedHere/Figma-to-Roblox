@@ -8246,7 +8246,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         }
     },
     ["cornerRadius"]: (Value, Object) => {
-        if (Value !== 0) {
+        if (Value !== 0 && Value !== figma.mixed) {
             Object._HasCorners = true;
             Object.Children.push({
                 Class: "UICorner",
@@ -9081,11 +9081,12 @@ function Round(Number, To) {
 }
 
 function LoopTable(TObject) {
-    var Xml = "";
+    let Xml = "";
 
-    for (var [Key, Value] of Object.entries(TObject)) {
-        if (Key === "XO" || Key === "YO") Xml += `<${Key}>${Round(Value, 1)}</${Key}>`; // UDim(2) Offset is an int
-        if (Key === "XS" || Key === "YS" || Key === "X" || Key === "Y") Xml += `<${Key}>${Round(Value, 100000)}</${Key}>`; // UDim(2) Scale & Vector2 is an float
+    for (const [Key, Value] of Object.entries(TObject)) {
+        if (Value === figma.mixed) Xml += `<${Key}>0</${Key}>`; // ignore symbols, default to 0
+        else if (Key === "XO" || Key === "YO") Xml += `<${Key}>${Round(Value, 1)}</${Key}>`; // UDim(2) Offset is an int
+        else if (Key === "XS" || Key === "YS" || Key === "X" || Key === "Y") Xml += `<${Key}>${Round(Value, 100000)}</${Key}>`; // UDim(2) Scale & Vector2 is an float
         else if (typeof(Value) === "number") Xml += `<${Key}>${Round(Value, 1000)}</${Key}>`;
         else Xml += `<${Key}>${Value}</${Key}>`;
     }
@@ -9416,31 +9417,25 @@ const NodeChangeDebounce = Debounce((data) => {
             if (RecentMoves[nodeChange.node] || nodeChange.origin !== "LOCAL") return;
             RecentMoves[nodeChange.node] = true;
 
-            if (
-                nodeChange.type == "CREATE"
-                || (nodeChange.type == "PROPERTY_CHANGE"
-                && nodeChange.properties
-                && nodeChange.properties.find(p => p == "name" || p == "x" || p == "y" || p == "height" || p == "width")
-                && !NodeHighlightsTEMP.find(hen => hen == nodeChange.node))
-            ) {
-                HighlightNode(nodeChange.node);
-
-                /*if (nodeChange.node.name.toLowerCase().match(/btn|button|scrl|scroll|img|image/)) HighlightNode(nodeChange.node);
-                else if (HighlightedNodes.find(N => N === nodeChange.node)) {
-                    const NodeId = nodeChange.node.name
-
-                    NodeHighlightsTEMP = NodeHighlightsTEMP.filter((Node) => {
-                        if (Node.parent && Node.name.match(NodeId)) {
-                            Node.remove();
-                            return false;
-                        }
-
-                        return true
-                    });
-                    
-                    nodeChange.node.setPluginData("NodeId", "");
-                }*/
-            } else if (nodeChange.type == "DELETE") HighlightNode(nodeChange.node, true);
+            switch (nodeChange.type) {
+                case "PROPERTY_CHANGE":
+                    if (nodeChange.properties
+                        && nodeChange.properties.find(p => p == "name" || p == "x" || p == "y" || p == "height" || p == "width")
+                        && !NodeHighlightsTEMP.find(hen => hen == nodeChange.node)
+                    ) {
+                        HighlightNode(nodeChange.node);
+                    }
+                    break;
+                case "CREATE":
+                    if (!nodeChange.properties) figma.currentPage.appendChild(CurrentGroup);
+                    HighlightNode(nodeChange.node);
+                    break;
+                case "DELETE":
+                    HighlightNode(nodeChange.node, true);
+                    break;
+                default:
+                    break;
+            }
         })
     }
 }, 800, {
