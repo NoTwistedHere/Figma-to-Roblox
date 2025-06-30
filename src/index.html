@@ -23,7 +23,24 @@
             summary {
                 width: 100%;
             }
+            notification {
+                position: fixed;
+                top: 0;
+                width: 100%;
+                height: 40px;
+                left: 0;
+                background-color: #000;
+                color: #fff;
+                border-bottom: 1px solid #333;
+                clear: both;
+                z-index: 999;
+            }
         </style>
+
+        <!-- <notification> -->
+            <!-- assfsdsdfsdf -->
+        <!-- </notification> -->
+        
 
         <a id="download" href="#" download="export.rbxmx" style="display:none;">Download</a>
         
@@ -443,7 +460,10 @@
                             return;
                         } else if (!Settings.CloudApiKey || !Settings.UploaderId || Settings.CloudApiKey == "" || Settings.UploaderId == "") {
                             console.warn("Cloud API Key is not set");
-                            PostMessage({ type: 'image-upload-fail', data: "Cloud API Key is not set" })
+                            PostMessage({ type: "UploadError", message: "Cloud API Key is not set" });
+                            PostMessage({ type: "ImageUploaded", id: data.Id, data: {
+                                imageContent: "rbxasset://textures/StudioSharedUI/TransparentWhiteImagePlaceholder.png"
+                            } });
                             return;
                         }
 
@@ -491,14 +511,17 @@
                                     InitialResponse.type = "UploadError";
                                     PostMessage(InitialResponse);
                                 } else if (InitialResponse.status) console.error(`Image POST returned status ${InitialResponse.status}, "${InitialResponse.title}", errors:`, InitialResponse.errors[""] || InitialResponse.errors.map(err => err.message).join(", "))
-                                else console.error(`Image POST returned errors:`, InitialResponse.errors.map(err => err.message).join(", "));
+                                else {
+                                    PostMessage({ type: "UploadError", message: InitialResponse.errors[0].message });
+                                    console.error(`Image POST returned errors:`, InitialResponse.errors.map(err => err.message).join(", "));
+                                }
                                 return;
                             }
 
                             // Update the origin node so if we fail to finish it can be recovered from the node's plugin properties
                             PostMessage({ type: "UpdateOperationId", id: data.Id, data: InitialResponse.operationId });
 
-                            Sleep(1000);
+                            Sleep(1200);
 
                             for (var i = 0; i < 40; i++) {
                                 const UploadResponse = await (await fetch(`https://apis.roblox.com/assets/v1/${InitialResponse.path}`, {
@@ -518,7 +541,7 @@
 
                                         // Admit defeat
                                         if (i === 40) PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status })
-                                        else Sleep(7500);
+                                        else Sleep(data.wait || 4000);
 
                                         continue;
                                     }
@@ -527,7 +550,7 @@
                                     return;
                                 }
 
-                                Sleep(3000);
+                                Sleep(data.wait || 3000);
                             }
                         });
 

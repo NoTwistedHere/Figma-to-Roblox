@@ -98,7 +98,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                 Properties.Image = `rbxassetid://${AssetId}`
 
                 return;
-            }
+            } else console.warn("Node's image has changed, uploading..", Node, AssetId)
         } else if (UploadId) {
             // try fetching before attempting to re-upload
 
@@ -202,6 +202,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
         else setTimeout(() => {
             figma.ui.postMessage({
                 type: "UploadImage",
+                wait: ImagesRemaining > 5 ? 6500 : ImagesRemaining > 2 ? 3200 : 2150,
                 data: {
                     Data: Bytes,
                     Id: UploadId,
@@ -221,6 +222,7 @@ function UpdateImage(msg) {
     if (!ImageInfo) {
         figma.notify(`Unable to find Image Node "${msg.id}" (check console for more info)`);
         console.warn(`Failed to find Image Node "${msg.id}":`, msg);
+        ImagesRemaining -= 1;
         return;
     } else if (typeof(msg.data) === "string") { // Image uploaded
         //ImageInfo.Node.setPluginData("OperationId", "");
@@ -1289,6 +1291,8 @@ const XMLTypes = {
             return `<ColorSequence name="${Name}">${Sequence}</ColorSequence>`
         } else if (Value.Family) {
             return `<Font name="${Name}">${LoopTable(Value)}</Font>`
+        } else if (Value.X1 !== undefined && Value.Y1 !== undefined) {
+            return `<Rect2D name="${Name}"><min><X>${Round(Value.X0, 1)}</X><Y>${Round(Value.Y0, 1)}</Y></min><max><X>${Round(Value.X1, 1)}</X><Y>${Round(Value.Y1, 1)}</Y></max></Rect2D>`
         } else {
             console.error("[Figma to Roblox] Failed to sanitise table for property:" + Name, Value);
             return "";

@@ -7991,7 +7991,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                 Properties.Image = `rbxassetid://${AssetId}`
 
                 return;
-            }
+            } else console.warn("Node's image has changed, uploading..", Node, AssetId)
         } else if (UploadId) {
             // try fetching before attempting to re-upload
 
@@ -8095,6 +8095,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
         else setTimeout(() => {
             figma.ui.postMessage({
                 type: "UploadImage",
+                wait: ImagesRemaining > 5 ? 6500 : ImagesRemaining > 2 ? 3200 : 2150,
                 data: {
                     Data: Bytes,
                     Id: UploadId,
@@ -8114,6 +8115,7 @@ function UpdateImage(msg) {
     if (!ImageInfo) {
         figma.notify(`Unable to find Image Node "${msg.id}" (check console for more info)`);
         console.warn(`Failed to find Image Node "${msg.id}":`, msg);
+        ImagesRemaining -= 1;
         return;
     } else if (typeof(msg.data) === "string") { // Image uploaded
         //ImageInfo.Node.setPluginData("OperationId", "");
@@ -9182,6 +9184,8 @@ const XMLTypes = {
             return `<ColorSequence name="${Name}">${Sequence}</ColorSequence>`
         } else if (Value.Family) {
             return `<Font name="${Name}">${LoopTable(Value)}</Font>`
+        } else if (Value.X1 !== undefined && Value.Y1 !== undefined) {
+            return `<Rect2D name="${Name}"><min><X>${Round(Value.X0, 1)}</X><Y>${Round(Value.Y0, 1)}</Y></min><max><X>${Round(Value.X1, 1)}</X><Y>${Round(Value.Y1, 1)}</Y></max></Rect2D>`
         } else {
             console.error("[Figma to Roblox] Failed to sanitise table for property:" + Name, Value);
             return "";
@@ -9740,6 +9744,7 @@ function ConvertObject(Properties, ParentObject) {
             case "_HasCorners":
             case "_HasStroke":
                 break;
+            case "ScaleType":
             case "DominantAxis":
             case "AspectType":
             case "TextTruncate":
@@ -9823,10 +9828,12 @@ function LoopNodes(Nodes, ParentObject) {
         for (var i = 0; i < Nodes.length; i++) {
             const Node = Nodes[i];
     
-            if (Node.name.toLowerCase() === Flags.GroupBackgroundFrameName) {
-                SortedNodes[i] = SortedNodes[0];
-                SortedNodes[0] = Node;
-            } else SortedNodes[i] = Node;
+            if (Node && Node.name) {
+                if (Node.name.toLowerCase() === Flags.GroupBackgroundFrameName) {
+                    SortedNodes[i] = SortedNodes[0];
+                    SortedNodes[0] = Node;
+                } else SortedNodes[i] = Node;
+            }
         }
     //}
 
@@ -9849,6 +9856,23 @@ function LoopNodes(Nodes, ParentObject) {
             // FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
             // FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n" + LoopNodes(Node.children, Properties);
             // FileContent += "</Item>\n";
+        }
+
+        // Calculate Aspect Ratio and Scale
+        if (Properties._ApplyAspectRatio || Flags.ApplyAspectRatio) {
+            if (Properties.Class === "ScrollingFrame") console.warn("Cannot Apply UIAspectRatioConstraint to a ScrollingFrame that scrolls")
+            else {
+                var AspectRatio = Math.round((Properties.Size.XO / Properties.Size.YO) * 100000) / 100000;
+                
+                if (Node.width != 0 && Node.height != 0 && AspectRatio) {
+                    Properties.Children.push({
+                        Class: "UIAspectRatioConstraint",
+                        AspectRatio: AspectRatio,
+                        AspectType: 0,
+                        DominantAxis: Properties.Size.XO > Properties.Size.YO ? 0 : 1
+                    });
+                }
+            }
         }
         
         const lowercaseName = Properties.Name.toLowerCase();
@@ -9983,32 +10007,6 @@ function LoopNodes(Nodes, ParentObject) {
         }
         // Loop all Node Children
         if ((Properties._hasExport || !Properties.Image) && Node.children) New += LoopNodes(Node.children, Properties);
-        
-        // Adjust element Size & Position to account for effects
-        if (Properties.EffectRadius) {
-            const EffectRadius = Properties.EffectRadius
-            Properties.Size.XO += EffectRadius.X * 2
-            Properties.Size.YO += EffectRadius.Y * 2
-            Properties.Position.XO -= EffectRadius.X
-            Properties.Position.YO -= EffectRadius.Y
-        }
-
-        // Calculate Aspect Ratio and Scale
-        if (Properties._ApplyAspectRatio || Flags.ApplyAspectRatio) {
-            if (Properties.Class === "ScrollingFrame") console.warn("Cannot Apply UIAspectRatioConstraint to a ScrollingFrame that scrolls")
-            else {
-                var AspectRatio = Math.round((Properties.Size.XO / Properties.Size.YO) * 100000) / 100000;
-                
-                if (Node.width != 0 && Node.height != 0 && AspectRatio) {
-                    Properties.Children.push({
-                        Class: "UIAspectRatioConstraint",
-                        AspectRatio: AspectRatio,
-                        AspectType: 1,
-                        DominantAxis: Properties.Size.XO > Properties.Size.YO ? 1 : 0
-                    })
-                }
-            }
-        }
 
         const ConvertAnchorPoint = function(SizeX, SizeY) {
             var AX = (Properties.Position.XO + Properties.Size.XO / 2) / SizeX;
@@ -10145,6 +10143,43 @@ function LoopNodes(Nodes, ParentObject) {
             }
         }
         
+        // Adjust element Size & Position to account for effects
+        if (Properties.EffectRadius) {
+            const EffectRadius = Properties.EffectRadius
+
+            // if (Properties.Position.XS)
+            // if XS == 0, Position -= EffectRadius.X
+            // if XS == 0.5, Position -= 0
+            // if XS == 1, Position += EffectRadius.X
+            // (XS * 2) - 1
+            Properties.Position.XO += ((Properties.Position.XS * 2) - 1) * EffectRadius.X;
+            Properties.Position.YO += ((Properties.Position.YS * 2) - 1) * EffectRadius.Y;
+            Properties.Size.XO += EffectRadius.X * 2;
+            Properties.Size.YO += EffectRadius.Y * 2;
+
+            
+            /*const CornerRadiusOffset = Node.cornerRadius && Node.cornerRadius !== figma.mixed ? Node.cornerRadius * 2 : 0;
+            const X = EffectRadius.X + CornerRadiusOffset;
+            const Y = EffectRadius.Y + CornerRadiusOffset;
+
+            const SizeX = Properties.Size.XS * Node.parent.width
+            const SizeY = Properties.Size.YS * Node.parent.height
+
+            // Compare image size and frame/node size?
+
+            Properties.ScaleType = 1;
+            Properties.SliceCenter = {
+                X0: X, // Left
+                Y0: Y, // Top
+                X1: SizeX - X, // Right
+                Y1: SizeY - Y, // Bottom,
+            }
+
+            console.log(X, Y);
+            console.log(Properties.SliceCenter, SizeX, SizeY)
+            */
+        }
+        
         // Convert to XML
         FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
         FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n" + New;
@@ -10257,9 +10292,10 @@ figma.ui.onmessage = msg => {
             UpdateImage(msg);
             break;
         case "UploadError":
-            var Suggestion = ImageUploadErrorSuggestions[msg.code] || "";
-            
-            NotifyError(`FAILED to upload image, got error '${msg.code}: ${msg.message}'${Suggestion ? ",\r\n" + Suggestion : ""}. Help can found in discord server https://discord.gg/DWCGss4vry`, false, {
+            const Suggestion = ImageUploadErrorSuggestions[msg.code];
+            const ErrorMsg = msg.code ? msg.code + ': ' + msg.message : msg.message;
+
+            NotifyError(`FAILED to upload image, got error ${ErrorMsg}${Suggestion ? ",\r\n" + Suggestion : ""}. Help can found in discord server https://discord.gg/DWCGss4vry`, false, {
                 timeout: 5000,
                 error: true,
             });
