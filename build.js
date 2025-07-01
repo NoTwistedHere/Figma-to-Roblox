@@ -7895,7 +7895,8 @@ const Conversions = require("./Conversions");
 const { Flags, NotifyError, Notify } = require("./Utilities");
 const createHash = require("create-hash/browser");
 
-var ImagesRemaining = 0;
+let AbortImageUpload = false;
+let ImagesRemaining = 0;
 const ImageExports = {};
 const ImageUploads = [];
 const Settings = {
@@ -7917,7 +7918,7 @@ const Settings = {
 
 function ConvertFill(Fill, Object) {
     if (Fill.visible === false) return [{}, 0]
-    
+
     var Transparency = Fill.opacity;
     var Color3 = {R: 1, G: 1, B: 1};
 
@@ -7974,7 +7975,9 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
 
     if (AssetId && AssetId.match(/[0-9]+/)) AssetId = AssetId.match(/[0-9]+/)[0];
     if (!Settings.UploadImages) return Properties.Image = `rbxassetid://${AssetId}`;
+    if (AbortImageUpload) return;
 
+    // Image Hashing
     if (Node.vectorPaths) { // hash vector, Flags.ExportVectorsAsImage should be true if we get here
         var CombinedVecPaths = "";
 
@@ -7982,63 +7985,68 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
         Properties._ImageHash = createHash("sha256").update(CombinedVecPaths).digest("hex");
     }
 
-    if (!ForceReupload && !Flags.ForceUploadImages) {
+    let ExportNode = Node;
+    if (Node.fills && Node.fills[0]) {
+        if (!Properties._ImageHash) Properties._ImageHash = Node.fills[0].imageHash;
+        if (FullWhiteout) {
+            ExportNode = Node.clone();
+            ExportNode.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+        }
+    }
+
+    if (!Properties._ImageHash) {
+        console.warn("Exporting Image with NO ImageHash!!")
+    }
+
+    if (!ForceReupload && !Flags.ForceUploadImages && Node.getPluginData("ImageHash") === Properties._ImageHash) {
         if (AssetId && !AssetId.match(/TransparentWhiteImagePlaceholder.png/)) {
             // Check if image hashes match
 
-            if (Node.getPluginData("ImageHash") === Properties._ImageHash) {
-                console.log("Image has not changed, using ImageId:", AssetId)
-                Properties.Image = `rbxassetid://${AssetId}`
+            console.log("Image has not changed, using ImageId:", AssetId)
+            Properties.Image = `rbxassetid://${AssetId}`
 
-                return;
-            } else console.warn("Node's image has changed, uploading..", Node, AssetId)
-        } else if (UploadId) {
+            return;
+        }
+
+        if (UploadId) {
             // try fetching before attempting to re-upload
+            console.log("Image was uploaded, checking Operation (Id):", UploadId);
 
-            if (Node.getPluginData("ImageHash") === Properties._ImageHash) {
-                console.log("Image was uploaded, checking Operation (Id):", UploadId);
+            ImagesRemaining += 1;
+            Properties.Image = `{FTR_${UploadId}}`
+            Node.setPluginData("ImageHash", Properties._ImageHash);
 
-                ImagesRemaining += 1;
-                Properties.Image = `{FTR_${UploadId}}`
-                Node.setPluginData("ImageHash", Properties._ImageHash);
-    
-                ImageExports[UploadId] = {
-                    Node: Node,
-                    Properties: Properties,
-                    UploadId: UploadId
+            ImageExports[UploadId] = {
+                Node: Node,
+                Properties: Properties,
+                UploadId: UploadId
+            }
+
+            figma.ui.postMessage({
+                type: "CheckOperation",
+                data: {
+                    Id: UploadId
                 }
-    
-                figma.ui.postMessage({
-                    type: "CheckOperation",
-                    data: {
-                        Id: UploadId
-                    }
-                });
-                
-                return UploadId
-            } else console.log("Operation exists but Hashes don't match, uploading..")
+            });
+
+            return UploadId
         }
     }
+
+    //
 
     UploadId = UploadId || Properties._ImageHash || AssetId || Properties.Name.replace(/[[:alnum:]\-:]+/g, "") //Node.id
 
     if (!UploadId || UploadId.length < 2) NotifyError(`Node "${Node.name}" {${Node.id}} has an invalid UploadId`, true);
 
     //Properties.UploadId = UploadId;
-
     Properties.Image = `{FTR_${UploadId}}`
+
     if (ImageUploads.find((id) => id === UploadId)) return UploadId;
     ImageUploads.push(UploadId);
     ImagesRemaining += 1;
-    
     if (Properties._ImageHash) Node.setPluginData("ImageHash", Properties._ImageHash);
-    var ExportNode = Node;
 
-    if (FullWhiteout && Node.fills && Node.fills[0]) {
-        ExportNode = Node.clone();
-        ExportNode.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-    }
-    
     ExportNode.exportAsync(CustomExport || Settings.DefaultExport).then(Bytes => {
         Node.setPluginData("AssetId", "");
         Node.setPluginData("OperationId", "");
@@ -8052,19 +8060,22 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
             };
         }
 
-        if (!ForceReupload && !Flags.ForceUploadImages && !Properties._ImageHash) {
-            if (!ImageExports[UploadId]) {
-                ImageExports[UploadId] = {
-                    Node: Node,
-                    Properties: Properties,
-                    Bytes: Bytes, // Uint8Array
-                    UploadId: UploadId
-                }
+        if (!ImageExports[UploadId]) {
+            ImageExports[UploadId] = {
+                Node: Node,
+                Properties: Properties,
+                Bytes: Bytes, // Uint8Array
+                UploadId: UploadId
             }
+        }
 
+        if (/*!ForceReupload && !Flags.ForceUploadImages &&*/ !Properties._ImageHash) {
             const _ImageHash = createHash("sha256").update(Bytes).digest("hex");
-            
+
             if (_ImageHash) {
+                Node.setPluginData("ImageHash", _ImageHash);
+                Properties._ImageHash = _ImageHash;
+
                 if (AssetId && Node.getPluginData("ImageHash") === _ImageHash) {
                     console.log("Node exported image has not changed, using ImageId:", AssetId)
                     Properties.Image = `rbxassetid://${AssetId}`
@@ -8078,16 +8089,30 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                     return;
                 } else if (AssetId) console.warn("Node's image has changed, uploading")
 
+                if (UploadId) {
+                    // try fetching before attempting to re-upload
+
+                    if (Node.getPluginData("ImageHash") === _ImageHash) {
+                        console.log("Image was uploaded, checking Operation (Id):", UploadId);
+                        Properties.Image = `{FTR_${UploadId}}`
+                        Node.setPluginData("ImageHash", _ImageHash);
+
+                        figma.ui.postMessage({
+                            type: "CheckOperation",
+                            data: {
+                                Id: UploadId
+                            }
+                        });
+
+                        return UploadId
+                    } else console.log("Operation exists but Hashes don't match, uploading..")
+                }
+
                 Node.setPluginData("ImageHash", _ImageHash);
-            }
-        } else if (!ImageExports[UploadId]) {
-            ImageExports[UploadId] = {
-                Node: Node,
-                Properties: Properties,
-                Bytes: Bytes, // Uint8Array
-                UploadId: UploadId
-            }
+            } console.warn("FAILED to create an ImageHash for Node", Node, Properties);
         }
+
+        if (AbortImageUpload) return;
 
         // Test post image upload with template data
         if (Flags.ImageUploadTesting) UpdateImage({id: UploadId, data: Flags.ImageUploadBoilerplate});
@@ -8109,7 +8134,13 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
     return UploadId
 }
 
-function UpdateImage(msg) {
+function UpdateImage(msg, abort) {
+    if (abort) {
+        AbortImageUpload = true;
+        ImagesRemaining = 0;
+        return;
+    }
+
     var ImageInfo = ImageExports[msg.id];
 
     if (!ImageInfo) {
@@ -8124,7 +8155,7 @@ function UpdateImage(msg) {
         ImagesRemaining -= 1
         return;
     }
-    
+
     let ModerationResult = msg.data.moderationResult
 
     if (Flags.AwaitModeration && ModerationResult && (ModerationResult.moderationState != "Approved" && ModerationResult.moderationState != "MODERATION_STATE_APPROVED")) {
@@ -8141,23 +8172,24 @@ function UpdateImage(msg) {
 
         //ImagesRemaining -= 1; return;
     }
-    
+
+    const PreviousAssetId = ImageInfo.Node.getPluginData("AssetId");
+    let Content = msg.data.imageContent || msg.data.assetId;
+
     if (ImageInfo.Properties._ReplacedBy) {
         ImageInfo.Properties = ImageInfo.Properties._ReplacedBy;
-        ImageInfo.Node = ImageInfo.Properties._OriginalNode;
+        //ImageInfo.Node = ImageInfo.Properties._OriginalNode; - DON'T REPLACE NODE
     }
-
-    var Content = msg.data.imageContent || msg.data.assetId;
 
     if (!Content.match(/TransparentWhiteImagePlaceholder.png/)) {
         ImageInfo.Node.setPluginData("AssetId", Content);
-        
+
         if (!Content.match(/rbxasset/)) {
             Content = "rbxassetid://" + Content
         }
 
-        ImageInfo.Properties.Image = Content;
-    }
+        ImageInfo.Properties.Image = Content
+    } else ImageInfo.Properties.Image = PreviousAssetId || Content
 
     ImagesRemaining -= 1;
 }
@@ -8202,7 +8234,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
             Object.BackgroundTransparency = 0;
             return;
         }
-        
+
         const Fill = Value[0];
 
         /*
@@ -8210,7 +8242,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
             1: Image 50% Transparency           Image = Image; ImageTransparency = 0.5
             2: Purple Fill 20% transparency      ImageColor3 = Purple (hue at 80%?)
         */
-       
+
         //Object.Visible = Node.type === "GROUP" ? true : Fill.visible; // ensure a boolean, and always enable groups
         //Object.Visible = Fill.visible !== false; // ensure a boolean - REMOVED as a better way would be to set the opacity to 0
 
@@ -8219,7 +8251,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         //     if (Properties.ImageColor3) Properties.BackgroundColor3 = Properties.ImageColor3;
         //     return;
         // };
-        
+
         if (Fill.type === "IMAGE" && (Settings.UploadImages || Flags.AlwaysExportImages)) {
             // Export image
             Object._ImageHash = Fill.imageHash;
@@ -8277,27 +8309,25 @@ const PropertyTypes = {// the only return value should be nothing or an object c
                 return NewOffset;
             }
 
-            console.log(Object.EffectRadius, Effect)
-
             if (Effect.radius) {
                 Object.EffectRadius = clamp(Object.EffectRadius, Effect.radius, Effect.radius);
             } else if (Effect.offset) {
                 Object.EffectRadius = clamp(Object.EffectRadius, Effect.offset.x, Effect.offset.y);
-            } 
+            }
 
             switch (Effect.type) {
                 /*case "DROP_SHADOW":
                     // do something
-                    // 
+                    //
                     // IDEA:
                     //      Create a Clone with of the same Size, Offset by some px / AnchorPoint
                     //      ^ Would have to be an ImageLabel for the same effect, however I haven't thought of attemtping it
                     //      and it's probably still better to export/upload Rectangles as an image, but Groups and Frames could work
-                    
+
                     // Object.Children.push({
                     //     Class: "ImageLabel",
                     //     Name: "DropShadow",
-                    //     BackgroundTransparency: 
+                    //     BackgroundTransparency:
                     // })
 
                     break;*/
@@ -8344,10 +8374,10 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         }
 
         var [Colour, Transparency] = ConvertFill(Stroke, StrokeObject);
-        
+
         StrokeObject.Color = Colour;
         StrokeObject.Transparency *= Transparency;
-        
+
         //Object._HasStroke = true;
         Object.Children.push(StrokeObject);
     },
@@ -8360,7 +8390,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
 
             Segments.forEach(Segment => {
                 var NewText = ""
-    
+
                 if (Segment.fills && Segment.fills.length !== 0) {
                     // TODO: Implement use of new funtion ConvertFill(Fill, Object?)
                     // ^ no, only SOLID colours can be supported with richtext
@@ -8401,11 +8431,11 @@ const PropertyTypes = {// the only return value should be nothing or an object c
 
                     if (Colour.A !== 1) NewText += ` transparency="${Round(1 - Colour.A, 4)}"`
                 };
-    
+
                 if (Object.TextSize == undefined || Segment.fontSize !== Object.TextSize) {
                     NewText += ` size="${Segment.fontSize * Flags.TextSizeAdjustment}"`;
                 };
-    
+
                 if (Object.FontFace && Segment.fontWeight !== Object.FontFace.Weight) {
                     NewText += ` weight="${Segment.fontWeight}"`;
                 };
@@ -8414,29 +8444,29 @@ const PropertyTypes = {// the only return value should be nothing or an object c
 
                 if (TextCase) {
                     switch (TextCase) {
-                        case "UPPER": 
+                        case "UPPER":
                             Characters = Characters.toUpperCase();
                             break;
-                        case "LOWER": 
+                        case "LOWER":
                             Characters = Characters.toLowerCase();
                             break;
                         case "TITLE":
                             Characters = Characters.replace(/\w\S*/g, function(Text) {
                                 return Text.charAt(0).toUpperCase() + Text.substr(1).toLowerCase();
                             })
-                
+
                             break;
                         case "ORIGINAL":
                         default:
                             break;
                     }
                 }
-    
+
                 // We only want to add font tags if we have new data to add
                 if (NewText.length > 0) Text += `<font ${NewText}>${Characters}</font>`
                 else Text += Characters;
             })
-    
+
             Object.RichText = true;
             Object.Text = Text //StringToUTF8(Text);
         } //else Object.Text = StringToUTF8(Object.Text);
@@ -8447,31 +8477,53 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         if (Value === "UNDERLINE") Object.Text = `<u>${Object.Text}</u>`;
         else if (Value === "STRIKETHROUGH") Object.Text = `<s>${Object.Text}</s>`;
     },
+    ["paddingLeft"]: (Value, Object, Node) => {
+        if (Value === 0) return;
+
+        Object.Position.XO += Value;
+        Object.Size.XO -= Value;
+    },
+    ["paddingRight"]: (Value, Object, Node) => {
+        if (Value === 0) return;
+
+        Object.Size.XO -= Value;
+    },
+    ["paddingTop"]: (Value, Object, Node) => {
+        if (Value === 0) return;
+
+        Object.Position.YO += Value;
+        Object.Size.YO -= Value;
+    },
+    ["paddingBottom"]: (Value, Object, Node) => {
+        if (Value === 0) return;
+
+        Object.Size.XO -= Value;
+    },
     ["layoutMode"]: (Value, Object, Node) => {
         /*
             TODO: Support reverse ZIndex
         */
 
         if (Value === "NONE") return;
-       
+
         const FillDirection = Conversions.FillDirection.indexOf(Value);
         const IsHorizontal = FillDirection === 0;
 
         // Get Alignment, Padding and Size Offset
-        
+
         const HorizontalAlignment = IsHorizontal ? Node.primaryAxisAlignItems : Node.counterAxisAlignItems || 0;
         const VerticalAlignment = !IsHorizontal ? Node.primaryAxisAlignItems : Node.counterAxisAlignItems || 0;
 
-        const HorizontalCellPadding = IsHorizontal ? Node.itemSpacing : Node.counterAxisSpacing || 0;
-        const VerticalCellPadding = !IsHorizontal ? Node.itemSpacing : Node.counterAxisSpacing || 0;
+        const HorizontalCellPadding = IsHorizontal ? (Node.itemSpacing || Node.gridColumnGap) : (Node.counterAxisSpacing || Node.gridRowGap) || 0;
+        const VerticalCellPadding = !IsHorizontal ? (Node.itemSpacing || Node.gridRowGap) : (Node.counterAxisSpacing || Node.gridColumnGap) || 0;
 
         const HorizontalCellSize = Node.children[0] ? Node.children[0].width : 100;
         const VerticalCellSize = Node.children[0] ? Node.children[0].height : 100;
 
         //console.print(`Vertical Cell Padding has ${IsHorizontal ? "Horizontal, " : "Vertical, "} padding (X,Y in px): ${HorizontalCellPadding}, ${VerticalCellPadding} Dominant Axis Padding: ${IsHorizontal ? HorizontalCellPadding : VerticalCellPadding}`)
 
-        if (Node.layoutWrap !== "WRAP") {
-            // LIst Layout
+        if (Value !== "GRID" && Node.layoutWrap !== "WRAP") {
+            // List Layout
 
             Object.Children.push({
                 Class: "UIListLayout",
@@ -8480,7 +8532,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
                 FillDirection: FillDirection,
                 SortOrder: 0,
                 Wraps: false, // both can be true in roblox, but not in Figma to my knowledge (only vertical wrap)
-    
+
                 HorizontalAlignment: Conversions.HorizontalAlignment.indexOf(HorizontalAlignment),
                 VerticalAlignment: Conversions.VerticalAlignment.indexOf(VerticalAlignment),
             })
@@ -8498,31 +8550,31 @@ const PropertyTypes = {// the only return value should be nothing or an object c
             XS: 0,
             XO: HorizontalCellPadding,
             YS: 0,
-            YO: VerticalCellPadding,
+            YO: VerticalCellPadding || Node.gridRowGap,
         }
-        
+
         const CellSize = {
             XS: 0,
             XO: HorizontalCellSize,
             YS: 0,
             YO: VerticalCellSize,
         }
-        
-        if (Flags.ConvertOffsetToScale) {
-            // now that I think about it doesn't really serve much use in a grid, but good for Rows?
-            const SX = Object.Size.XO;
-            const SY = Object.Size.YO;
-            
-            CellPadding.XS = CellPadding.XO / SX;
-            CellPadding.YS = CellPadding.YO / SY;
-            CellSize.XS = CellSize.XO / SX;
-            CellSize.YS = CellSize.YO / SY;
-            
-            CellPadding.XO = 0;
-            CellPadding.YO = 0;
-            CellSize.XO = 0;
-            CellSize.YO = 0;
-        }
+
+        // if (Flags.ConvertOffsetToScale) {
+        //     // now that I think about it doesn't really serve much use in a grid, but good for Rows?
+        //     const SX = Object.Size.XO;
+        //     const SY = Object.Size.YO;
+
+        //     CellPadding.XS = CellPadding.XO / SX;
+        //     CellPadding.YS = CellPadding.YO / SY;
+        //     CellSize.XS = CellSize.XO / SX;
+        //     CellSize.YS = CellSize.YO / SY;
+
+        //     CellPadding.XO = 0;
+        //     CellPadding.YO = 0;
+        //     CellSize.XO = 0;
+        //     CellSize.YO = 0;
+        // }
 
         // TODO: Finish support for UIListLayout (padding not working)
 
@@ -8543,7 +8595,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
 // function CalculateAngle(P0, P1, P2) { // https://stackoverflow.com/a/39673693
 //     var Numerator = P1.x * (P0.x - P2.x) + P0.y * (P2.x - P1.x) + P2.y * (P1.x - P0.x);
 //     var Denominator = (P1.x - P0.x) * (P0.x - P2.x) + (P1.y - P0.y) * (P0.y - P2.y);
-    
+
 //     console.log("Number, Denom:", Numerator, Denominator)
 
 //     // Calculate angle in radians and convert it to degrees
@@ -8882,17 +8934,17 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
 
         if (Node.textCase) {
             switch (Node.textCase) {
-                case "UPPER": 
+                case "UPPER":
                     Properties.Text = Properties.Text.toUpperCase();
                     break;
-                case "LOWER": 
+                case "LOWER":
                     Properties.Text = Properties.Text.toLowerCase();
                     break;
                 case "TITLE":
                     Properties.Text = Properties.Text.replace(/\w\S*/g, function(Text) {
                         return Text.charAt(0).toUpperCase() + Text.substr(1).toLowerCase();
                     })
-        
+
                     break;
                 case "ORIGINAL":
                     break;
@@ -8908,7 +8960,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
 
             // (WIP) exactly what it says vv
             // const RenderBounds = Node.absoluteRenderBounds
-            
+
             // Properties.Position.XO = Math.round(RenderBounds.x - 4);
             // Properties.Position.YO = Math.round(RenderBounds.y - 4);
             // Properties.Size.XO = Math.round(RenderBounds.width + 8);
@@ -8979,7 +9031,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
                     if (i == i3 || i2 == i3) continue;
 
                     var Angle = CalculateAngle(Vertices[i], Vertices[i2], Vertices[i3]);
-                    
+
                     console.log(`verts ${i}, ${i2}, ${i3} angle: ${Angle}`)
 
                     if (Angle < 90) {
@@ -9202,7 +9254,7 @@ function GetNodeProperties(Node, Settings, ParentObject) {
         if (ParentObject._Transparency) { // Multiply Transparency with Parent Transparency/Pass through
             Properties._Transparency = ParentObject._Transparency * Properties._Transparency
         };
-        
+
         if (!Settings.UploadImages && Properties.Class === "TextLabel" && ParentObject.Class.match("Button")) {
             if (!Flags.AlwaysExportImages) {
                 Properties.Interactable = false;
@@ -9216,26 +9268,26 @@ function GetNodeProperties(Node, Settings, ParentObject) {
     if (Properties.Name.length > 99) {
         Properties.Name = Properties.Name.substr(0, 100);
     }
-    
+
     // Loop Node properties
     Object.getOwnPropertyNames(Object.getPrototypeOf(Node)).forEach((i) => {
         if (PropertyTypes[i]) {
             PropertyTypes[i](Node[i], Properties, Node, ParentObject);
         }
     });
-    
+
     Properties._OriginalPosition = Properties.Position;
     Properties._OriginalSize = Properties.Size;
-    
+
     if (Properties.Rotation && Properties.Rotation !== 0 /*&& Properties.Size.XO !== 0 && Properties.Size.YO !== 0*/) {
         const BoundingBox = Node.absoluteBoundingBox;
 
         if (Properties.Size.XO !== 0) {
             var CX = BoundingBox.x + BoundingBox.width / 2;
             Properties.Position.XO = CX - Properties.Size.XO / 2;
-            
+
         }
-        
+
         if (Properties.Size.YO !== 0) {
             var CY = BoundingBox.y + BoundingBox.height / 2;
             Properties.Position.YO = CY - Properties.Size.YO / 2;
@@ -9291,7 +9343,7 @@ for (var [type, value] of Object.entries(Types)) {
 }
 
 function HighlightNode(node, rm) {
-    if (!NodeHighlightsTEMP || node.parent && node.parent.name.match(/btn|button|img|image/i)) return;
+    if (!NodeHighlightsTEMP || !node.parent || node.parent.name.match(/btn|button|img|image/i)) return;
 
     const TypeFlags = rm === true ? false : node.name.toLowerCase().match(/btn|button|img|image|scrl|scroll/g);
     const NodeId = "@FTR" + node.id;
@@ -9796,9 +9848,8 @@ function ConvertObject(Properties, ParentObject) {
                 XML += XMLTypes.number(Key, Value, false, 1000);
                 break;
             default:
-                //console.log(Key, Value, typeof(Value))
                 if (Key.substring(0, 1) == "_") break;
-                
+
                 if (XMLTypes[typeof(Value)]) XML += XMLTypes[typeof(Value)](Key, Value);
                 break;
         }
@@ -9809,13 +9860,13 @@ function ConvertObject(Properties, ParentObject) {
 
 function LoopChildren(Children, ParentObject) {
     var New2 = "";
-    
+
     Children.forEach(Child => {
         var XMLProperties = ConvertObject(Child, ParentObject);
-        
+
         New2 += `<Item class="${Child.Class}" referent="RBX0">\n${Child.Children ? LoopChildren(Child.Children) : ""}<Properties>\n${XMLProperties}\n</Properties></Item>\n`
     });
-    
+
     return New2
 }
 
@@ -9827,7 +9878,7 @@ function LoopNodes(Nodes, ParentObject) {
     //if (ParentObject) {
         for (var i = 0; i < Nodes.length; i++) {
             const Node = Nodes[i];
-    
+
             if (Node && Node.name) {
                 if (Node.name.toLowerCase() === Flags.GroupBackgroundFrameName) {
                     SortedNodes[i] = SortedNodes[0];
@@ -9842,14 +9893,14 @@ function LoopNodes(Nodes, ParentObject) {
         const Node = SortedNodes[i];
 
         if (Flags.IgnoreInvisible && !Node.visible) continue;
-        
+
         const Properties = GetNodeProperties(Node, Settings, ParentObject); // Can't name it Object because of below v
         Properties._OriginalNode = Node;
 
         //console.log("Props:", Properties, "Parent:", ParentObject)
         //console.log("Node:", Node);
         if (!Properties) continue;
-        
+
         if (Node.type === "BOOLEAN_OPERATION") { // No ~Temp added as a NodeType & create as if a group
             figma.notify("Boolean Operations may give undesired results", {timeout: 1800})
             // Booleans are treated as groups
@@ -9863,7 +9914,7 @@ function LoopNodes(Nodes, ParentObject) {
             if (Properties.Class === "ScrollingFrame") console.warn("Cannot Apply UIAspectRatioConstraint to a ScrollingFrame that scrolls")
             else {
                 var AspectRatio = Math.round((Properties.Size.XO / Properties.Size.YO) * 100000) / 100000;
-                
+
                 if (Node.width != 0 && Node.height != 0 && AspectRatio) {
                     Properties.Children.push({
                         Class: "UIAspectRatioConstraint",
@@ -9874,7 +9925,7 @@ function LoopNodes(Nodes, ParentObject) {
                 }
             }
         }
-        
+
         const lowercaseName = Properties.Name.toLowerCase();
         const removeNameAbriv = lowercaseName.match("btn") || lowercaseName.match("scrl");
 
@@ -9899,7 +9950,7 @@ function LoopNodes(Nodes, ParentObject) {
 
             if (Properties.Class !== "Frame") ParentObject.Class = Properties.Class;
             Properties._ReplacedBy = ParentObject;
-            
+
             if (Properties.Children) {
                 FileContent += LoopChildren(Properties.Children, Properties);
             }
@@ -9913,7 +9964,7 @@ function LoopNodes(Nodes, ParentObject) {
                     // if the parent object meets certain criteria (listed below) then we should keep the TextLabel within the button and remove the TextButton's text
                     // No (Background/Text) Gradient
                     // Must be TextButton
-                    
+
                     if (Properties._HasGradient !== true && ParentObject._HasGradient !== true) {
                         ParentObject.Class = "TextButton"
 
@@ -9923,19 +9974,19 @@ function LoopNodes(Nodes, ParentObject) {
                                 Child.ApplyStrokeMode = Conversions.indexOf("Border");
                             }
                         })
-    
+
                         Object.entries(Properties).forEach(([key, value]) => {
                             if (key.match("^Text")) ParentObject[key] = value
                         })
-    
+
                         ParentObject.FontFace = Properties.FontFace
-    
+
                         // if (Properties.Children) {
                         //     FileContent += LoopChildren(Properties.Children, ParentObject)
                         // }
-                        
+
                         //ParentObject.Text = Properties.Text
-        
+
                         //continue;
                     } else {
                         console.log("TextLabel doesn't meet criteria to update parent TextButton")
@@ -9943,7 +9994,7 @@ function LoopNodes(Nodes, ParentObject) {
                 } else if (Properties.Class === "ImageLabel") {
                     if (Properties._HasGradient !== true && ParentObject._HasGradient !== true) {
                         ParentObject.Class = "ImageButton"
-    
+
                         Object.entries(Properties).forEach(([key, value]) => {
                             if (key.match("^Image")) ParentObject[key] = value
                         })
@@ -9969,7 +10020,7 @@ function LoopNodes(Nodes, ParentObject) {
             } else console.warn(`[Figma to Roblox] FAILED to convert element "${Properties.Name}" into a button as class "${Properties.Class}" is none of the following: Frame, ImageLabel, TextLabel`)
         } else if (removeNameAbriv && removeNameAbriv[0] === "scrl" || lowercaseName.match("scroll")) {  // Convert to Scrolling Frame
             if (removeNameAbriv) Properties.Name = Properties.Name.replace(/scrl/i, "");
-            
+
             if (Node.type !== "FRAME" && Node.type !== "GROUP" && Node.Type !== "COMPONENT" && Node.Type !== "INSTANCE") {
                 console.warn("[Figma to Roblox] Cannot convert a non-Group/Frame to a ScrollingFrame");
             } else {
@@ -9998,10 +10049,10 @@ function LoopNodes(Nodes, ParentObject) {
                 Properties.HorizontalScrollBarInset = 0 //Conversions.ScrollBarInset.indexOf("SCROLLBAR")
             }
         }
-        
+
         // Misc
         var New = "";
-        
+
         if (Properties.Children) {
             New += LoopChildren(Properties.Children, ParentObject);
         }
@@ -10036,20 +10087,19 @@ function LoopNodes(Nodes, ParentObject) {
                 Properties.Position.XO = Properties.Position.XO - ParentObject._OriginalPosition.XO;
                 Properties.Position.YO = Properties.Position.YO - ParentObject._OriginalPosition.YO;
             }
-            
+
             const PSX = ParentObject.Size.XO;
             const PSY = ParentObject.Size.YO;
             // Convert Anchor Point
             if (Flags.ApplyAnchorPoint || Properties._ApplyAnchorPoint) ConvertAnchorPoint(PSX, PSY);
-            
+
             // Convert Offset (Pixels) to Scale
             if (Flags.ConvertOffsetToScale) {
-                //console.log(Properties.Position, "X:", PSX, "Y:", PSY)
                 Properties.Position.XS = Properties.Position.XO / PSX;
                 Properties.Position.YS = Properties.Position.YO / PSY;
                 Properties.Size.XS = Properties.Size.XO / PSX;
                 Properties.Size.YS = Properties.Size.YO / PSY;
-                
+
                 if (Flags.ScrollFrame_ScaleDominantAxis && ParentObject.Class === "ScrollingFrame") {
                     if (Properties.Size.XS < Properties.Size.YS) { // X is smaller than Y
                         Properties.Size.XS = 0; // remove X scale, keep offset
@@ -10082,17 +10132,17 @@ function LoopNodes(Nodes, ParentObject) {
                 //     };
 
                 //     Properties.Position.XS = PXS;
-                    
+
                 //     // Repeat for Y
                 //     var PYS = Properties.Position.YS;
-                    
+
                 //     if (PYS <= 0.45) PYS = 0;
                 //     else if (PYS <= 0.55) PYS = 0.5;
                 //     else if (PYS <= 1) {
                 //         PYS = 1;
                 //         //Properties.Position.YO = Properties.Position.YO - PSY;
                 //     };
-                    
+
                 //     Properties.Position.YS = PYS;
                 //     Properties.Position.XO -= ((PSX - Properties.Size.X * AX) * PXS);
                 //     Properties.Position.YO -= ((PSY - Properties.Size.Y * AY) * PYS);
@@ -10125,7 +10175,7 @@ function LoopNodes(Nodes, ParentObject) {
         } else if (Node.parent && Node.parent.type !== "PAGE") {
             // Convert user-selected frame to scale
             if (Flags.ApplyAnchorPoint || Properties._ApplyAnchorPoint) ConvertAnchorPoint(Node.parent.width, Node.parent.height);
-            
+
             if (Flags.ConvertOffsetToScale) {
                 const PSX = Node.parent.width
                 const PSY = Node.parent.height
@@ -10135,14 +10185,14 @@ function LoopNodes(Nodes, ParentObject) {
                 Properties.Position.YS = Properties.Position.YO / PSY
                 Properties.Size.XS = Properties.Size.XO / PSX;
                 Properties.Size.YS = Properties.Size.YO / PSY;
-                
+
                 Properties.Position.XO = 0;
                 Properties.Position.YO = 0;
                 Properties.Size.XO = 0;
                 Properties.Size.YO = 0;
             }
         }
-        
+
         // Adjust element Size & Position to account for effects
         if (Properties.EffectRadius) {
             const EffectRadius = Properties.EffectRadius
@@ -10157,7 +10207,7 @@ function LoopNodes(Nodes, ParentObject) {
             Properties.Size.XO += EffectRadius.X * 2;
             Properties.Size.YO += EffectRadius.Y * 2;
 
-            
+
             /*const CornerRadiusOffset = Node.cornerRadius && Node.cornerRadius !== figma.mixed ? Node.cornerRadius * 2 : 0;
             const X = EffectRadius.X + CornerRadiusOffset;
             const Y = EffectRadius.Y + CornerRadiusOffset;
@@ -10179,7 +10229,7 @@ function LoopNodes(Nodes, ParentObject) {
             console.log(Properties.SliceCenter, SizeX, SizeY)
             */
         }
-        
+
         // Convert to XML
         FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
         FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n" + New;
@@ -10194,7 +10244,7 @@ function CreatePreset(Preset) {
     const CenterOfScreen = figma.viewport.center;
     var SizeX;
     var SizeY;
-    
+
     switch (Preset) {
         case "Full HD":
             SizeX = 1920;
@@ -10212,7 +10262,7 @@ function CreatePreset(Preset) {
             SizeX = 3840;
             SizeY = 2160;
             break;
-        default: 
+        default:
             return NotifyError("Preset doesn't exist");
     }
 
@@ -10264,7 +10314,7 @@ async function RunPlugin() { // this is technecally a codegen plugin?
 
     Notify("Successfully exported");
     console.log("[FTR] Done");
-    
+
     setTimeout(() => {
         RunDebounce = false
     }, 2500)
@@ -10291,6 +10341,9 @@ figma.ui.onmessage = msg => {
         case "ImageUploaded":
             UpdateImage(msg);
             break;
+        case "AbortUpload":
+            UpdateImage(undefined, true);
+            break;
         case "UploadError":
             const Suggestion = ImageUploadErrorSuggestions[msg.code];
             const ErrorMsg = msg.code ? msg.code + ': ' + msg.message : msg.message;
@@ -10305,17 +10358,17 @@ figma.ui.onmessage = msg => {
             else Notify(msg.message);
             break;
         case "SetAsync":
-           if (Settings[msg.key] !== undefined) Settings[msg.key] = msg.value;
-           // vv DEBUGGING vv
-           if (Flags[msg.key] !== undefined) Flags[msg.key] = msg.value;
+            if (Settings[msg.key] !== undefined) Settings[msg.key] = msg.value;
+            // vv DEBUGGING vv
+            if (Flags[msg.key] !== undefined) Flags[msg.key] = msg.value;
 
-           if (msg.key == HighlightNodes.name) {
+            if (msg.key == HighlightNodes.name) {
                 if (msg.value === true) HighlightNodes.start()
                 else HighlightNodes.stop();
-           }
-        
-           figma.clientStorage.setAsync(msg.key, msg.value);
-           break;
+            }
+
+            if (!msg.no_save) figma.clientStorage.setAsync(msg.key, msg.value);
+            break;
         case "CreatePreset":
             CreatePreset(msg.preset);
             break;
@@ -10328,33 +10381,37 @@ figma.showUI(__html__, {
     themeColors: true
 });
 
-new Promise((resolve, reject) => {    
+new Promise((resolve, reject) => {
     figma.clientStorage.keysAsync().then(Keys => {
         var Done = 0;
         var StoredSettings = Flags;
-        
+
         for (var i = 0; i < Keys.length; i++) {
             const Key = Keys[i];
 
             figma.clientStorage.getAsync(Key).then(Value => {
-                StoredSettings[Key] = Value;
                 Done += 1;
 
-                if (Settings[Key] !== undefined) Settings[Key] = Value;
-                // vv DEBUGGING vv
-                else if (Flags[Key] !== undefined) Flags[Key] = Value;
-                else { // [TEMPORARY] Migrate old settings
-                    switch (Key) {
-                        case "UploadToGroup":
-                            Flags.UploaderType = Value ? "group" : "user"
-                            Flags[Key] = undefined;
-                            break;
-                        default:
-                            console.warn(`[Figma to Roblox] Unknown Settings/Flag "${Key}", value: ${Value}`)
-                            break;
-                    }
+                switch (Key) {
+                    // Migrate old settings
+                    case "UploadToGroup": // [TEMPORARY(?) - Migrated on 28/06/2025]
+                        Flags.UploaderType = Value ? "group" : "user";
+                        StoredSettings.UploaderType =  Flags.UploaderType;
+                        StoredSettings[Key] = undefined;
+                    // Delete unwanted settings (including old)
+                    case "ForceUploadImages":
+                    case "ReuploadStuckImages":
+                        figma.clientStorage.deleteAsync(Key);
+                        break;
+                    default:
+                        StoredSettings[Key] = Value;
+                        if (Settings[Key] !== undefined) Settings[Key] = Value;
+                        // vv DEBUGGING vv
+                        else if (Flags[Key] !== undefined) Flags[Key] = Value;
+                        else console.warn(`[Figma to Roblox] Unknown Settings/Flag "${Key}", value: ${Value}`)
+                        break;
                 }
-                
+
                 if (Done == Keys.length) {
                     Done = null;
                     resolve(StoredSettings);

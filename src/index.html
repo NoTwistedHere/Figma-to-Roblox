@@ -37,13 +37,15 @@
             }
         </style>
 
-        <!-- <notification> -->
-            <!-- assfsdsdfsdf -->
-        <!-- </notification> -->
-        
+        <!-- <notification>Not uploading any images..</notification> -->
+        <!-- <div> -->
+            <pre id="upload_status"></pre>
+            <button hidden id="abortupload">Abort Upload</button>
+        <!-- </div> -->
+
 
         <a id="download" href="#" download="export.rbxmx" style="display:none;">Download</a>
-        
+
         <div>
             <button id="convselect">Convert Selection</button>
             <div>
@@ -56,7 +58,7 @@
                 <button id="createpreset">Create Preset</button>
             </div>
         </div>
-        
+
         <br>
 
         <div>
@@ -83,13 +85,13 @@
                 Convert to Scale
             </label>
             <div></div>
-            
+
             <label for="Recentre">
                 <input type="checkbox" id="Recentre" name="Recentre" />
                 Recentre
             </label>
             <div></div>
-            
+
             <label for="IgnoreInvisible">
                 <input type="checkbox" id="IgnoreInvisible" name="Ignore Invisible" />
                 Ignore Invisible Elements
@@ -104,7 +106,7 @@
 
         <div>
             <h4>Image Uploading (optional):</h4>
-            
+
             <input type="checkbox" id="uploadimages" name="Upload Images" />
             <label for="uploadimages">Upload Images</label>
             <div></div>
@@ -115,23 +117,23 @@
             <input type="checkbox" id="forcereupload" name="Force Reupload Images" />
             <label for="forcereupload">Force Reupload Images</label>
             <div></div>
-            
+
             <input type="checkbox" id="reuploadstuck" name="Reupload Stuck Images" />
             <label for="reuploadstuck">Reupload Stuck Images</label>
             <div></div>
-            
+
             <input type="checkbox" id="awaitmoderation" name="Await Moderation" />
             <label for="awaitmoderation">Await Moderation</label>
             <div></div>
-            
+
             <input type="checkbox" id="uploadeffects" name="Upload effects" />
             <label for="uploadeffects">Upload effects</label>
             <div></div>
-            
+
             <label for="apikey">Cloud API Key</label>
             <input type="text" id="apikey" placeholder="XXXXXXXXXXXXXXXXXXXXXXXXXXX" />
             <div></div>
-            
+
             <label for="uploaderid">User/Group Id</label>
             <input type="text" id="uploaderid" placeholder="xxxxxxxxxx" />
             <div></div>
@@ -141,15 +143,15 @@
                 <option value="user">User</option>
                 <option value="group">Group</option>
             </select>
-            
+
             <!-- <input type="checkbox" id="isgroup" name="Is Group" />
             <label for="isgroup">Upload To Group</label>
             <div></div> -->
-            
+
             <!-- <label for="prox">Custom Proxy</label>
             <input type="text" id="prox" placeholder="Proxy URL" />
             <div></div> -->
-            
+
             <!-- <input type="checkbox" id="exportImages" name="Export Images" />
             <label for="exportImages">Export Images</label> -->
 
@@ -203,6 +205,7 @@
                     name: "ForceUploadImages",
                     id: "forcereupload",
                     type: "checkbox",
+                    no_save: true
                 },
                 {
                     name: "AwaitModeration",
@@ -212,14 +215,15 @@
                 {
                     name: "ReuploadStuckImages",
                     id: "reuploadstuck",
-                    type: "checkbox"
+                    type: "checkbox",
+                    no_save: true
                 },
                 {
                     name: "UploadEffects",
                     id: "uploadeffects",
                     type: "checkbox"
                 },
-                
+
                 {
                     name: "ShowHighlights",
                     id: "HighlightNodes",
@@ -249,7 +253,7 @@
                     type: "text",
                     default: "user"
                 },
-                
+
                 {
                     name: "UseSelectionPositionRelativeToScene",
                     id: "Recentre",
@@ -288,8 +292,25 @@
                 },
             ]
 
+            let AbortUpload;
+            let NumImagesTotal = 0;
+            let NumImagesFinished = 0;
+            let NumImagesPendingApproval = 0;
+            let NumImagesFailed = 0;
+
             function PostMessage(Data) {
                 parent.postMessage({ pluginMessage: Data }, "*");
+            }
+
+            const UploadStatus = document.getElementById("upload_status")
+
+            function UpdateUploadStatus() {
+                UploadStatus.textContent = `Image status:\nUploading: ${NumImagesTotal}    In Moderation: ${NumImagesPendingApproval}\nFinished: ${NumImagesFinished}/${NumImagesTotal}    Failed: ${NumImagesFailed}\n`
+            }
+
+            function PostImageUploaded(id, UploadResponse, CheckOp) {
+                PostMessage({ type: "ImageUploaded", id: id, co: CheckOp, data: UploadResponse.response || UploadResponse.status || UploadResponse })
+                UpdateUploadStatus();
             }
 
             function Sleep(ms) {
@@ -305,7 +326,7 @@
                         if (Option.type === "text") Value = Element.value
                         else if (Option.type === "checkbox") {
                             Value = Element.checked;
-                            
+
                             if (Option.flipped) Value = !Value
                         };
 
@@ -314,7 +335,8 @@
                             PostMessage({
                                 type: "SetAsync",
                                 key: Option.name,
-                                value: Value
+                                value: Value,
+                                no_save: Option.no_save,
                             });
                         }
                     };
@@ -347,7 +369,7 @@
                             break;
                     }
                 }
-                
+
                 // Clipboard Stolen from Alex_FG on https://forum.figma.com/ask-the-community-7/write-to-clipboard-from-custom-plugin-23974
                 const prevActive = document.activeElement;
                 const textArea   = document.createElement('textarea');
@@ -356,15 +378,15 @@
                 textArea.style.position = 'fixed';
                 textArea.style.left     = '-999999px';
                 textArea.style.top      = '-999999px';
-                
+
                 document.body.appendChild(textArea);
-                
+
                 textArea.focus();
                 textArea.select();
 
                 if (document.execCommand('copy')) PostMessage({ type: "Notify", message: "Successfully copied config to clipboard!" })
                 else PostMessage({ type: "Notify", error: true, message: "FAILED to copy config to clipboard!" });
-            
+
                 textArea.remove();
                 prevActive.focus();
             }
@@ -374,12 +396,12 @@
                     const Element = document.getElementById(Option.id);
                     if (!Element) return;
                     var Value;
-                    
+
                     // ik I could use switch but is it really needed?
                     if (Option.type === "text") Value = Element.value
                     else if (Option.type === "checkbox") {
                         Value = Element.checked;
-                        
+
                         if (Option.flipped) Value = !Value
                     };
 
@@ -388,15 +410,26 @@
                         PostMessage({
                             type: "SetAsync",
                             key: Option.name,
-                            value: Value
+                            value: Value,
+                            no_save: Option.no_save
                         });
+
+                        if (Option.no_save) {
+                            Settings[Option.name] = false;
+                            Element.checked = false;
+                        }
                     }
                 });
 
+                AbortUpload = false;
                 PostMessage({ type: 'run' });
             }
             document.getElementById("createpreset").onclick = () => {
                 PostMessage({ type: 'CreatePreset', preset: document.getElementById("presets").value });
+            }
+            document.getElementById("abortupload").onclick = () => {
+                AbortUpload = true;
+                PostMessage({ type: 'AbortUpload' });
             }
 
             const DownloadLink = document.getElementById("download");
@@ -446,7 +479,7 @@
                             }
                         })).json();
 
-                        if (UploadResponse.done) PostMessage({ type: "ImageUploaded", id: data.Id, co: true, data: UploadResponse.response || UploadResponse.status })
+                        if (UploadResponse.done) PostImageUploaded(data.Id, UploadResponse, true)
                         else console.warn("Image operation not complete:", UploadResponse)
 
                         break;
@@ -454,18 +487,24 @@
                         //if (ExportImages) Images.push(data);
                         if (!Settings.UploadImages) {
                             console.warn("[Figma to Roblox] Tried exporting Image, but Upload Images is disabled")
-                            PostMessage({ type: "ImageUploaded", id: data.Id, data: {
+                            PostImageUploaded(data.Id, {
                                 imageContent: "rbxasset://textures/StudioSharedUI/TransparentWhiteImagePlaceholder.png"
-                            } });
+                            });
                             return;
                         } else if (!Settings.CloudApiKey || !Settings.UploaderId || Settings.CloudApiKey == "" || Settings.UploaderId == "") {
                             console.warn("Cloud API Key is not set");
                             PostMessage({ type: "UploadError", message: "Cloud API Key is not set" });
-                            PostMessage({ type: "ImageUploaded", id: data.Id, data: {
+                            PostImageUploaded(data.Id, {
                                 imageContent: "rbxasset://textures/StudioSharedUI/TransparentWhiteImagePlaceholder.png"
-                            } });
+                            });
                             return;
                         }
+
+                        if (AbortUpload) return;
+
+                        document.getElementById("abortupload").removeAttribute("hidden");
+                        NumImagesTotal += 1;
+                        UpdateUploadStatus();
 
                         const Form = new FormData();
                         const blob = new Blob([data.Data.buffer], { type: "image/" + data.Format });
@@ -498,14 +537,16 @@
                         .then(async InitialResponse => {
                             // Check if already done, and if so return upload response
                             if (InitialResponse.done == true) {
-                                PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status });
+                                NumImagesFinished += 1;
+                                PostImageUploaded(data.Id, UploadResponse);
                                 return;
                             } else if (InitialResponse.errors || !InitialResponse.operationId || !InitialResponse.path) {
-                                console.log("POST Response:", InitialResponse)
+                                NumImagesFailed += 1;
+                                console.log("POST Response:", InitialResponse);
                                 // return placeholder as to not interrupt exporting
-                                PostMessage({ type: "ImageUploaded", id: data.Id, data: {
+                                PostImageUploaded(data.Id, {
                                     imageContent: "rbxasset://textures/StudioSharedUI/TransparentWhiteImagePlaceholder.png"
-                                } });
+                                });
 
                                 if (InitialResponse.code && InitialResponse.message) {
                                     InitialResponse.type = "UploadError";
@@ -521,7 +562,10 @@
                             // Update the origin node so if we fail to finish it can be recovered from the node's plugin properties
                             PostMessage({ type: "UpdateOperationId", id: data.Id, data: InitialResponse.operationId });
 
+                            if (AbortUpload) return;
+
                             Sleep(1200);
+                            let IsUploading = true;
 
                             for (var i = 0; i < 40; i++) {
                                 const UploadResponse = await (await fetch(`https://apis.roblox.com/assets/v1/${InitialResponse.path}`, {
@@ -535,18 +579,24 @@
                                 })).json();
 
                                 if (UploadResponse.done == true) {
-                                    if (Settings.AwaitModeration && UploadResponse.response && UploadResponse.response.moderationResult && UploadResponse.response.moderationResult.moderationState == "Reviewing") {
+                                    if (IsUploading) {
+                                        NumImagesPendingApproval += 1;
+                                        UpdateUploadStatus();
+                                        IsUploading = undefined;
+                                    }
+
+                                    if (Settings.AwaitModeration && !AbortUpload && UploadResponse.response && UploadResponse.response.moderationResult && UploadResponse.response.moderationResult.moderationState == "Reviewing") {
                                         // This should be ran every time the image is still for review
                                         //ModerationReviewing = true;
 
-                                        // Admit defeat
-                                        if (i === 40) PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status })
-                                        else Sleep(data.wait || 4000);
-
-                                        continue;
+                                        Sleep((data.wait || 4000) * i / 4);
+                                        // Admit defeat (don't decrease NumImagesPendingApproval)
+                                        if (i !== 40) continue;
                                     }
 
-                                    PostMessage({ type: "ImageUploaded", id: data.Id, data: UploadResponse.response || UploadResponse.status })
+                                    if (i !== 40) NumImagesPendingApproval -= 1;
+                                    NumImagesFinished += 1;
+                                    PostImageUploaded(data.Id, UploadResponse);
                                     return;
                                 }
 
@@ -566,7 +616,7 @@
                                 const Value = Settings[Option.name];
 
                                 // ik I could use switch but is it really needed?
-                                if (Option.type === "text") Element.value = Value || Option.default || "" 
+                                if (Option.type === "text") Element.value = Value || Option.default || ""
                                 else if (Option.type === "checkbox") {
                                     Element.checked = Value || false;
 

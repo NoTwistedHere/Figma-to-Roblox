@@ -2,7 +2,8 @@ const Conversions = require("./Conversions");
 const { Flags, NotifyError, Notify } = require("./Utilities");
 const createHash = require("create-hash/browser");
 
-var ImagesRemaining = 0;
+let AbortImageUpload = false;
+let ImagesRemaining = 0;
 const ImageExports = {};
 const ImageUploads = [];
 const Settings = {
@@ -24,7 +25,7 @@ const Settings = {
 
 function ConvertFill(Fill, Object) {
     if (Fill.visible === false) return [{}, 0]
-    
+
     var Transparency = Fill.opacity;
     var Color3 = {R: 1, G: 1, B: 1};
 
@@ -81,7 +82,9 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
 
     if (AssetId && AssetId.match(/[0-9]+/)) AssetId = AssetId.match(/[0-9]+/)[0];
     if (!Settings.UploadImages) return Properties.Image = `rbxassetid://${AssetId}`;
+    if (AbortImageUpload) return;
 
+    // Image Hashing
     if (Node.vectorPaths) { // hash vector, Flags.ExportVectorsAsImage should be true if we get here
         var CombinedVecPaths = "";
 
@@ -89,63 +92,68 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
         Properties._ImageHash = createHash("sha256").update(CombinedVecPaths).digest("hex");
     }
 
-    if (!ForceReupload && !Flags.ForceUploadImages) {
+    let ExportNode = Node;
+    if (Node.fills && Node.fills[0]) {
+        if (!Properties._ImageHash) Properties._ImageHash = Node.fills[0].imageHash;
+        if (FullWhiteout) {
+            ExportNode = Node.clone();
+            ExportNode.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+        }
+    }
+
+    if (!Properties._ImageHash) {
+        console.warn("Exporting Image with NO ImageHash!!")
+    }
+
+    if (!ForceReupload && !Flags.ForceUploadImages && Node.getPluginData("ImageHash") === Properties._ImageHash) {
         if (AssetId && !AssetId.match(/TransparentWhiteImagePlaceholder.png/)) {
             // Check if image hashes match
 
-            if (Node.getPluginData("ImageHash") === Properties._ImageHash) {
-                console.log("Image has not changed, using ImageId:", AssetId)
-                Properties.Image = `rbxassetid://${AssetId}`
+            console.log("Image has not changed, using ImageId:", AssetId)
+            Properties.Image = `rbxassetid://${AssetId}`
 
-                return;
-            } else console.warn("Node's image has changed, uploading..", Node, AssetId)
-        } else if (UploadId) {
+            return;
+        }
+
+        if (UploadId) {
             // try fetching before attempting to re-upload
+            console.log("Image was uploaded, checking Operation (Id):", UploadId);
 
-            if (Node.getPluginData("ImageHash") === Properties._ImageHash) {
-                console.log("Image was uploaded, checking Operation (Id):", UploadId);
+            ImagesRemaining += 1;
+            Properties.Image = `{FTR_${UploadId}}`
+            Node.setPluginData("ImageHash", Properties._ImageHash);
 
-                ImagesRemaining += 1;
-                Properties.Image = `{FTR_${UploadId}}`
-                Node.setPluginData("ImageHash", Properties._ImageHash);
-    
-                ImageExports[UploadId] = {
-                    Node: Node,
-                    Properties: Properties,
-                    UploadId: UploadId
+            ImageExports[UploadId] = {
+                Node: Node,
+                Properties: Properties,
+                UploadId: UploadId
+            }
+
+            figma.ui.postMessage({
+                type: "CheckOperation",
+                data: {
+                    Id: UploadId
                 }
-    
-                figma.ui.postMessage({
-                    type: "CheckOperation",
-                    data: {
-                        Id: UploadId
-                    }
-                });
-                
-                return UploadId
-            } else console.log("Operation exists but Hashes don't match, uploading..")
+            });
+
+            return UploadId
         }
     }
+
+    //
 
     UploadId = UploadId || Properties._ImageHash || AssetId || Properties.Name.replace(/[[:alnum:]\-:]+/g, "") //Node.id
 
     if (!UploadId || UploadId.length < 2) NotifyError(`Node "${Node.name}" {${Node.id}} has an invalid UploadId`, true);
 
     //Properties.UploadId = UploadId;
-
     Properties.Image = `{FTR_${UploadId}}`
+
     if (ImageUploads.find((id) => id === UploadId)) return UploadId;
     ImageUploads.push(UploadId);
     ImagesRemaining += 1;
-    
     if (Properties._ImageHash) Node.setPluginData("ImageHash", Properties._ImageHash);
-    var ExportNode = Node;
 
-    if (FullWhiteout && Node.fills && Node.fills[0]) {
-        ExportNode = Node.clone();
-        ExportNode.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-    }
-    
     ExportNode.exportAsync(CustomExport || Settings.DefaultExport).then(Bytes => {
         Node.setPluginData("AssetId", "");
         Node.setPluginData("OperationId", "");
@@ -159,19 +167,22 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
             };
         }
 
-        if (!ForceReupload && !Flags.ForceUploadImages && !Properties._ImageHash) {
-            if (!ImageExports[UploadId]) {
-                ImageExports[UploadId] = {
-                    Node: Node,
-                    Properties: Properties,
-                    Bytes: Bytes, // Uint8Array
-                    UploadId: UploadId
-                }
+        if (!ImageExports[UploadId]) {
+            ImageExports[UploadId] = {
+                Node: Node,
+                Properties: Properties,
+                Bytes: Bytes, // Uint8Array
+                UploadId: UploadId
             }
+        }
 
+        if (/*!ForceReupload && !Flags.ForceUploadImages &&*/ !Properties._ImageHash) {
             const _ImageHash = createHash("sha256").update(Bytes).digest("hex");
-            
+
             if (_ImageHash) {
+                Node.setPluginData("ImageHash", _ImageHash);
+                Properties._ImageHash = _ImageHash;
+
                 if (AssetId && Node.getPluginData("ImageHash") === _ImageHash) {
                     console.log("Node exported image has not changed, using ImageId:", AssetId)
                     Properties.Image = `rbxassetid://${AssetId}`
@@ -185,16 +196,30 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                     return;
                 } else if (AssetId) console.warn("Node's image has changed, uploading")
 
+                if (UploadId) {
+                    // try fetching before attempting to re-upload
+
+                    if (Node.getPluginData("ImageHash") === _ImageHash) {
+                        console.log("Image was uploaded, checking Operation (Id):", UploadId);
+                        Properties.Image = `{FTR_${UploadId}}`
+                        Node.setPluginData("ImageHash", _ImageHash);
+
+                        figma.ui.postMessage({
+                            type: "CheckOperation",
+                            data: {
+                                Id: UploadId
+                            }
+                        });
+
+                        return UploadId
+                    } else console.log("Operation exists but Hashes don't match, uploading..")
+                }
+
                 Node.setPluginData("ImageHash", _ImageHash);
-            }
-        } else if (!ImageExports[UploadId]) {
-            ImageExports[UploadId] = {
-                Node: Node,
-                Properties: Properties,
-                Bytes: Bytes, // Uint8Array
-                UploadId: UploadId
-            }
+            } console.warn("FAILED to create an ImageHash for Node", Node, Properties);
         }
+
+        if (AbortImageUpload) return;
 
         // Test post image upload with template data
         if (Flags.ImageUploadTesting) UpdateImage({id: UploadId, data: Flags.ImageUploadBoilerplate});
@@ -216,7 +241,13 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
     return UploadId
 }
 
-function UpdateImage(msg) {
+function UpdateImage(msg, abort) {
+    if (abort) {
+        AbortImageUpload = true;
+        ImagesRemaining = 0;
+        return;
+    }
+
     var ImageInfo = ImageExports[msg.id];
 
     if (!ImageInfo) {
@@ -231,7 +262,7 @@ function UpdateImage(msg) {
         ImagesRemaining -= 1
         return;
     }
-    
+
     let ModerationResult = msg.data.moderationResult
 
     if (Flags.AwaitModeration && ModerationResult && (ModerationResult.moderationState != "Approved" && ModerationResult.moderationState != "MODERATION_STATE_APPROVED")) {
@@ -248,23 +279,24 @@ function UpdateImage(msg) {
 
         //ImagesRemaining -= 1; return;
     }
-    
+
+    const PreviousAssetId = ImageInfo.Node.getPluginData("AssetId");
+    let Content = msg.data.imageContent || msg.data.assetId;
+
     if (ImageInfo.Properties._ReplacedBy) {
         ImageInfo.Properties = ImageInfo.Properties._ReplacedBy;
-        ImageInfo.Node = ImageInfo.Properties._OriginalNode;
+        //ImageInfo.Node = ImageInfo.Properties._OriginalNode; - DON'T REPLACE NODE
     }
-
-    var Content = msg.data.imageContent || msg.data.assetId;
 
     if (!Content.match(/TransparentWhiteImagePlaceholder.png/)) {
         ImageInfo.Node.setPluginData("AssetId", Content);
-        
+
         if (!Content.match(/rbxasset/)) {
             Content = "rbxassetid://" + Content
         }
 
-        ImageInfo.Properties.Image = Content;
-    }
+        ImageInfo.Properties.Image = Content
+    } else ImageInfo.Properties.Image = PreviousAssetId || Content
 
     ImagesRemaining -= 1;
 }
@@ -309,7 +341,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
             Object.BackgroundTransparency = 0;
             return;
         }
-        
+
         const Fill = Value[0];
 
         /*
@@ -317,7 +349,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
             1: Image 50% Transparency           Image = Image; ImageTransparency = 0.5
             2: Purple Fill 20% transparency      ImageColor3 = Purple (hue at 80%?)
         */
-       
+
         //Object.Visible = Node.type === "GROUP" ? true : Fill.visible; // ensure a boolean, and always enable groups
         //Object.Visible = Fill.visible !== false; // ensure a boolean - REMOVED as a better way would be to set the opacity to 0
 
@@ -326,7 +358,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         //     if (Properties.ImageColor3) Properties.BackgroundColor3 = Properties.ImageColor3;
         //     return;
         // };
-        
+
         if (Fill.type === "IMAGE" && (Settings.UploadImages || Flags.AlwaysExportImages)) {
             // Export image
             Object._ImageHash = Fill.imageHash;
@@ -384,27 +416,25 @@ const PropertyTypes = {// the only return value should be nothing or an object c
                 return NewOffset;
             }
 
-            console.log(Object.EffectRadius, Effect)
-
             if (Effect.radius) {
                 Object.EffectRadius = clamp(Object.EffectRadius, Effect.radius, Effect.radius);
             } else if (Effect.offset) {
                 Object.EffectRadius = clamp(Object.EffectRadius, Effect.offset.x, Effect.offset.y);
-            } 
+            }
 
             switch (Effect.type) {
                 /*case "DROP_SHADOW":
                     // do something
-                    // 
+                    //
                     // IDEA:
                     //      Create a Clone with of the same Size, Offset by some px / AnchorPoint
                     //      ^ Would have to be an ImageLabel for the same effect, however I haven't thought of attemtping it
                     //      and it's probably still better to export/upload Rectangles as an image, but Groups and Frames could work
-                    
+
                     // Object.Children.push({
                     //     Class: "ImageLabel",
                     //     Name: "DropShadow",
-                    //     BackgroundTransparency: 
+                    //     BackgroundTransparency:
                     // })
 
                     break;*/
@@ -451,10 +481,10 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         }
 
         var [Colour, Transparency] = ConvertFill(Stroke, StrokeObject);
-        
+
         StrokeObject.Color = Colour;
         StrokeObject.Transparency *= Transparency;
-        
+
         //Object._HasStroke = true;
         Object.Children.push(StrokeObject);
     },
@@ -467,7 +497,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
 
             Segments.forEach(Segment => {
                 var NewText = ""
-    
+
                 if (Segment.fills && Segment.fills.length !== 0) {
                     // TODO: Implement use of new funtion ConvertFill(Fill, Object?)
                     // ^ no, only SOLID colours can be supported with richtext
@@ -508,11 +538,11 @@ const PropertyTypes = {// the only return value should be nothing or an object c
 
                     if (Colour.A !== 1) NewText += ` transparency="${Round(1 - Colour.A, 4)}"`
                 };
-    
+
                 if (Object.TextSize == undefined || Segment.fontSize !== Object.TextSize) {
                     NewText += ` size="${Segment.fontSize * Flags.TextSizeAdjustment}"`;
                 };
-    
+
                 if (Object.FontFace && Segment.fontWeight !== Object.FontFace.Weight) {
                     NewText += ` weight="${Segment.fontWeight}"`;
                 };
@@ -521,29 +551,29 @@ const PropertyTypes = {// the only return value should be nothing or an object c
 
                 if (TextCase) {
                     switch (TextCase) {
-                        case "UPPER": 
+                        case "UPPER":
                             Characters = Characters.toUpperCase();
                             break;
-                        case "LOWER": 
+                        case "LOWER":
                             Characters = Characters.toLowerCase();
                             break;
                         case "TITLE":
                             Characters = Characters.replace(/\w\S*/g, function(Text) {
                                 return Text.charAt(0).toUpperCase() + Text.substr(1).toLowerCase();
                             })
-                
+
                             break;
                         case "ORIGINAL":
                         default:
                             break;
                     }
                 }
-    
+
                 // We only want to add font tags if we have new data to add
                 if (NewText.length > 0) Text += `<font ${NewText}>${Characters}</font>`
                 else Text += Characters;
             })
-    
+
             Object.RichText = true;
             Object.Text = Text //StringToUTF8(Text);
         } //else Object.Text = StringToUTF8(Object.Text);
@@ -554,31 +584,53 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         if (Value === "UNDERLINE") Object.Text = `<u>${Object.Text}</u>`;
         else if (Value === "STRIKETHROUGH") Object.Text = `<s>${Object.Text}</s>`;
     },
+    ["paddingLeft"]: (Value, Object, Node) => {
+        if (Value === 0) return;
+
+        Object.Position.XO += Value;
+        Object.Size.XO -= Value;
+    },
+    ["paddingRight"]: (Value, Object, Node) => {
+        if (Value === 0) return;
+
+        Object.Size.XO -= Value;
+    },
+    ["paddingTop"]: (Value, Object, Node) => {
+        if (Value === 0) return;
+
+        Object.Position.YO += Value;
+        Object.Size.YO -= Value;
+    },
+    ["paddingBottom"]: (Value, Object, Node) => {
+        if (Value === 0) return;
+
+        Object.Size.XO -= Value;
+    },
     ["layoutMode"]: (Value, Object, Node) => {
         /*
             TODO: Support reverse ZIndex
         */
 
         if (Value === "NONE") return;
-       
+
         const FillDirection = Conversions.FillDirection.indexOf(Value);
         const IsHorizontal = FillDirection === 0;
 
         // Get Alignment, Padding and Size Offset
-        
+
         const HorizontalAlignment = IsHorizontal ? Node.primaryAxisAlignItems : Node.counterAxisAlignItems || 0;
         const VerticalAlignment = !IsHorizontal ? Node.primaryAxisAlignItems : Node.counterAxisAlignItems || 0;
 
-        const HorizontalCellPadding = IsHorizontal ? Node.itemSpacing : Node.counterAxisSpacing || 0;
-        const VerticalCellPadding = !IsHorizontal ? Node.itemSpacing : Node.counterAxisSpacing || 0;
+        const HorizontalCellPadding = IsHorizontal ? (Node.itemSpacing || Node.gridColumnGap) : (Node.counterAxisSpacing || Node.gridRowGap) || 0;
+        const VerticalCellPadding = !IsHorizontal ? (Node.itemSpacing || Node.gridRowGap) : (Node.counterAxisSpacing || Node.gridColumnGap) || 0;
 
         const HorizontalCellSize = Node.children[0] ? Node.children[0].width : 100;
         const VerticalCellSize = Node.children[0] ? Node.children[0].height : 100;
 
         //console.print(`Vertical Cell Padding has ${IsHorizontal ? "Horizontal, " : "Vertical, "} padding (X,Y in px): ${HorizontalCellPadding}, ${VerticalCellPadding} Dominant Axis Padding: ${IsHorizontal ? HorizontalCellPadding : VerticalCellPadding}`)
 
-        if (Node.layoutWrap !== "WRAP") {
-            // LIst Layout
+        if (Value !== "GRID" && Node.layoutWrap !== "WRAP") {
+            // List Layout
 
             Object.Children.push({
                 Class: "UIListLayout",
@@ -587,7 +639,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
                 FillDirection: FillDirection,
                 SortOrder: 0,
                 Wraps: false, // both can be true in roblox, but not in Figma to my knowledge (only vertical wrap)
-    
+
                 HorizontalAlignment: Conversions.HorizontalAlignment.indexOf(HorizontalAlignment),
                 VerticalAlignment: Conversions.VerticalAlignment.indexOf(VerticalAlignment),
             })
@@ -605,31 +657,31 @@ const PropertyTypes = {// the only return value should be nothing or an object c
             XS: 0,
             XO: HorizontalCellPadding,
             YS: 0,
-            YO: VerticalCellPadding,
+            YO: VerticalCellPadding || Node.gridRowGap,
         }
-        
+
         const CellSize = {
             XS: 0,
             XO: HorizontalCellSize,
             YS: 0,
             YO: VerticalCellSize,
         }
-        
-        if (Flags.ConvertOffsetToScale) {
-            // now that I think about it doesn't really serve much use in a grid, but good for Rows?
-            const SX = Object.Size.XO;
-            const SY = Object.Size.YO;
-            
-            CellPadding.XS = CellPadding.XO / SX;
-            CellPadding.YS = CellPadding.YO / SY;
-            CellSize.XS = CellSize.XO / SX;
-            CellSize.YS = CellSize.YO / SY;
-            
-            CellPadding.XO = 0;
-            CellPadding.YO = 0;
-            CellSize.XO = 0;
-            CellSize.YO = 0;
-        }
+
+        // if (Flags.ConvertOffsetToScale) {
+        //     // now that I think about it doesn't really serve much use in a grid, but good for Rows?
+        //     const SX = Object.Size.XO;
+        //     const SY = Object.Size.YO;
+
+        //     CellPadding.XS = CellPadding.XO / SX;
+        //     CellPadding.YS = CellPadding.YO / SY;
+        //     CellSize.XS = CellSize.XO / SX;
+        //     CellSize.YS = CellSize.YO / SY;
+
+        //     CellPadding.XO = 0;
+        //     CellPadding.YO = 0;
+        //     CellSize.XO = 0;
+        //     CellSize.YO = 0;
+        // }
 
         // TODO: Finish support for UIListLayout (padding not working)
 
@@ -650,7 +702,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
 // function CalculateAngle(P0, P1, P2) { // https://stackoverflow.com/a/39673693
 //     var Numerator = P1.x * (P0.x - P2.x) + P0.y * (P2.x - P1.x) + P2.y * (P1.x - P0.x);
 //     var Denominator = (P1.x - P0.x) * (P0.x - P2.x) + (P1.y - P0.y) * (P0.y - P2.y);
-    
+
 //     console.log("Number, Denom:", Numerator, Denominator)
 
 //     // Calculate angle in radians and convert it to degrees
@@ -989,17 +1041,17 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
 
         if (Node.textCase) {
             switch (Node.textCase) {
-                case "UPPER": 
+                case "UPPER":
                     Properties.Text = Properties.Text.toUpperCase();
                     break;
-                case "LOWER": 
+                case "LOWER":
                     Properties.Text = Properties.Text.toLowerCase();
                     break;
                 case "TITLE":
                     Properties.Text = Properties.Text.replace(/\w\S*/g, function(Text) {
                         return Text.charAt(0).toUpperCase() + Text.substr(1).toLowerCase();
                     })
-        
+
                     break;
                 case "ORIGINAL":
                     break;
@@ -1015,7 +1067,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
 
             // (WIP) exactly what it says vv
             // const RenderBounds = Node.absoluteRenderBounds
-            
+
             // Properties.Position.XO = Math.round(RenderBounds.x - 4);
             // Properties.Position.YO = Math.round(RenderBounds.y - 4);
             // Properties.Size.XO = Math.round(RenderBounds.width + 8);
@@ -1086,7 +1138,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
                     if (i == i3 || i2 == i3) continue;
 
                     var Angle = CalculateAngle(Vertices[i], Vertices[i2], Vertices[i3]);
-                    
+
                     console.log(`verts ${i}, ${i2}, ${i3} angle: ${Angle}`)
 
                     if (Angle < 90) {
@@ -1309,7 +1361,7 @@ function GetNodeProperties(Node, Settings, ParentObject) {
         if (ParentObject._Transparency) { // Multiply Transparency with Parent Transparency/Pass through
             Properties._Transparency = ParentObject._Transparency * Properties._Transparency
         };
-        
+
         if (!Settings.UploadImages && Properties.Class === "TextLabel" && ParentObject.Class.match("Button")) {
             if (!Flags.AlwaysExportImages) {
                 Properties.Interactable = false;
@@ -1323,26 +1375,26 @@ function GetNodeProperties(Node, Settings, ParentObject) {
     if (Properties.Name.length > 99) {
         Properties.Name = Properties.Name.substr(0, 100);
     }
-    
+
     // Loop Node properties
     Object.getOwnPropertyNames(Object.getPrototypeOf(Node)).forEach((i) => {
         if (PropertyTypes[i]) {
             PropertyTypes[i](Node[i], Properties, Node, ParentObject);
         }
     });
-    
+
     Properties._OriginalPosition = Properties.Position;
     Properties._OriginalSize = Properties.Size;
-    
+
     if (Properties.Rotation && Properties.Rotation !== 0 /*&& Properties.Size.XO !== 0 && Properties.Size.YO !== 0*/) {
         const BoundingBox = Node.absoluteBoundingBox;
 
         if (Properties.Size.XO !== 0) {
             var CX = BoundingBox.x + BoundingBox.width / 2;
             Properties.Position.XO = CX - Properties.Size.XO / 2;
-            
+
         }
-        
+
         if (Properties.Size.YO !== 0) {
             var CY = BoundingBox.y + BoundingBox.height / 2;
             Properties.Position.YO = CY - Properties.Size.YO / 2;

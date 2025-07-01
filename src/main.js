@@ -116,9 +116,8 @@ function ConvertObject(Properties, ParentObject) {
                 XML += XMLTypes.number(Key, Value, false, 1000);
                 break;
             default:
-                //console.log(Key, Value, typeof(Value))
                 if (Key.substring(0, 1) == "_") break;
-                
+
                 if (XMLTypes[typeof(Value)]) XML += XMLTypes[typeof(Value)](Key, Value);
                 break;
         }
@@ -129,13 +128,13 @@ function ConvertObject(Properties, ParentObject) {
 
 function LoopChildren(Children, ParentObject) {
     var New2 = "";
-    
+
     Children.forEach(Child => {
         var XMLProperties = ConvertObject(Child, ParentObject);
-        
+
         New2 += `<Item class="${Child.Class}" referent="RBX0">\n${Child.Children ? LoopChildren(Child.Children) : ""}<Properties>\n${XMLProperties}\n</Properties></Item>\n`
     });
-    
+
     return New2
 }
 
@@ -147,7 +146,7 @@ function LoopNodes(Nodes, ParentObject) {
     //if (ParentObject) {
         for (var i = 0; i < Nodes.length; i++) {
             const Node = Nodes[i];
-    
+
             if (Node && Node.name) {
                 if (Node.name.toLowerCase() === Flags.GroupBackgroundFrameName) {
                     SortedNodes[i] = SortedNodes[0];
@@ -162,14 +161,14 @@ function LoopNodes(Nodes, ParentObject) {
         const Node = SortedNodes[i];
 
         if (Flags.IgnoreInvisible && !Node.visible) continue;
-        
+
         const Properties = GetNodeProperties(Node, Settings, ParentObject); // Can't name it Object because of below v
         Properties._OriginalNode = Node;
 
         //console.log("Props:", Properties, "Parent:", ParentObject)
         //console.log("Node:", Node);
         if (!Properties) continue;
-        
+
         if (Node.type === "BOOLEAN_OPERATION") { // No ~Temp added as a NodeType & create as if a group
             figma.notify("Boolean Operations may give undesired results", {timeout: 1800})
             // Booleans are treated as groups
@@ -183,7 +182,7 @@ function LoopNodes(Nodes, ParentObject) {
             if (Properties.Class === "ScrollingFrame") console.warn("Cannot Apply UIAspectRatioConstraint to a ScrollingFrame that scrolls")
             else {
                 var AspectRatio = Math.round((Properties.Size.XO / Properties.Size.YO) * 100000) / 100000;
-                
+
                 if (Node.width != 0 && Node.height != 0 && AspectRatio) {
                     Properties.Children.push({
                         Class: "UIAspectRatioConstraint",
@@ -194,7 +193,7 @@ function LoopNodes(Nodes, ParentObject) {
                 }
             }
         }
-        
+
         const lowercaseName = Properties.Name.toLowerCase();
         const removeNameAbriv = lowercaseName.match("btn") || lowercaseName.match("scrl");
 
@@ -219,7 +218,7 @@ function LoopNodes(Nodes, ParentObject) {
 
             if (Properties.Class !== "Frame") ParentObject.Class = Properties.Class;
             Properties._ReplacedBy = ParentObject;
-            
+
             if (Properties.Children) {
                 FileContent += LoopChildren(Properties.Children, Properties);
             }
@@ -233,7 +232,7 @@ function LoopNodes(Nodes, ParentObject) {
                     // if the parent object meets certain criteria (listed below) then we should keep the TextLabel within the button and remove the TextButton's text
                     // No (Background/Text) Gradient
                     // Must be TextButton
-                    
+
                     if (Properties._HasGradient !== true && ParentObject._HasGradient !== true) {
                         ParentObject.Class = "TextButton"
 
@@ -243,19 +242,19 @@ function LoopNodes(Nodes, ParentObject) {
                                 Child.ApplyStrokeMode = Conversions.indexOf("Border");
                             }
                         })
-    
+
                         Object.entries(Properties).forEach(([key, value]) => {
                             if (key.match("^Text")) ParentObject[key] = value
                         })
-    
+
                         ParentObject.FontFace = Properties.FontFace
-    
+
                         // if (Properties.Children) {
                         //     FileContent += LoopChildren(Properties.Children, ParentObject)
                         // }
-                        
+
                         //ParentObject.Text = Properties.Text
-        
+
                         //continue;
                     } else {
                         console.log("TextLabel doesn't meet criteria to update parent TextButton")
@@ -263,7 +262,7 @@ function LoopNodes(Nodes, ParentObject) {
                 } else if (Properties.Class === "ImageLabel") {
                     if (Properties._HasGradient !== true && ParentObject._HasGradient !== true) {
                         ParentObject.Class = "ImageButton"
-    
+
                         Object.entries(Properties).forEach(([key, value]) => {
                             if (key.match("^Image")) ParentObject[key] = value
                         })
@@ -289,7 +288,7 @@ function LoopNodes(Nodes, ParentObject) {
             } else console.warn(`[Figma to Roblox] FAILED to convert element "${Properties.Name}" into a button as class "${Properties.Class}" is none of the following: Frame, ImageLabel, TextLabel`)
         } else if (removeNameAbriv && removeNameAbriv[0] === "scrl" || lowercaseName.match("scroll")) {  // Convert to Scrolling Frame
             if (removeNameAbriv) Properties.Name = Properties.Name.replace(/scrl/i, "");
-            
+
             if (Node.type !== "FRAME" && Node.type !== "GROUP" && Node.Type !== "COMPONENT" && Node.Type !== "INSTANCE") {
                 console.warn("[Figma to Roblox] Cannot convert a non-Group/Frame to a ScrollingFrame");
             } else {
@@ -318,10 +317,10 @@ function LoopNodes(Nodes, ParentObject) {
                 Properties.HorizontalScrollBarInset = 0 //Conversions.ScrollBarInset.indexOf("SCROLLBAR")
             }
         }
-        
+
         // Misc
         var New = "";
-        
+
         if (Properties.Children) {
             New += LoopChildren(Properties.Children, ParentObject);
         }
@@ -356,20 +355,19 @@ function LoopNodes(Nodes, ParentObject) {
                 Properties.Position.XO = Properties.Position.XO - ParentObject._OriginalPosition.XO;
                 Properties.Position.YO = Properties.Position.YO - ParentObject._OriginalPosition.YO;
             }
-            
+
             const PSX = ParentObject.Size.XO;
             const PSY = ParentObject.Size.YO;
             // Convert Anchor Point
             if (Flags.ApplyAnchorPoint || Properties._ApplyAnchorPoint) ConvertAnchorPoint(PSX, PSY);
-            
+
             // Convert Offset (Pixels) to Scale
             if (Flags.ConvertOffsetToScale) {
-                //console.log(Properties.Position, "X:", PSX, "Y:", PSY)
                 Properties.Position.XS = Properties.Position.XO / PSX;
                 Properties.Position.YS = Properties.Position.YO / PSY;
                 Properties.Size.XS = Properties.Size.XO / PSX;
                 Properties.Size.YS = Properties.Size.YO / PSY;
-                
+
                 if (Flags.ScrollFrame_ScaleDominantAxis && ParentObject.Class === "ScrollingFrame") {
                     if (Properties.Size.XS < Properties.Size.YS) { // X is smaller than Y
                         Properties.Size.XS = 0; // remove X scale, keep offset
@@ -402,17 +400,17 @@ function LoopNodes(Nodes, ParentObject) {
                 //     };
 
                 //     Properties.Position.XS = PXS;
-                    
+
                 //     // Repeat for Y
                 //     var PYS = Properties.Position.YS;
-                    
+
                 //     if (PYS <= 0.45) PYS = 0;
                 //     else if (PYS <= 0.55) PYS = 0.5;
                 //     else if (PYS <= 1) {
                 //         PYS = 1;
                 //         //Properties.Position.YO = Properties.Position.YO - PSY;
                 //     };
-                    
+
                 //     Properties.Position.YS = PYS;
                 //     Properties.Position.XO -= ((PSX - Properties.Size.X * AX) * PXS);
                 //     Properties.Position.YO -= ((PSY - Properties.Size.Y * AY) * PYS);
@@ -445,7 +443,7 @@ function LoopNodes(Nodes, ParentObject) {
         } else if (Node.parent && Node.parent.type !== "PAGE") {
             // Convert user-selected frame to scale
             if (Flags.ApplyAnchorPoint || Properties._ApplyAnchorPoint) ConvertAnchorPoint(Node.parent.width, Node.parent.height);
-            
+
             if (Flags.ConvertOffsetToScale) {
                 const PSX = Node.parent.width
                 const PSY = Node.parent.height
@@ -455,14 +453,14 @@ function LoopNodes(Nodes, ParentObject) {
                 Properties.Position.YS = Properties.Position.YO / PSY
                 Properties.Size.XS = Properties.Size.XO / PSX;
                 Properties.Size.YS = Properties.Size.YO / PSY;
-                
+
                 Properties.Position.XO = 0;
                 Properties.Position.YO = 0;
                 Properties.Size.XO = 0;
                 Properties.Size.YO = 0;
             }
         }
-        
+
         // Adjust element Size & Position to account for effects
         if (Properties.EffectRadius) {
             const EffectRadius = Properties.EffectRadius
@@ -477,7 +475,7 @@ function LoopNodes(Nodes, ParentObject) {
             Properties.Size.XO += EffectRadius.X * 2;
             Properties.Size.YO += EffectRadius.Y * 2;
 
-            
+
             /*const CornerRadiusOffset = Node.cornerRadius && Node.cornerRadius !== figma.mixed ? Node.cornerRadius * 2 : 0;
             const X = EffectRadius.X + CornerRadiusOffset;
             const Y = EffectRadius.Y + CornerRadiusOffset;
@@ -499,7 +497,7 @@ function LoopNodes(Nodes, ParentObject) {
             console.log(Properties.SliceCenter, SizeX, SizeY)
             */
         }
-        
+
         // Convert to XML
         FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
         FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n" + New;
@@ -514,7 +512,7 @@ function CreatePreset(Preset) {
     const CenterOfScreen = figma.viewport.center;
     var SizeX;
     var SizeY;
-    
+
     switch (Preset) {
         case "Full HD":
             SizeX = 1920;
@@ -532,7 +530,7 @@ function CreatePreset(Preset) {
             SizeX = 3840;
             SizeY = 2160;
             break;
-        default: 
+        default:
             return NotifyError("Preset doesn't exist");
     }
 
@@ -584,7 +582,7 @@ async function RunPlugin() { // this is technecally a codegen plugin?
 
     Notify("Successfully exported");
     console.log("[FTR] Done");
-    
+
     setTimeout(() => {
         RunDebounce = false
     }, 2500)
@@ -611,6 +609,9 @@ figma.ui.onmessage = msg => {
         case "ImageUploaded":
             UpdateImage(msg);
             break;
+        case "AbortUpload":
+            UpdateImage(undefined, true);
+            break;
         case "UploadError":
             const Suggestion = ImageUploadErrorSuggestions[msg.code];
             const ErrorMsg = msg.code ? msg.code + ': ' + msg.message : msg.message;
@@ -625,17 +626,17 @@ figma.ui.onmessage = msg => {
             else Notify(msg.message);
             break;
         case "SetAsync":
-           if (Settings[msg.key] !== undefined) Settings[msg.key] = msg.value;
-           // vv DEBUGGING vv
-           if (Flags[msg.key] !== undefined) Flags[msg.key] = msg.value;
+            if (Settings[msg.key] !== undefined) Settings[msg.key] = msg.value;
+            // vv DEBUGGING vv
+            if (Flags[msg.key] !== undefined) Flags[msg.key] = msg.value;
 
-           if (msg.key == HighlightNodes.name) {
+            if (msg.key == HighlightNodes.name) {
                 if (msg.value === true) HighlightNodes.start()
                 else HighlightNodes.stop();
-           }
-        
-           figma.clientStorage.setAsync(msg.key, msg.value);
-           break;
+            }
+
+            if (!msg.no_save) figma.clientStorage.setAsync(msg.key, msg.value);
+            break;
         case "CreatePreset":
             CreatePreset(msg.preset);
             break;
@@ -648,33 +649,37 @@ figma.showUI(__html__, {
     themeColors: true
 });
 
-new Promise((resolve, reject) => {    
+new Promise((resolve, reject) => {
     figma.clientStorage.keysAsync().then(Keys => {
         var Done = 0;
         var StoredSettings = Flags;
-        
+
         for (var i = 0; i < Keys.length; i++) {
             const Key = Keys[i];
 
             figma.clientStorage.getAsync(Key).then(Value => {
-                StoredSettings[Key] = Value;
                 Done += 1;
 
-                if (Settings[Key] !== undefined) Settings[Key] = Value;
-                // vv DEBUGGING vv
-                else if (Flags[Key] !== undefined) Flags[Key] = Value;
-                else { // [TEMPORARY] Migrate old settings
-                    switch (Key) {
-                        case "UploadToGroup":
-                            Flags.UploaderType = Value ? "group" : "user"
-                            Flags[Key] = undefined;
-                            break;
-                        default:
-                            console.warn(`[Figma to Roblox] Unknown Settings/Flag "${Key}", value: ${Value}`)
-                            break;
-                    }
+                switch (Key) {
+                    // Migrate old settings
+                    case "UploadToGroup": // [TEMPORARY(?) - Migrated on 28/06/2025]
+                        Flags.UploaderType = Value ? "group" : "user";
+                        StoredSettings.UploaderType =  Flags.UploaderType;
+                        StoredSettings[Key] = undefined;
+                    // Delete unwanted settings (including old)
+                    case "ForceUploadImages":
+                    case "ReuploadStuckImages":
+                        figma.clientStorage.deleteAsync(Key);
+                        break;
+                    default:
+                        StoredSettings[Key] = Value;
+                        if (Settings[Key] !== undefined) Settings[Key] = Value;
+                        // vv DEBUGGING vv
+                        else if (Flags[Key] !== undefined) Flags[Key] = Value;
+                        else console.warn(`[Figma to Roblox] Unknown Settings/Flag "${Key}", value: ${Value}`)
+                        break;
                 }
-                
+
                 if (Done == Keys.length) {
                     Done = null;
                     resolve(StoredSettings);

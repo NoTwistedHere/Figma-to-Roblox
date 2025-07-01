@@ -34,7 +34,7 @@ for (var [type, value] of Object.entries(Types)) {
 }
 
 function HighlightNode(node, rm) {
-    if (!NodeHighlightsTEMP || node.parent && node.parent.name.match(/btn|button|img|image/i)) return;
+    if (!NodeHighlightsTEMP || !node.parent || node.parent.name.match(/btn|button|img|image/i)) return;
 
     const TypeFlags = rm === true ? false : node.name.toLowerCase().match(/btn|button|img|image|scrl|scroll/g);
     const NodeId = "@FTR" + node.id;
