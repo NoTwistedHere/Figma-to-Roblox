@@ -43,32 +43,34 @@ function ConvertFill(Fill, Object) {
             Transparency = Fill.opacity;
             Color3 = { R: 1, G: 1, B: 1 };
 
-            Object._HasGradient = true;
-            Object.Children.push({
-                Class: "UIGradient",
-                Enabled: Fill.visible,
-                Rotation: -(Conversions.getGradientRotation(Fill.gradientTransform) - 90),
-                Offset: { // TODO?
-                    X: 0,
-                    Y: 0
-                },
-                Color: Fill.gradientStops.map((Stop) => {
-                    return {
-                        Colour: {
-                            R: Stop.color.r,
-                            G: Stop.color.g,
-                            B: Stop.color.b
-                        },
-                        TimePosition: Stop.position
-                    }
-                }),
-                Transparency: Fill.gradientStops.map((Stop) => {
-                    return {
-                        Transparency: 1 - Stop.color.a,
-                        TimePosition: Stop.position
-                    }
+            if (!Object._hasExport) {
+                Object._HasGradient = true;
+                Object.Children.push({
+                    Class: "UIGradient",
+                    Enabled: Fill.visible,
+                    Rotation: -(Conversions.getGradientRotation(Fill.gradientTransform) - 90),
+                    Offset: { // TODO?
+                        X: 0,
+                        Y: 0
+                    },
+                    Color: Fill.gradientStops.map((Stop) => {
+                        return {
+                            Colour: {
+                                R: Stop.color.r,
+                                G: Stop.color.g,
+                                B: Stop.color.b
+                            },
+                            TimePosition: Stop.position
+                        }
+                    }),
+                    Transparency: Fill.gradientStops.map((Stop) => {
+                        return {
+                            Transparency: 1 - Stop.color.a,
+                            TimePosition: Stop.position
+                        }
+                    })
                 })
-            })
+            }
 
             break;
     }
@@ -78,7 +80,7 @@ function ConvertFill(Fill, Object) {
 
 function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout) {
     let AssetId = Node.getPluginData("AssetId");
-    var UploadId = Node.getPluginData("OperationId");
+    const OperationId = Node.getPluginData("OperationId");
 
     if (AssetId && AssetId.match(/[0-9]+/)) AssetId = AssetId.match(/[0-9]+/)[0];
     if (!Settings.UploadImages) return Properties.Image = `rbxassetid://${AssetId}`;
@@ -95,9 +97,15 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
     let ExportNode = Node;
     if (Node.fills && Node.fills[0]) {
         if (!Properties._ImageHash) Properties._ImageHash = Node.fills[0].imageHash;
+
         if (FullWhiteout) {
             ExportNode = Node.clone();
             ExportNode.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+        } else if (Node.fills[0].opacity < 1) {
+            ExportNode = Node.clone();
+            const NewFills = JSON.parse(JSON.stringify(Node.fills));
+            NewFills[0].opacity = 1
+            ExportNode.fills = NewFills
         }
     }
 
@@ -106,7 +114,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
     }
 
     if (!ForceReupload && !Flags.ForceUploadImages && Node.getPluginData("ImageHash") === Properties._ImageHash) {
-        if (AssetId && !AssetId.match(/TransparentWhiteImagePlaceholder.png/)) {
+        if (AssetId && AssetId.length > 5 && !AssetId.match(/TransparentWhiteImagePlaceholder.png/)) {
             // Check if image hashes match
 
             console.log("Image has not changed, using ImageId:", AssetId)
@@ -115,34 +123,34 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
             return;
         }
 
-        if (UploadId) {
+        if (OperationId) {
             // try fetching before attempting to re-upload
-            console.log("Image was uploaded, checking Operation (Id):", UploadId);
+            console.log("Image was uploaded, checking Operation (Id):", OperationId);
 
             ImagesRemaining += 1;
-            Properties.Image = `{FTR_${UploadId}}`
+            Properties.Image = `{FTR_${OperationId}}`
             Node.setPluginData("ImageHash", Properties._ImageHash);
 
-            ImageExports[UploadId] = {
+            ImageExports[OperationId] = {
                 Node: Node,
                 Properties: Properties,
-                UploadId: UploadId
+                UploadId: OperationId
             }
 
             figma.ui.postMessage({
                 type: "CheckOperation",
                 data: {
-                    Id: UploadId
+                    Id: OperationId
                 }
             });
 
-            return UploadId
+            return OperationId
         }
     }
 
     //
 
-    UploadId = UploadId || Properties._ImageHash || AssetId || Properties.Name.replace(/[[:alnum:]\-:]+/g, "") //Node.id
+    let UploadId = OperationId || Properties._ImageHash || AssetId || Properties.Name.replace(/[[:alnum:]\-:]+/g, "") //Node.id
 
     if (!UploadId || UploadId.length < 2) NotifyError(`Node "${Node.name}" {${Node.id}} has an invalid UploadId`, true);
 
@@ -176,47 +184,51 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
             }
         }
 
-        if (/*!ForceReupload && !Flags.ForceUploadImages &&*/ !Properties._ImageHash) {
+        if (!Properties._ImageHash) {
             const _ImageHash = createHash("sha256").update(Bytes).digest("hex");
 
             if (_ImageHash) {
-                Node.setPluginData("ImageHash", _ImageHash);
                 Properties._ImageHash = _ImageHash;
 
-                if (AssetId && Node.getPluginData("ImageHash") === _ImageHash) {
-                    console.log("Node exported image has not changed, using ImageId:", AssetId)
-                    Properties.Image = `rbxassetid://${AssetId}`
-                    UpdateImage({id: UploadId, data: {
-                        "assetId": AssetId,
-                        "moderationResult": {
-                            "moderationState": "Approved"
-                        },
-                        "state": "Active"
-                    }});
-                    return;
-                } else if (AssetId) console.warn("Node's image has changed, uploading")
+                if (!ForceReupload && !Flags.ForceUploadImages) {
+                    if (AssetId && Node.getPluginData("ImageHash") === _ImageHash) {
+                        console.log("Node exported image has not changed, using ImageId:", AssetId)
+                        Properties.Image = `rbxassetid://${AssetId}`
+                        UpdateImage({id: UploadId, data: {
+                            "assetId": AssetId,
+                            "moderationResult": {
+                                "moderationState": "Approved"
+                            },
+                            "state": "Active"
+                        }});
+                        return;
+                    } else if (AssetId) console.warn("Node's image has changed, uploading")
 
-                if (UploadId) {
-                    // try fetching before attempting to re-upload
+                    if (OperationId) {
+                        // try fetching before attempting to re-upload
 
-                    if (Node.getPluginData("ImageHash") === _ImageHash) {
-                        console.log("Image was uploaded, checking Operation (Id):", UploadId);
-                        Properties.Image = `{FTR_${UploadId}}`
-                        Node.setPluginData("ImageHash", _ImageHash);
+                        if (Node.getPluginData("ImageHash") === _ImageHash) {
+                            console.log("Image was uploaded, checking Operation (Id):", OperationId);
+                            Properties.Image = `{FTR_${OperationId}}`
+                            Node.setPluginData("ImageHash", _ImageHash);
 
-                        figma.ui.postMessage({
-                            type: "CheckOperation",
-                            data: {
-                                Id: UploadId
-                            }
-                        });
+                            figma.ui.postMessage({
+                                type: "CheckOperation",
+                                data: {
+                                    Id: OperationId
+                                }
+                            });
 
-                        return UploadId
-                    } else console.log("Operation exists but Hashes don't match, uploading..")
+                            return OperationId
+                        } else console.log("Operation exists but Hashes don't match, uploading..")
+                    }
                 }
 
                 Node.setPluginData("ImageHash", _ImageHash);
-            } console.warn("FAILED to create an ImageHash for Node", Node, Properties);
+            } {
+                NotifyError(`FAILED to save image hash for Node "${Node.name}" (${Node.id}), this means it might be reuploaded every time`)
+                console.warn("FAILED to create an ImageHash for Node", Node, Properties);
+            }
         }
 
         if (AbortImageUpload) return;
@@ -326,6 +338,18 @@ function IsDone() {
     return false
 }
 
+
+function clamp(OldOffset, X, Y) {
+    var NewOffset = {X: X, Y: Y};
+
+    if (OldOffset) {
+        if (OldOffset.X > X) NewOffset.X = OldOffset.X;
+        if (OldOffset.Y > Y) NewOffset.Y = OldOffset.Y;
+    }
+
+    return NewOffset;
+}
+
 const PropertyTypes = {// the only return value should be nothing or an object containing properties to update
     ["clipsContent"]: (Value, Object, Node) => {
         Object.ClipsDescendants = Value;
@@ -390,6 +414,10 @@ const PropertyTypes = {// the only return value should be nothing or an object c
     },
     ["cornerRadius"]: (Value, Object) => {
         if (Value !== 0 && Value !== figma.mixed) {
+            Object.Children.forEach((Stroke) => {
+                if (Stroke.Class === "UIStroke") Stroke.LineJoinMode = Conversions.LineJoinModes.indexOf(Object._HasCorners ? "ROUND" : Node.strokeJoin)
+            })
+
             Object._HasCorners = true;
             Object.Children.push({
                 Class: "UICorner",
@@ -402,26 +430,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         }
     },
     ["effects"]: (Value, Object, Node) => {
-        if (!Settings.UploadImages || !Settings.UploadEffects) return; // UploadImages is disabled, ignore?
-
         Value.forEach(Effect => {
-            function clamp(OldOffset, X, Y) {
-                var NewOffset = {X: X, Y: Y};
-
-                if (OldOffset) {
-                    if (OldOffset.X > X) NewOffset.X = OldOffset.X;
-                    if (OldOffset.Y > Y) NewOffset.Y = OldOffset.Y;
-                }
-
-                return NewOffset;
-            }
-
-            if (Effect.radius) {
-                Object.EffectRadius = clamp(Object.EffectRadius, Effect.radius, Effect.radius);
-            } else if (Effect.offset) {
-                Object.EffectRadius = clamp(Object.EffectRadius, Effect.offset.x, Effect.offset.y);
-            }
-
             switch (Effect.type) {
                 /*case "DROP_SHADOW":
                     // do something
@@ -438,16 +447,28 @@ const PropertyTypes = {// the only return value should be nothing or an object c
                     // })
 
                     break;*/
-                default:
-                    // Export as image
-                    Object.Class = "ImageLabel"; // or ImageButton?!
-                    Object.ImageColor3 = {R: 1, G: 1, B: 1};
-                    Object._hasExport = true
-                    //Object.BackgroundTransparency = 0; // Images can't have backgrounds from what I can tell (in figma)
-
-                    ExportImage(Node, Object, null, null, true)
+                case "INNER_SHADOW":
+                case "NOISE":
+                case "BACKGROUND_BLUR":
                     break;
-            }
+                default:
+                    if (Effect.radius) {
+                        Object.EffectRadius = clamp(Object.EffectRadius, Effect.radius, Effect.radius);
+                    } else if (Effect.offset) {
+                        Object.EffectRadius = clamp(Object.EffectRadius, Effect.offset.x, Effect.offset.y);
+                    }
+
+                    if (Settings.UploadEffects) {
+                        // Export as image
+                        Object.Class = "ImageLabel"; // or ImageButton?!
+                        Object.ImageColor3 = {R: 1, G: 1, B: 1};
+                        Object._hasExport = true
+                        //Object.BackgroundTransparency = 0; // Images can't have backgrounds from what I can tell (in figma)
+
+                        ExportImage(Node, Object, null, null, true)
+                    }
+                    break;
+                }
         })
     },
     ["strokes"]: (Value, Object, Node) => {
@@ -479,6 +500,12 @@ const PropertyTypes = {// the only return value should be nothing or an object c
 
             Children: [],
         }
+
+        if (Object.EffectRadius) {
+            Object.EffectRadius.X += Node.strokeWeight;
+            Object.EffectRadius.Y += Node.strokeWeight;
+        } else Object.EffectRadius = {X: Node.strokeWeight, Y: Node.strokeWeight}
+        //Object.EffectRadius = clamp(Object.EffectRadius, Node.strokeWeight, Node.strokeWeight);
 
         var [Colour, Transparency] = ConvertFill(Stroke, StrokeObject);
 
@@ -585,24 +612,24 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         else if (Value === "STRIKETHROUGH") Object.Text = `<s>${Object.Text}</s>`;
     },
     ["paddingLeft"]: (Value, Object, Node) => {
-        if (Value === 0) return;
+        if (Value === 0 || !Flags.ApplyPadding || !Flags.ApplyAnchorPoint) return;
 
         Object.Position.XO += Value;
         Object.Size.XO -= Value;
     },
     ["paddingRight"]: (Value, Object, Node) => {
-        if (Value === 0) return;
+        if (Value === 0 || !Flags.ApplyPadding || !Flags.ApplyAnchorPoint) return;
 
         Object.Size.XO -= Value;
     },
     ["paddingTop"]: (Value, Object, Node) => {
-        if (Value === 0) return;
+        if (Value === 0 || !Flags.ApplyPadding || !Flags.ApplyAnchorPoint) return;
 
         Object.Position.YO += Value;
         Object.Size.YO -= Value;
     },
     ["paddingBottom"]: (Value, Object, Node) => {
-        if (Value === 0) return;
+        if (Value === 0 || !Flags.ApplyPadding || !Flags.ApplyAnchorPoint) return;
 
         Object.Size.XO -= Value;
     },
@@ -935,10 +962,6 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             Node: Node,
         }
 
-        if (Node.name.toLowerCase().match(/img/)) {
-            ExportImage(Node, Properties);
-        }
-
         return Properties;
     },
     ["ELLIPSE"]: (Node) => {
@@ -1183,7 +1206,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             Node: Node,
         }*/
     },
-    ["BOOLEAN_OPERATION"]: (Node, Settings) => { // Basically emulating a group
+    /*["BOOLEAN_OPERATION"]: (Node, Settings) => { // Basically emulating a group
         if (Node.booleanOperation !== "UNION") {
             // TODO: Upload & Export as Image
             figma.notify("Only \"UNION\" Boolean operations can somehwat be converted") // ", exporting as image.."
@@ -1201,11 +1224,13 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
         // })
 
         const Properties = {
-            Class: "Frame",
+            Class: "ImageLabel",
             Name: Node.name,
             Active: true,
             Visible: Node.visible,
-            BackgroundTransparency: 0,
+            BackgroundTransparency: 0.0,
+            ImageTransparency: 1 - Node.opacity,
+            ImageColor3: {R: 255, G: 255, B: 255},
             _Transparency: Node.opacity,
             BorderSizePixel: 0,
 
@@ -1233,11 +1258,49 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             Node: Node,
         }
 
+        ExportImage(Node, Properties);
         return Properties
-    },
-
+    },*/
     ["OTHER"]: (Node) => {
         console.warn("Unknwon type:", Node.type)
+
+        const Properties = {
+            Class: "ImageLabel",
+            Name: Node.name,
+            Active: true,
+            Visible: Node.visible,
+            BackgroundTransparency: 0.0,
+            ImageTransparency: 1 - Node.opacity,
+            ImageColor3: {R: 255, G: 255, B: 255},
+            _Transparency: Node.opacity,
+            BorderSizePixel: 0,
+
+            Rotation: -Node.rotation,
+            ZIndex: 1,
+
+            AnchorPoint: {
+                X: 0,
+                Y: 0,
+            },
+            Position: {
+                XS: 0,
+                XO: Node.x,
+                YS: 0,
+                YO: Node.y
+            },
+            Size: {
+                XS: 0,
+                XO: Node.width,
+                YS: 0,
+                YO: Node.height
+            },
+
+            Children: [],
+            Node: Node,
+        }
+
+        ExportImage(Node, Properties);
+        return Properties;
     }
 }
 
@@ -1353,7 +1416,8 @@ const XMLTypes = {
 }
 
 function GetNodeProperties(Node, Settings, ParentObject) {
-    const Properties = NodeTypes[Node.type || "OTHER"](Node, Settings);
+    //if (!NodeTypes[Node.type]) NotifyError(`Unknown node type "${Node.type}", please create a suggestion on the discord server`)
+    const Properties = (NodeTypes[NodeTypes[Node.type] ? Node.type : "OTHER"])(Node, Settings);
 
     if (!Properties) return;
     if (Properties._Transparency === 0) Properties.Visible = false;
@@ -1386,19 +1450,31 @@ function GetNodeProperties(Node, Settings, ParentObject) {
     Properties._OriginalPosition = Properties.Position;
     Properties._OriginalSize = Properties.Size;
 
-    if (Properties.Rotation && Properties.Rotation !== 0 /*&& Properties.Size.XO !== 0 && Properties.Size.YO !== 0*/) {
-        const BoundingBox = Node.absoluteBoundingBox;
+    if (Properties.Rotation) {
+        Properties.Rotation = Math.round(Properties.Rotation / 1000) * 1000;
+        if (Properties.Rotation !== 0 /*&& Properties.Size.XO !== 0 && Properties.Size.YO !== 0*/) {
+            const BoundingBox = Node.absoluteBoundingBox;
 
-        if (Properties.Size.XO !== 0) {
-            var CX = BoundingBox.x + BoundingBox.width / 2;
-            Properties.Position.XO = CX - Properties.Size.XO / 2;
+            if (Properties.Size.XO !== 0) {
+                var CX = BoundingBox.x + BoundingBox.width / 2;
+                Properties.Position.XO = CX - Properties.Size.XO / 2;
 
+            }
+
+            if (Properties.Size.YO !== 0) {
+                var CY = BoundingBox.y + BoundingBox.height / 2;
+                Properties.Position.YO = CY - Properties.Size.YO / 2;
+            }
         }
+    }
 
-        if (Properties.Size.YO !== 0) {
-            var CY = BoundingBox.y + BoundingBox.height / 2;
-            Properties.Position.YO = CY - Properties.Size.YO / 2;
-        }
+    if (Node.name.toLowerCase().match(/img|image/)) {
+        Properties.Class = "ImageLabel";
+        Properties.ImageColor3 = {R: 1, G: 1, B: 1};
+        Properties.ImageTransparency = Properties.BackgroundTransparency
+        Properties.BackgroundTransparency = 0;
+        Properties._hasExport = true;
+        ExportImage(Node, Properties)
     }
 
     return Properties;

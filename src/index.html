@@ -398,7 +398,7 @@
                     var Value;
 
                     // ik I could use switch but is it really needed?
-                    if (Option.type === "text") Value = Element.value
+                    if (Option.type === "text") Value = Element.value.replace(/[ \t\n\r]/g, "");
                     else if (Option.type === "checkbox") {
                         Value = Element.checked;
 
@@ -472,7 +472,6 @@
                             method: "GET",
                             //mode: "no-cors",
                             headers: {
-                                ["Origin"]: "FigmaToRoblox",
                                 //["Content-Type"]: "text/plain",
                                 //["Content-Language"]: "en-US",
                                 ["x-api-key"]: Settings.CloudApiKey
@@ -525,7 +524,6 @@
                             //mode: "no-cors",
                             method: "POST",
                             headers: {
-                                ["Origin"]: "FigmaToRoblox",
                                 //["Content-Type"]: "multipart/form-data; boundary=-16300",
                                 //["Accept"]: "multipart/form-data",
                                 //["Accept"]: "data/json",

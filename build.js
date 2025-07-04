@@ -7936,32 +7936,34 @@ function ConvertFill(Fill, Object) {
             Transparency = Fill.opacity;
             Color3 = { R: 1, G: 1, B: 1 };
 
-            Object._HasGradient = true;
-            Object.Children.push({
-                Class: "UIGradient",
-                Enabled: Fill.visible,
-                Rotation: -(Conversions.getGradientRotation(Fill.gradientTransform) - 90),
-                Offset: { // TODO?
-                    X: 0,
-                    Y: 0
-                },
-                Color: Fill.gradientStops.map((Stop) => {
-                    return {
-                        Colour: {
-                            R: Stop.color.r,
-                            G: Stop.color.g,
-                            B: Stop.color.b
-                        },
-                        TimePosition: Stop.position
-                    }
-                }),
-                Transparency: Fill.gradientStops.map((Stop) => {
-                    return {
-                        Transparency: 1 - Stop.color.a,
-                        TimePosition: Stop.position
-                    }
+            if (!Object._hasExport) {
+                Object._HasGradient = true;
+                Object.Children.push({
+                    Class: "UIGradient",
+                    Enabled: Fill.visible,
+                    Rotation: -(Conversions.getGradientRotation(Fill.gradientTransform) - 90),
+                    Offset: { // TODO?
+                        X: 0,
+                        Y: 0
+                    },
+                    Color: Fill.gradientStops.map((Stop) => {
+                        return {
+                            Colour: {
+                                R: Stop.color.r,
+                                G: Stop.color.g,
+                                B: Stop.color.b
+                            },
+                            TimePosition: Stop.position
+                        }
+                    }),
+                    Transparency: Fill.gradientStops.map((Stop) => {
+                        return {
+                            Transparency: 1 - Stop.color.a,
+                            TimePosition: Stop.position
+                        }
+                    })
                 })
-            })
+            }
 
             break;
     }
@@ -7971,7 +7973,7 @@ function ConvertFill(Fill, Object) {
 
 function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout) {
     let AssetId = Node.getPluginData("AssetId");
-    var UploadId = Node.getPluginData("OperationId");
+    const OperationId = Node.getPluginData("OperationId");
 
     if (AssetId && AssetId.match(/[0-9]+/)) AssetId = AssetId.match(/[0-9]+/)[0];
     if (!Settings.UploadImages) return Properties.Image = `rbxassetid://${AssetId}`;
@@ -7988,9 +7990,15 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
     let ExportNode = Node;
     if (Node.fills && Node.fills[0]) {
         if (!Properties._ImageHash) Properties._ImageHash = Node.fills[0].imageHash;
+
         if (FullWhiteout) {
             ExportNode = Node.clone();
             ExportNode.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+        } else if (Node.fills[0].opacity < 1) {
+            ExportNode = Node.clone();
+            const NewFills = JSON.parse(JSON.stringify(Node.fills));
+            NewFills[0].opacity = 1
+            ExportNode.fills = NewFills
         }
     }
 
@@ -7999,7 +8007,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
     }
 
     if (!ForceReupload && !Flags.ForceUploadImages && Node.getPluginData("ImageHash") === Properties._ImageHash) {
-        if (AssetId && !AssetId.match(/TransparentWhiteImagePlaceholder.png/)) {
+        if (AssetId && AssetId.length > 5 && !AssetId.match(/TransparentWhiteImagePlaceholder.png/)) {
             // Check if image hashes match
 
             console.log("Image has not changed, using ImageId:", AssetId)
@@ -8008,34 +8016,34 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
             return;
         }
 
-        if (UploadId) {
+        if (OperationId) {
             // try fetching before attempting to re-upload
-            console.log("Image was uploaded, checking Operation (Id):", UploadId);
+            console.log("Image was uploaded, checking Operation (Id):", OperationId);
 
             ImagesRemaining += 1;
-            Properties.Image = `{FTR_${UploadId}}`
+            Properties.Image = `{FTR_${OperationId}}`
             Node.setPluginData("ImageHash", Properties._ImageHash);
 
-            ImageExports[UploadId] = {
+            ImageExports[OperationId] = {
                 Node: Node,
                 Properties: Properties,
-                UploadId: UploadId
+                UploadId: OperationId
             }
 
             figma.ui.postMessage({
                 type: "CheckOperation",
                 data: {
-                    Id: UploadId
+                    Id: OperationId
                 }
             });
 
-            return UploadId
+            return OperationId
         }
     }
 
     //
 
-    UploadId = UploadId || Properties._ImageHash || AssetId || Properties.Name.replace(/[[:alnum:]\-:]+/g, "") //Node.id
+    let UploadId = OperationId || Properties._ImageHash || AssetId || Properties.Name.replace(/[[:alnum:]\-:]+/g, "") //Node.id
 
     if (!UploadId || UploadId.length < 2) NotifyError(`Node "${Node.name}" {${Node.id}} has an invalid UploadId`, true);
 
@@ -8069,47 +8077,51 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
             }
         }
 
-        if (/*!ForceReupload && !Flags.ForceUploadImages &&*/ !Properties._ImageHash) {
+        if (!Properties._ImageHash) {
             const _ImageHash = createHash("sha256").update(Bytes).digest("hex");
 
             if (_ImageHash) {
-                Node.setPluginData("ImageHash", _ImageHash);
                 Properties._ImageHash = _ImageHash;
 
-                if (AssetId && Node.getPluginData("ImageHash") === _ImageHash) {
-                    console.log("Node exported image has not changed, using ImageId:", AssetId)
-                    Properties.Image = `rbxassetid://${AssetId}`
-                    UpdateImage({id: UploadId, data: {
-                        "assetId": AssetId,
-                        "moderationResult": {
-                            "moderationState": "Approved"
-                        },
-                        "state": "Active"
-                    }});
-                    return;
-                } else if (AssetId) console.warn("Node's image has changed, uploading")
+                if (!ForceReupload && !Flags.ForceUploadImages) {
+                    if (AssetId && Node.getPluginData("ImageHash") === _ImageHash) {
+                        console.log("Node exported image has not changed, using ImageId:", AssetId)
+                        Properties.Image = `rbxassetid://${AssetId}`
+                        UpdateImage({id: UploadId, data: {
+                            "assetId": AssetId,
+                            "moderationResult": {
+                                "moderationState": "Approved"
+                            },
+                            "state": "Active"
+                        }});
+                        return;
+                    } else if (AssetId) console.warn("Node's image has changed, uploading")
 
-                if (UploadId) {
-                    // try fetching before attempting to re-upload
+                    if (OperationId) {
+                        // try fetching before attempting to re-upload
 
-                    if (Node.getPluginData("ImageHash") === _ImageHash) {
-                        console.log("Image was uploaded, checking Operation (Id):", UploadId);
-                        Properties.Image = `{FTR_${UploadId}}`
-                        Node.setPluginData("ImageHash", _ImageHash);
+                        if (Node.getPluginData("ImageHash") === _ImageHash) {
+                            console.log("Image was uploaded, checking Operation (Id):", OperationId);
+                            Properties.Image = `{FTR_${OperationId}}`
+                            Node.setPluginData("ImageHash", _ImageHash);
 
-                        figma.ui.postMessage({
-                            type: "CheckOperation",
-                            data: {
-                                Id: UploadId
-                            }
-                        });
+                            figma.ui.postMessage({
+                                type: "CheckOperation",
+                                data: {
+                                    Id: OperationId
+                                }
+                            });
 
-                        return UploadId
-                    } else console.log("Operation exists but Hashes don't match, uploading..")
+                            return OperationId
+                        } else console.log("Operation exists but Hashes don't match, uploading..")
+                    }
                 }
 
                 Node.setPluginData("ImageHash", _ImageHash);
-            } console.warn("FAILED to create an ImageHash for Node", Node, Properties);
+            } {
+                NotifyError(`FAILED to save image hash for Node "${Node.name}" (${Node.id}), this means it might be reuploaded every time`)
+                console.warn("FAILED to create an ImageHash for Node", Node, Properties);
+            }
         }
 
         if (AbortImageUpload) return;
@@ -8219,6 +8231,18 @@ function IsDone() {
     return false
 }
 
+
+function clamp(OldOffset, X, Y) {
+    var NewOffset = {X: X, Y: Y};
+
+    if (OldOffset) {
+        if (OldOffset.X > X) NewOffset.X = OldOffset.X;
+        if (OldOffset.Y > Y) NewOffset.Y = OldOffset.Y;
+    }
+
+    return NewOffset;
+}
+
 const PropertyTypes = {// the only return value should be nothing or an object containing properties to update
     ["clipsContent"]: (Value, Object, Node) => {
         Object.ClipsDescendants = Value;
@@ -8283,6 +8307,10 @@ const PropertyTypes = {// the only return value should be nothing or an object c
     },
     ["cornerRadius"]: (Value, Object) => {
         if (Value !== 0 && Value !== figma.mixed) {
+            Object.Children.forEach((Stroke) => {
+                if (Stroke.Class === "UIStroke") Stroke.LineJoinMode = Conversions.LineJoinModes.indexOf(Object._HasCorners ? "ROUND" : Node.strokeJoin)
+            })
+
             Object._HasCorners = true;
             Object.Children.push({
                 Class: "UICorner",
@@ -8295,26 +8323,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         }
     },
     ["effects"]: (Value, Object, Node) => {
-        if (!Settings.UploadImages || !Settings.UploadEffects) return; // UploadImages is disabled, ignore?
-
         Value.forEach(Effect => {
-            function clamp(OldOffset, X, Y) {
-                var NewOffset = {X: X, Y: Y};
-
-                if (OldOffset) {
-                    if (OldOffset.X > X) NewOffset.X = OldOffset.X;
-                    if (OldOffset.Y > Y) NewOffset.Y = OldOffset.Y;
-                }
-
-                return NewOffset;
-            }
-
-            if (Effect.radius) {
-                Object.EffectRadius = clamp(Object.EffectRadius, Effect.radius, Effect.radius);
-            } else if (Effect.offset) {
-                Object.EffectRadius = clamp(Object.EffectRadius, Effect.offset.x, Effect.offset.y);
-            }
-
             switch (Effect.type) {
                 /*case "DROP_SHADOW":
                     // do something
@@ -8331,16 +8340,28 @@ const PropertyTypes = {// the only return value should be nothing or an object c
                     // })
 
                     break;*/
-                default:
-                    // Export as image
-                    Object.Class = "ImageLabel"; // or ImageButton?!
-                    Object.ImageColor3 = {R: 1, G: 1, B: 1};
-                    Object._hasExport = true
-                    //Object.BackgroundTransparency = 0; // Images can't have backgrounds from what I can tell (in figma)
-
-                    ExportImage(Node, Object, null, null, true)
+                case "INNER_SHADOW":
+                case "NOISE":
+                case "BACKGROUND_BLUR":
                     break;
-            }
+                default:
+                    if (Effect.radius) {
+                        Object.EffectRadius = clamp(Object.EffectRadius, Effect.radius, Effect.radius);
+                    } else if (Effect.offset) {
+                        Object.EffectRadius = clamp(Object.EffectRadius, Effect.offset.x, Effect.offset.y);
+                    }
+
+                    if (Settings.UploadEffects) {
+                        // Export as image
+                        Object.Class = "ImageLabel"; // or ImageButton?!
+                        Object.ImageColor3 = {R: 1, G: 1, B: 1};
+                        Object._hasExport = true
+                        //Object.BackgroundTransparency = 0; // Images can't have backgrounds from what I can tell (in figma)
+
+                        ExportImage(Node, Object, null, null, true)
+                    }
+                    break;
+                }
         })
     },
     ["strokes"]: (Value, Object, Node) => {
@@ -8372,6 +8393,12 @@ const PropertyTypes = {// the only return value should be nothing or an object c
 
             Children: [],
         }
+
+        if (Object.EffectRadius) {
+            Object.EffectRadius.X += Node.strokeWeight;
+            Object.EffectRadius.Y += Node.strokeWeight;
+        } else Object.EffectRadius = {X: Node.strokeWeight, Y: Node.strokeWeight}
+        //Object.EffectRadius = clamp(Object.EffectRadius, Node.strokeWeight, Node.strokeWeight);
 
         var [Colour, Transparency] = ConvertFill(Stroke, StrokeObject);
 
@@ -8478,24 +8505,24 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         else if (Value === "STRIKETHROUGH") Object.Text = `<s>${Object.Text}</s>`;
     },
     ["paddingLeft"]: (Value, Object, Node) => {
-        if (Value === 0) return;
+        if (Value === 0 || !Flags.ApplyPadding || !Flags.ApplyAnchorPoint) return;
 
         Object.Position.XO += Value;
         Object.Size.XO -= Value;
     },
     ["paddingRight"]: (Value, Object, Node) => {
-        if (Value === 0) return;
+        if (Value === 0 || !Flags.ApplyPadding || !Flags.ApplyAnchorPoint) return;
 
         Object.Size.XO -= Value;
     },
     ["paddingTop"]: (Value, Object, Node) => {
-        if (Value === 0) return;
+        if (Value === 0 || !Flags.ApplyPadding || !Flags.ApplyAnchorPoint) return;
 
         Object.Position.YO += Value;
         Object.Size.YO -= Value;
     },
     ["paddingBottom"]: (Value, Object, Node) => {
-        if (Value === 0) return;
+        if (Value === 0 || !Flags.ApplyPadding || !Flags.ApplyAnchorPoint) return;
 
         Object.Size.XO -= Value;
     },
@@ -8828,10 +8855,6 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             Node: Node,
         }
 
-        if (Node.name.toLowerCase().match(/img/)) {
-            ExportImage(Node, Properties);
-        }
-
         return Properties;
     },
     ["ELLIPSE"]: (Node) => {
@@ -9076,7 +9099,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             Node: Node,
         }*/
     },
-    ["BOOLEAN_OPERATION"]: (Node, Settings) => { // Basically emulating a group
+    /*["BOOLEAN_OPERATION"]: (Node, Settings) => { // Basically emulating a group
         if (Node.booleanOperation !== "UNION") {
             // TODO: Upload & Export as Image
             figma.notify("Only \"UNION\" Boolean operations can somehwat be converted") // ", exporting as image.."
@@ -9094,11 +9117,13 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
         // })
 
         const Properties = {
-            Class: "Frame",
+            Class: "ImageLabel",
             Name: Node.name,
             Active: true,
             Visible: Node.visible,
-            BackgroundTransparency: 0,
+            BackgroundTransparency: 0.0,
+            ImageTransparency: 1 - Node.opacity,
+            ImageColor3: {R: 255, G: 255, B: 255},
             _Transparency: Node.opacity,
             BorderSizePixel: 0,
 
@@ -9126,11 +9151,49 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             Node: Node,
         }
 
+        ExportImage(Node, Properties);
         return Properties
-    },
-
+    },*/
     ["OTHER"]: (Node) => {
         console.warn("Unknwon type:", Node.type)
+
+        const Properties = {
+            Class: "ImageLabel",
+            Name: Node.name,
+            Active: true,
+            Visible: Node.visible,
+            BackgroundTransparency: 0.0,
+            ImageTransparency: 1 - Node.opacity,
+            ImageColor3: {R: 255, G: 255, B: 255},
+            _Transparency: Node.opacity,
+            BorderSizePixel: 0,
+
+            Rotation: -Node.rotation,
+            ZIndex: 1,
+
+            AnchorPoint: {
+                X: 0,
+                Y: 0,
+            },
+            Position: {
+                XS: 0,
+                XO: Node.x,
+                YS: 0,
+                YO: Node.y
+            },
+            Size: {
+                XS: 0,
+                XO: Node.width,
+                YS: 0,
+                YO: Node.height
+            },
+
+            Children: [],
+            Node: Node,
+        }
+
+        ExportImage(Node, Properties);
+        return Properties;
     }
 }
 
@@ -9246,7 +9309,8 @@ const XMLTypes = {
 }
 
 function GetNodeProperties(Node, Settings, ParentObject) {
-    const Properties = NodeTypes[Node.type || "OTHER"](Node, Settings);
+    //if (!NodeTypes[Node.type]) NotifyError(`Unknown node type "${Node.type}", please create a suggestion on the discord server`)
+    const Properties = (NodeTypes[NodeTypes[Node.type] ? Node.type : "OTHER"])(Node, Settings);
 
     if (!Properties) return;
     if (Properties._Transparency === 0) Properties.Visible = false;
@@ -9279,19 +9343,31 @@ function GetNodeProperties(Node, Settings, ParentObject) {
     Properties._OriginalPosition = Properties.Position;
     Properties._OriginalSize = Properties.Size;
 
-    if (Properties.Rotation && Properties.Rotation !== 0 /*&& Properties.Size.XO !== 0 && Properties.Size.YO !== 0*/) {
-        const BoundingBox = Node.absoluteBoundingBox;
+    if (Properties.Rotation) {
+        Properties.Rotation = Math.round(Properties.Rotation / 1000) * 1000;
+        if (Properties.Rotation !== 0 /*&& Properties.Size.XO !== 0 && Properties.Size.YO !== 0*/) {
+            const BoundingBox = Node.absoluteBoundingBox;
 
-        if (Properties.Size.XO !== 0) {
-            var CX = BoundingBox.x + BoundingBox.width / 2;
-            Properties.Position.XO = CX - Properties.Size.XO / 2;
+            if (Properties.Size.XO !== 0) {
+                var CX = BoundingBox.x + BoundingBox.width / 2;
+                Properties.Position.XO = CX - Properties.Size.XO / 2;
 
+            }
+
+            if (Properties.Size.YO !== 0) {
+                var CY = BoundingBox.y + BoundingBox.height / 2;
+                Properties.Position.YO = CY - Properties.Size.YO / 2;
+            }
         }
+    }
 
-        if (Properties.Size.YO !== 0) {
-            var CY = BoundingBox.y + BoundingBox.height / 2;
-            Properties.Position.YO = CY - Properties.Size.YO / 2;
-        }
+    if (Node.name.toLowerCase().match(/img|image/)) {
+        Properties.Class = "ImageLabel";
+        Properties.ImageColor3 = {R: 1, G: 1, B: 1};
+        Properties.ImageTransparency = Properties.BackgroundTransparency
+        Properties.BackgroundTransparency = 0;
+        Properties._hasExport = true;
+        ExportImage(Node, Properties)
     }
 
     return Properties;
@@ -9579,10 +9655,11 @@ var Flags = {
     AwaitModeration: true, // True: Waits for all images to successfully pass moderation before exporting, False: exports when all images have been successfully uploaded
     AlwaysExportImages: true, // Only applies when UploadImages setting is disabled, allows for Images (including Buttons) to be exported without an image id
     ShowHighlights: false, // True: Temporarily creates highlights around Images, Buttons and Scrolls, with a name tag below
+    ApplyPadding: false, // True: will offset to account for padding (requires ApplyAnchorPoint to be enabled)
 
     // Debugging
     ForceUploadImages: false, // Skips image matching (ignoring cached ids), upload is still overwritten by ImageUploadTesting
-    ImageUploadTesting: false, 
+    ImageUploadTesting: false,
     ImageUploadTestData: {
         "path": "assets/18355701361",
         "revisionId": "1",
@@ -9606,11 +9683,12 @@ var Flags = {
 function NotifyError(Message, ClosePlugin, Options) {
     if (CurrentNotification) CurrentNotification.cancel();
 
-    figma.notify(Message, Options || {timeout: 5000});
+    console.error(Message);
+    figma.notify(Message, Options || {timeout: 5000, error: true});
     if (ClosePlugin) {
         figma.closePlugin();
         alert(Message);
-        
+
         //throw new Error(Message);
     }
 }
@@ -9941,7 +10019,12 @@ function LoopNodes(Nodes, ParentObject) {
             && Properties.Size.XO == ParentObject.Size.XO
             && Properties.Size.YO == ParentObject.Size.YO)
         */)) { // Convert parent object into the new background
-            ParentObject._HasGradient = Properties._HasGradient;
+            Object.entries(Properties).forEach(([key, value]) => {
+                if (key.match("^_")) ParentObject[key] = value;
+            });
+            //ParentObject._HasGradient = Properties._HasGradient;
+            //ParentObject._HasCorners = Properties._HasCorners;
+
             ParentObject.BackgroundColor3 = Properties.BackgroundColor3;
             ParentObject.BackgroundTransparency = Properties.BackgroundTransparency;
             ParentObject.BorderSizePixel = Properties.BorderSizePixel;
@@ -9960,12 +10043,13 @@ function LoopNodes(Nodes, ParentObject) {
             if (removeNameAbriv) Properties.Name = Properties.Name.replace(/btn/i, "");
 
             if (ParentObject && ParentObject._IsButton) { // update parent button
+                console.log("parent is button, we is", Properties.Class, Properties._HasGradient, Properties._hasExport, ParentObject._HasGradient, ParentObject._hasExport);
                 if (Properties.Class === "TextLabel") {
                     // if the parent object meets certain criteria (listed below) then we should keep the TextLabel within the button and remove the TextButton's text
                     // No (Background/Text) Gradient
                     // Must be TextButton
 
-                    if (Properties._HasGradient !== true && ParentObject._HasGradient !== true) {
+                    if ((!Properties._hasExport || Properties._HasGradient !== true) && ParentObject._HasGradient !== true) {
                         ParentObject.Class = "TextButton"
 
                         // if the text button (background) has a stroke, it cadnnot be Contextual otherwise it will apply to the text
@@ -9991,16 +10075,20 @@ function LoopNodes(Nodes, ParentObject) {
                     } else {
                         console.log("TextLabel doesn't meet criteria to update parent TextButton")
                     }
-                } else if (Properties.Class === "ImageLabel") {
-                    if (Properties._HasGradient !== true && ParentObject._HasGradient !== true) {
+                } else if (Properties.Class === "ImageLabel" || Properties.Class === "ImageButton") {
+                    if ((Properties._hasExport || Properties._HasGradient !== true) && ParentObject._HasGradient !== true) {
                         ParentObject.Class = "ImageButton"
+
+                        if (Properties.EffectRadius) {
+                            ParentObject.EffectRadius = ParentObject.EffectRadius ? clamp(ParentObject.EffectRadius, Properties.EffectRadius.X, Properties.EffectRadius.Y) : Properties.EffectRadius;
+                        }
 
                         Object.entries(Properties).forEach(([key, value]) => {
                             if (key.match("^Image")) ParentObject[key] = value
                         })
                         continue;
                     } else {
-                        console.log("TextLabel doesn't meet criteria to update parent TextButton")
+                        console.log("ImageLabel doesn't meet criteria to update parent ImageButton")
                     }
                 }
             } else if (Properties.Class === "Frame" || Properties.Class === "ImageLabel" || Properties.Class === "TextLabel") {
@@ -10053,11 +10141,13 @@ function LoopNodes(Nodes, ParentObject) {
         // Misc
         var New = "";
 
-        if (Properties.Children) {
-            New += LoopChildren(Properties.Children, ParentObject);
+        if (!Properties._hasExport) {
+            if (Properties.Children) {
+                New += LoopChildren(Properties.Children, ParentObject);
+            }
+            // Loop all Node Children
+            if ((Properties._hasExport || !Properties.Image) && Node.children) New += LoopNodes(Node.children, Properties);
         }
-        // Loop all Node Children
-        if ((Properties._hasExport || !Properties.Image) && Node.children) New += LoopNodes(Node.children, Properties);
 
         const ConvertAnchorPoint = function(SizeX, SizeY) {
             var AX = (Properties.Position.XO + Properties.Size.XO / 2) / SizeX;
@@ -10170,8 +10260,8 @@ function LoopNodes(Nodes, ParentObject) {
             }
         } else if (!Flags.UseSelectionPositionRelativeToScene) {
             // Set Position of upmost Element (most likely a Group) to (0,0)
-            Properties.Position.XO -= Node.x;
-            Properties.Position.YO -= Node.y;
+            Properties.Position.XO = 0; //-= Node.x;
+            Properties.Position.YO = 0; //-= Node.y;
         } else if (Node.parent && Node.parent.type !== "PAGE") {
             // Convert user-selected frame to scale
             if (Flags.ApplyAnchorPoint || Properties._ApplyAnchorPoint) ConvertAnchorPoint(Node.parent.width, Node.parent.height);
@@ -10195,15 +10285,15 @@ function LoopNodes(Nodes, ParentObject) {
 
         // Adjust element Size & Position to account for effects
         if (Properties.EffectRadius) {
-            const EffectRadius = Properties.EffectRadius
+            const EffectRadius = Properties.EffectRadius;
 
             // if (Properties.Position.XS)
             // if XS == 0, Position -= EffectRadius.X
             // if XS == 0.5, Position -= 0
             // if XS == 1, Position += EffectRadius.X
             // (XS * 2) - 1
-            Properties.Position.XO += ((Properties.Position.XS * 2) - 1) * EffectRadius.X;
-            Properties.Position.YO += ((Properties.Position.YS * 2) - 1) * EffectRadius.Y;
+            Properties.Position.XO += (Properties.Position.XS - 0.5) * EffectRadius.X; //((Properties.Position.XS * 2) - 1) * EffectRadius.X;
+            Properties.Position.YO += (Properties.Position.YS - 0.5) * EffectRadius.Y; //((Properties.Position.YS * 2) - 1) * EffectRadius.Y;
             Properties.Size.XO += EffectRadius.X * 2;
             Properties.Size.YO += EffectRadius.Y * 2;
 
@@ -10287,38 +10377,50 @@ async function RunPlugin() { // this is technecally a codegen plugin?
     Notify("Figma to roblox is exporting, support can be found at https://discord.gg/DWCGss4vry", { timeout: 12000 })
 
     // Start Converting Nodes
-    var FileContent = '<!--\n\tGenerated by Figma to Roblox\n\tReport any bugs/issues to notwistedhere on discord/github\n-->\n\n<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Meta name="ExplicitAutoJoints">true</Meta>\n';
-    var Nodes = LoopNodes(figma.currentPage.selection);
+    let FileContent = '<!--\n\tGenerated by Figma to Roblox\n\tReport any bugs/issues to notwistedhere on discord/github\n-->\n\n<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Meta name="ExplicitAutoJoints">true</Meta>\n';
+    let Nodes;
+    try {
+        Nodes = LoopNodes(figma.currentPage.selection);
 
-    // wait for all images to be uploaded
-    await new Promise((resolve, reject) => {
-        function Timeout() {
-            if (IsDone()) return resolve();
-            else setTimeout(Timeout, 500);
+        // wait for all images to be uploaded
+        await new Promise((resolve, reject) => {
+            function Timeout() {
+                if (IsDone()) return resolve();
+                else setTimeout(Timeout, 500);
+            }
+
+            Timeout()
+        })
+    } catch (e) {
+        NotifyError("Figma to Roblox experienced an unexpected error, please make a bug report in discord https://discord.gg/DWCGss4vry;" + e);
+    }
+
+    if (Nodes) {
+        try {
+            const ImageOperations = Nodes.replaceAll(/{FTR_([0-9a-zA-Z-:]+)}/g, (_, Id) => {
+                var ExportedImage = GetImageFromOperation(Id);
+                return ExportedImage.Properties.Image;
+            });
+
+            FileContent += ImageOperations + "</roblox>";
+
+            figma.ui.postMessage({
+                type: "Download",
+                data: FileContent
+            });
+
+            Notify("Successfully exported");
+        } catch (e) {
+            NotifyError("Figma to Roblox experienced an unexpected error, please make a bug report in discord https://discord.gg/DWCGss4vry;" + e);
         }
-
-        Timeout()
-    })
-
-    const ImageOperations = Nodes.replaceAll(/{FTR_([0-9a-zA-Z-:]+)}/g, (_, Id) => {
-        var ExportedImage = GetImageFromOperation(Id);
-        return ExportedImage.Properties.Image;
-    });
-
-    FileContent += ImageOperations + "</roblox>";
-
-    figma.ui.postMessage({
-        type: "Download",
-        data: FileContent
-    });
-
-    Notify("Successfully exported");
+    }
     console.log("[FTR] Done");
 
     setTimeout(() => {
         RunDebounce = false
     }, 2500)
     //RunDebounce = false
+
 }
 
 figma.skipInvisibleInstanceChildren = true;
@@ -10358,9 +10460,10 @@ figma.ui.onmessage = msg => {
             else Notify(msg.message);
             break;
         case "SetAsync":
+            if (msg.value === null || msg.value === undefined) return;
             if (Settings[msg.key] !== undefined) Settings[msg.key] = msg.value;
             // vv DEBUGGING vv
-            if (Flags[msg.key] !== undefined) Flags[msg.key] = msg.value;
+            else if (Flags[msg.key] !== undefined) Flags[msg.key] = msg.value;
 
             if (msg.key == HighlightNodes.name) {
                 if (msg.value === true) HighlightNodes.start()
@@ -10392,24 +10495,26 @@ new Promise((resolve, reject) => {
             figma.clientStorage.getAsync(Key).then(Value => {
                 Done += 1;
 
-                switch (Key) {
-                    // Migrate old settings
-                    case "UploadToGroup": // [TEMPORARY(?) - Migrated on 28/06/2025]
-                        Flags.UploaderType = Value ? "group" : "user";
-                        StoredSettings.UploaderType =  Flags.UploaderType;
-                        StoredSettings[Key] = undefined;
-                    // Delete unwanted settings (including old)
-                    case "ForceUploadImages":
-                    case "ReuploadStuckImages":
-                        figma.clientStorage.deleteAsync(Key);
-                        break;
-                    default:
-                        StoredSettings[Key] = Value;
-                        if (Settings[Key] !== undefined) Settings[Key] = Value;
-                        // vv DEBUGGING vv
-                        else if (Flags[Key] !== undefined) Flags[Key] = Value;
-                        else console.warn(`[Figma to Roblox] Unknown Settings/Flag "${Key}", value: ${Value}`)
-                        break;
+                if (Value !== undefined && Value !== null && Value !== "") {
+                    switch (Key) {
+                        // Migrate old settings
+                        case "UploadToGroup": // [TEMPORARY(?) - Migrated on 28/06/2025]
+                            Flags.UploaderType = Value ? "group" : "user";
+                            StoredSettings.UploaderType =  Flags.UploaderType;
+                            StoredSettings[Key] = undefined;
+                        // Delete unwanted settings (including old)
+                        case "ForceUploadImages":
+                        case "ReuploadStuckImages":
+                            figma.clientStorage.deleteAsync(Key);
+                            break;
+                        default:
+                            StoredSettings[Key] = Value;
+                            if (Settings[Key] !== undefined) Settings[Key] = Value;
+                            // vv DEBUGGING vv
+                            else if (Flags[Key] !== undefined) Flags[Key] = Value;
+                            else console.warn(`[Figma to Roblox] Unknown Settings/Flag "${Key}", value: ${Value}`)
+                            break;
+                    }
                 }
 
                 if (Done == Keys.length) {

@@ -19,10 +19,11 @@ var Flags = {
     AwaitModeration: true, // True: Waits for all images to successfully pass moderation before exporting, False: exports when all images have been successfully uploaded
     AlwaysExportImages: true, // Only applies when UploadImages setting is disabled, allows for Images (including Buttons) to be exported without an image id
     ShowHighlights: false, // True: Temporarily creates highlights around Images, Buttons and Scrolls, with a name tag below
+    ApplyPadding: false, // True: will offset to account for padding (requires ApplyAnchorPoint to be enabled)
 
     // Debugging
     ForceUploadImages: false, // Skips image matching (ignoring cached ids), upload is still overwritten by ImageUploadTesting
-    ImageUploadTesting: false, 
+    ImageUploadTesting: false,
     ImageUploadTestData: {
         "path": "assets/18355701361",
         "revisionId": "1",
@@ -46,11 +47,12 @@ var Flags = {
 function NotifyError(Message, ClosePlugin, Options) {
     if (CurrentNotification) CurrentNotification.cancel();
 
-    figma.notify(Message, Options || {timeout: 5000});
+    console.error(Message);
+    figma.notify(Message, Options || {timeout: 5000, error: true});
     if (ClosePlugin) {
         figma.closePlugin();
         alert(Message);
-        
+
         //throw new Error(Message);
     }
 }

@@ -209,7 +209,12 @@ function LoopNodes(Nodes, ParentObject) {
             && Properties.Size.XO == ParentObject.Size.XO
             && Properties.Size.YO == ParentObject.Size.YO)
         */)) { // Convert parent object into the new background
-            ParentObject._HasGradient = Properties._HasGradient;
+            Object.entries(Properties).forEach(([key, value]) => {
+                if (key.match("^_")) ParentObject[key] = value;
+            });
+            //ParentObject._HasGradient = Properties._HasGradient;
+            //ParentObject._HasCorners = Properties._HasCorners;
+
             ParentObject.BackgroundColor3 = Properties.BackgroundColor3;
             ParentObject.BackgroundTransparency = Properties.BackgroundTransparency;
             ParentObject.BorderSizePixel = Properties.BorderSizePixel;
@@ -228,12 +233,13 @@ function LoopNodes(Nodes, ParentObject) {
             if (removeNameAbriv) Properties.Name = Properties.Name.replace(/btn/i, "");
 
             if (ParentObject && ParentObject._IsButton) { // update parent button
+                console.log("parent is button, we is", Properties.Class, Properties._HasGradient, Properties._hasExport, ParentObject._HasGradient, ParentObject._hasExport);
                 if (Properties.Class === "TextLabel") {
                     // if the parent object meets certain criteria (listed below) then we should keep the TextLabel within the button and remove the TextButton's text
                     // No (Background/Text) Gradient
                     // Must be TextButton
 
-                    if (Properties._HasGradient !== true && ParentObject._HasGradient !== true) {
+                    if ((!Properties._hasExport || Properties._HasGradient !== true) && ParentObject._HasGradient !== true) {
                         ParentObject.Class = "TextButton"
 
                         // if the text button (background) has a stroke, it cadnnot be Contextual otherwise it will apply to the text
@@ -259,16 +265,20 @@ function LoopNodes(Nodes, ParentObject) {
                     } else {
                         console.log("TextLabel doesn't meet criteria to update parent TextButton")
                     }
-                } else if (Properties.Class === "ImageLabel") {
-                    if (Properties._HasGradient !== true && ParentObject._HasGradient !== true) {
+                } else if (Properties.Class === "ImageLabel" || Properties.Class === "ImageButton") {
+                    if ((Properties._hasExport || Properties._HasGradient !== true) && ParentObject._HasGradient !== true) {
                         ParentObject.Class = "ImageButton"
+
+                        if (Properties.EffectRadius) {
+                            ParentObject.EffectRadius = ParentObject.EffectRadius ? clamp(ParentObject.EffectRadius, Properties.EffectRadius.X, Properties.EffectRadius.Y) : Properties.EffectRadius;
+                        }
 
                         Object.entries(Properties).forEach(([key, value]) => {
                             if (key.match("^Image")) ParentObject[key] = value
                         })
                         continue;
                     } else {
-                        console.log("TextLabel doesn't meet criteria to update parent TextButton")
+                        console.log("ImageLabel doesn't meet criteria to update parent ImageButton")
                     }
                 }
             } else if (Properties.Class === "Frame" || Properties.Class === "ImageLabel" || Properties.Class === "TextLabel") {
@@ -321,11 +331,13 @@ function LoopNodes(Nodes, ParentObject) {
         // Misc
         var New = "";
 
-        if (Properties.Children) {
-            New += LoopChildren(Properties.Children, ParentObject);
+        if (!Properties._hasExport) {
+            if (Properties.Children) {
+                New += LoopChildren(Properties.Children, ParentObject);
+            }
+            // Loop all Node Children
+            if ((Properties._hasExport || !Properties.Image) && Node.children) New += LoopNodes(Node.children, Properties);
         }
-        // Loop all Node Children
-        if ((Properties._hasExport || !Properties.Image) && Node.children) New += LoopNodes(Node.children, Properties);
 
         const ConvertAnchorPoint = function(SizeX, SizeY) {
             var AX = (Properties.Position.XO + Properties.Size.XO / 2) / SizeX;
@@ -438,8 +450,8 @@ function LoopNodes(Nodes, ParentObject) {
             }
         } else if (!Flags.UseSelectionPositionRelativeToScene) {
             // Set Position of upmost Element (most likely a Group) to (0,0)
-            Properties.Position.XO -= Node.x;
-            Properties.Position.YO -= Node.y;
+            Properties.Position.XO = 0; //-= Node.x;
+            Properties.Position.YO = 0; //-= Node.y;
         } else if (Node.parent && Node.parent.type !== "PAGE") {
             // Convert user-selected frame to scale
             if (Flags.ApplyAnchorPoint || Properties._ApplyAnchorPoint) ConvertAnchorPoint(Node.parent.width, Node.parent.height);
@@ -463,15 +475,15 @@ function LoopNodes(Nodes, ParentObject) {
 
         // Adjust element Size & Position to account for effects
         if (Properties.EffectRadius) {
-            const EffectRadius = Properties.EffectRadius
+            const EffectRadius = Properties.EffectRadius;
 
             // if (Properties.Position.XS)
             // if XS == 0, Position -= EffectRadius.X
             // if XS == 0.5, Position -= 0
             // if XS == 1, Position += EffectRadius.X
             // (XS * 2) - 1
-            Properties.Position.XO += ((Properties.Position.XS * 2) - 1) * EffectRadius.X;
-            Properties.Position.YO += ((Properties.Position.YS * 2) - 1) * EffectRadius.Y;
+            Properties.Position.XO += (Properties.Position.XS - 0.5) * EffectRadius.X; //((Properties.Position.XS * 2) - 1) * EffectRadius.X;
+            Properties.Position.YO += (Properties.Position.YS - 0.5) * EffectRadius.Y; //((Properties.Position.YS * 2) - 1) * EffectRadius.Y;
             Properties.Size.XO += EffectRadius.X * 2;
             Properties.Size.YO += EffectRadius.Y * 2;
 
@@ -555,38 +567,50 @@ async function RunPlugin() { // this is technecally a codegen plugin?
     Notify("Figma to roblox is exporting, support can be found at https://discord.gg/DWCGss4vry", { timeout: 12000 })
 
     // Start Converting Nodes
-    var FileContent = '<!--\n\tGenerated by Figma to Roblox\n\tReport any bugs/issues to notwistedhere on discord/github\n-->\n\n<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Meta name="ExplicitAutoJoints">true</Meta>\n';
-    var Nodes = LoopNodes(figma.currentPage.selection);
+    let FileContent = '<!--\n\tGenerated by Figma to Roblox\n\tReport any bugs/issues to notwistedhere on discord/github\n-->\n\n<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Meta name="ExplicitAutoJoints">true</Meta>\n';
+    let Nodes;
+    try {
+        Nodes = LoopNodes(figma.currentPage.selection);
 
-    // wait for all images to be uploaded
-    await new Promise((resolve, reject) => {
-        function Timeout() {
-            if (IsDone()) return resolve();
-            else setTimeout(Timeout, 500);
+        // wait for all images to be uploaded
+        await new Promise((resolve, reject) => {
+            function Timeout() {
+                if (IsDone()) return resolve();
+                else setTimeout(Timeout, 500);
+            }
+
+            Timeout()
+        })
+    } catch (e) {
+        NotifyError("Figma to Roblox experienced an unexpected error, please make a bug report in discord https://discord.gg/DWCGss4vry;" + e);
+    }
+
+    if (Nodes) {
+        try {
+            const ImageOperations = Nodes.replaceAll(/{FTR_([0-9a-zA-Z-:]+)}/g, (_, Id) => {
+                var ExportedImage = GetImageFromOperation(Id);
+                return ExportedImage.Properties.Image;
+            });
+
+            FileContent += ImageOperations + "</roblox>";
+
+            figma.ui.postMessage({
+                type: "Download",
+                data: FileContent
+            });
+
+            Notify("Successfully exported");
+        } catch (e) {
+            NotifyError("Figma to Roblox experienced an unexpected error, please make a bug report in discord https://discord.gg/DWCGss4vry;" + e);
         }
-
-        Timeout()
-    })
-
-    const ImageOperations = Nodes.replaceAll(/{FTR_([0-9a-zA-Z-:]+)}/g, (_, Id) => {
-        var ExportedImage = GetImageFromOperation(Id);
-        return ExportedImage.Properties.Image;
-    });
-
-    FileContent += ImageOperations + "</roblox>";
-
-    figma.ui.postMessage({
-        type: "Download",
-        data: FileContent
-    });
-
-    Notify("Successfully exported");
+    }
     console.log("[FTR] Done");
 
     setTimeout(() => {
         RunDebounce = false
     }, 2500)
     //RunDebounce = false
+
 }
 
 figma.skipInvisibleInstanceChildren = true;
@@ -626,9 +650,10 @@ figma.ui.onmessage = msg => {
             else Notify(msg.message);
             break;
         case "SetAsync":
+            if (msg.value === null || msg.value === undefined) return;
             if (Settings[msg.key] !== undefined) Settings[msg.key] = msg.value;
             // vv DEBUGGING vv
-            if (Flags[msg.key] !== undefined) Flags[msg.key] = msg.value;
+            else if (Flags[msg.key] !== undefined) Flags[msg.key] = msg.value;
 
             if (msg.key == HighlightNodes.name) {
                 if (msg.value === true) HighlightNodes.start()
@@ -660,24 +685,26 @@ new Promise((resolve, reject) => {
             figma.clientStorage.getAsync(Key).then(Value => {
                 Done += 1;
 
-                switch (Key) {
-                    // Migrate old settings
-                    case "UploadToGroup": // [TEMPORARY(?) - Migrated on 28/06/2025]
-                        Flags.UploaderType = Value ? "group" : "user";
-                        StoredSettings.UploaderType =  Flags.UploaderType;
-                        StoredSettings[Key] = undefined;
-                    // Delete unwanted settings (including old)
-                    case "ForceUploadImages":
-                    case "ReuploadStuckImages":
-                        figma.clientStorage.deleteAsync(Key);
-                        break;
-                    default:
-                        StoredSettings[Key] = Value;
-                        if (Settings[Key] !== undefined) Settings[Key] = Value;
-                        // vv DEBUGGING vv
-                        else if (Flags[Key] !== undefined) Flags[Key] = Value;
-                        else console.warn(`[Figma to Roblox] Unknown Settings/Flag "${Key}", value: ${Value}`)
-                        break;
+                if (Value !== undefined && Value !== null && Value !== "") {
+                    switch (Key) {
+                        // Migrate old settings
+                        case "UploadToGroup": // [TEMPORARY(?) - Migrated on 28/06/2025]
+                            Flags.UploaderType = Value ? "group" : "user";
+                            StoredSettings.UploaderType =  Flags.UploaderType;
+                            StoredSettings[Key] = undefined;
+                        // Delete unwanted settings (including old)
+                        case "ForceUploadImages":
+                        case "ReuploadStuckImages":
+                            figma.clientStorage.deleteAsync(Key);
+                            break;
+                        default:
+                            StoredSettings[Key] = Value;
+                            if (Settings[Key] !== undefined) Settings[Key] = Value;
+                            // vv DEBUGGING vv
+                            else if (Flags[Key] !== undefined) Flags[Key] = Value;
+                            else console.warn(`[Figma to Roblox] Unknown Settings/Flag "${Key}", value: ${Value}`)
+                            break;
+                    }
                 }
 
                 if (Done == Keys.length) {
