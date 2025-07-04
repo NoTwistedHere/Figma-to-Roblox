@@ -8308,7 +8308,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
     ["cornerRadius"]: (Value, Object) => {
         if (Value !== 0 && Value !== figma.mixed) {
             Object.Children.forEach((Stroke) => {
-                if (Stroke.Class === "UIStroke") Stroke.LineJoinMode = Conversions.LineJoinModes.indexOf(Object._HasCorners ? "ROUND" : Node.strokeJoin)
+                if (Stroke.Class === "UIStroke") Stroke.LineJoinMode = Conversions.LineJoinModes.indexOf("ROUND");
             })
 
             Object._HasCorners = true;
