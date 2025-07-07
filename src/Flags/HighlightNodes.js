@@ -1,10 +1,14 @@
 const { Debounce } = require("../Utilities");
 
-var HighlightedNodes = [];
-var NodeHighlightsTEMP = [];
-var CurrentGroup;
-var RecentMoves = {}
-var IsFirst = true;
+let HighlightedNodes = [];
+let NodeHighlightsTEMP = [];
+let CurrentGroup;
+let RecentMoves = {}
+let IsFirst = true;
+const FontName = {
+    family: "Inter",
+    style: "Regular"
+};
 
 const Types = {
     button: {
@@ -22,6 +26,7 @@ const Types = {
     },
     scroll: {
         text: "Scrolling Frame",
+
         alt: "scrl",
         color: {r: 0.8, g: 0.8, b: 0.4},
         textColor: {r: 0.1, g: 0.1, b: 0.1},
@@ -81,7 +86,7 @@ function HighlightNode(node, rm) {
 
     node.setPluginData("NodeId", ""); // NodeId
     HighlightedNodes.push(node);
-    
+
     var TextHeight = 0;
     var TextWidth = 0;
     var Text = "";
@@ -97,7 +102,7 @@ function HighlightNode(node, rm) {
         TextHeight += 20;
         Text += NodeType.text;
     }
-    
+
     const HighlightRect = figma.createRectangle();
     NodeHighlightsTEMP.push(HighlightRect);
     HighlightRect.name = NodeId + "B";
@@ -112,13 +117,13 @@ function HighlightNode(node, rm) {
     }];
     HighlightRect.strokeWeight = 3;
     HighlightRect.strokeAlign = "OUTSIDE";
-    
+
     const BodyRect = figma.createRectangle();
     NodeHighlightsTEMP.push(BodyRect);
     BodyRect.name = NodeId + "C";
     BodyRect.x = node.absoluteBoundingBox.x;
     BodyRect.y = node.absoluteBoundingBox.y + node.height + 8;
-    BodyRect.resize(0, 0);
+    BodyRect.resize(TextWidth + 20, TextHeight + 4);
     BodyRect.cornerRadius = 4;
     BodyRect.fills = [{
         type: "SOLID",
@@ -131,7 +136,10 @@ function HighlightNode(node, rm) {
     BodyTextRect.name = NodeId + "T";
     BodyTextRect.x = node.absoluteBoundingBox.x + 10;
     BodyTextRect.y = node.absoluteBoundingBox.y + node.height + 8;
-    BodyTextRect.resize(0, 0);
+    BodyTextRect.resize(TextWidth, TextHeight);
+    BodyTextRect.fontName = FontName;
+    BodyTextRect.fontSize = 18;
+    BodyTextRect.characters = Text;
     BodyTextRect.fills = [{
         type: "SOLID",
         color: FirstNode.textColor || {r: 1, g: 1, b: 1},
@@ -144,14 +152,7 @@ function HighlightNode(node, rm) {
         CurrentGroup.appendChild(BodyTextRect);
     }
 
-    figma.loadFontAsync(BodyTextRect.fontName).then(() => {
-        //if (TypeFlags[1] == "img") TODO: have 'Image Button' and not Image and/or Button, or have multiple texts in the Y axis
-
-        BodyTextRect.fontSize = 18
-        BodyTextRect.characters = Text //"BUTTON"
-        BodyTextRect.resize(TextWidth, TextHeight); // Math.max(TextWidth, Math.min(node.width - 20, 200))
-        BodyRect.resize(TextWidth + 20, TextHeight + 4);
-    });
+    //if (TypeFlags[1] == "img") TODO: have 'Image Button' and not Image and/or Button, or have multiple texts in the Y axis
 }
 
 const NodeChangeDebounce = Debounce((data) => {
@@ -194,47 +195,50 @@ const NodeChangeDebounce = Debounce((data) => {
 })
 
 function HighlightNodes() {
-    RecentMoves = []
-    NodeHighlightsTEMP = []
+    // Load required font ONCE
+    figma.loadFontAsync(FontName).then(() => {
+        RecentMoves = []
+        NodeHighlightsTEMP = []
 
-    const nodes = figma.currentPage.findAll(node => {
-        if (node.name === "FigmaToRoblox_TEMP") {
-            node.remove();
-            return;
-        } else if (node.name.match(/@FtR[0-9]+:[0-9]+/i)) {
-            NodeHighlightsTEMP.push(node)
-            return;
+        const nodes = figma.currentPage.findAll(node => {
+            if (node.name === "FigmaToRoblox_TEMP") {
+                node.remove();
+                return;
+            } else if (node.name.match(/@FtR[0-9]+:[0-9]+/i)) {
+                NodeHighlightsTEMP.push(node)
+                return;
+            }
+
+            return node.name.match(/btn|button|scrl|scroll|img|image/i);
+        });
+
+        figma.currentPage.on("nodechange", NodeChangeDebounce);
+
+        if (CurrentGroup) {
+            try {
+                CurrentGroup.remove();
+            } catch (e) {}
+            CurrentGroup = undefined
         }
-        
-        return node.name.match(/btn|button|scrl|scroll|img|image/i);
-    });
-    
-    figma.currentPage.on("nodechange", NodeChangeDebounce);
-    
-    if (CurrentGroup) {
-        try {
-            CurrentGroup.remove();
-        } catch (e) {}
-        CurrentGroup = undefined
-    }
 
-    for (var i=0; i< NodeHighlightsTEMP.length; i++) {
-        NodeHighlightsTEMP[i].remove();
-    }
-    
-    NodeHighlightsTEMP = [];
-    nodes.forEach(HighlightNode);
-    
-    CurrentGroup = figma.group(NodeHighlightsTEMP, figma.currentPage);
-    CurrentGroup.name = "FigmaToRoblox_TEMP"
-    CurrentGroup.locked = true;
-    NodeChangeDebounce.clear();
+        for (var i=0; i< NodeHighlightsTEMP.length; i++) {
+            NodeHighlightsTEMP[i].remove();
+        }
+
+        NodeHighlightsTEMP = [];
+        nodes.forEach(HighlightNode);
+
+        CurrentGroup = figma.group(NodeHighlightsTEMP, figma.currentPage);
+        CurrentGroup.name = "FigmaToRoblox_TEMP"
+        CurrentGroup.locked = true;
+        NodeChangeDebounce.clear();
+    });
 }
 
 function close() {
     figma.currentPage.off("nodechange", NodeChangeDebounce);
     NodeHighlightsTEMP = undefined;
-    
+
     if (CurrentGroup) {
         try {
             CurrentGroup.remove();

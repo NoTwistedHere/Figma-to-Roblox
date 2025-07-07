@@ -7912,7 +7912,9 @@ const Settings = {
     //ApplyAspectRatio: false, // Changed to Flag (/Utilities.js)
     //ExportVectors: true, // Changed to Flag (/Utilities.js)
     ApplyZIndex: true, // Not implemented?
+    ApplyLayoutOrder: true,
     UploadImages: false,
+    DownloadImages: false,
     UploadEffects: false,
 };
 
@@ -7976,7 +7978,8 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
     const OperationId = Node.getPluginData("OperationId");
 
     if (AssetId && AssetId.match(/[0-9]+/)) AssetId = AssetId.match(/[0-9]+/)[0];
-    if (!Settings.UploadImages) return Properties.Image = `rbxassetid://${AssetId}`;
+
+    if (!Settings.UploadImages && !Settings.DownloadImages) return Properties.Image = `rbxassetid://${AssetId}`;
     if (AbortImageUpload) return;
 
     // Image Hashing
@@ -8006,12 +8009,40 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
         console.warn("Exporting Image with NO ImageHash!!")
     }
 
+    //
+
+    function TryDownloadImage() {
+        ImagesRemaining += 1;
+        ExportNode.exportAsync(CustomExport || Settings.DefaultExport).then(Bytes => {
+            figma.ui.postMessage({
+                type: "ExportImage",
+                data: {
+                    Data: Bytes,
+                    Name: Properties.Name.substr(0, 30),
+                    Format: (CustomExport ? CustomExport.format : "PNG").toLowerCase()
+                }
+            });
+            ImagesRemaining -= 1;
+        });
+    }
+
+    if (!Settings.UploadImages && Settings.DownloadImages) return TryDownloadImage()
+
+    //
+
+    let UploadId = OperationId || Properties._ImageHash || AssetId || Properties.Name.replace(/[[:alnum:]\-:]+/g, "") //Node.id
+
+    if (!UploadId || UploadId.length < 2) NotifyError(`Node "${Node.name}" {${Node.id}} has an invalid UploadId`, true);
+
+    //
+
     if (!ForceReupload && !Flags.ForceUploadImages && Node.getPluginData("ImageHash") === Properties._ImageHash) {
         if (AssetId && AssetId.length > 5 && !AssetId.match(/TransparentWhiteImagePlaceholder.png/)) {
             // Check if image hashes match
 
             console.log("Image has not changed, using ImageId:", AssetId)
             Properties.Image = `rbxassetid://${AssetId}`
+            if (Settings.DownloadImages) return TryDownloadImage();
 
             return;
         }
@@ -8040,12 +8071,6 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
             return OperationId
         }
     }
-
-    //
-
-    let UploadId = OperationId || Properties._ImageHash || AssetId || Properties.Name.replace(/[[:alnum:]\-:]+/g, "") //Node.id
-
-    if (!UploadId || UploadId.length < 2) NotifyError(`Node "${Node.name}" {${Node.id}} has an invalid UploadId`, true);
 
     //Properties.UploadId = UploadId;
     Properties.Image = `{FTR_${UploadId}}`
@@ -8086,6 +8111,16 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                 if (!ForceReupload && !Flags.ForceUploadImages) {
                     if (AssetId && Node.getPluginData("ImageHash") === _ImageHash) {
                         console.log("Node exported image has not changed, using ImageId:", AssetId)
+
+                        figma.ui.postMessage({
+                            type: "ExportImage",
+                            data: {
+                                Data: Bytes,
+                                Name: Properties.Name.substr(0, 30),
+                                Format: (CustomExport ? CustomExport.format : "PNG").toLowerCase()
+                            }
+                        });
+
                         Properties.Image = `rbxassetid://${AssetId}`
                         UpdateImage({id: UploadId, data: {
                             "assetId": AssetId,
@@ -8214,6 +8249,9 @@ function UpdateOperationId(msg) {
         console.warn(`Failed to find Image Node "${msg.id}":`, msg);
         return;
     }
+
+    console.log(msg);
+    if (!msg.data && msg.co) return ExportImage(ImageInfo.Node, ImageInfo.Properties, null, true);
 
     ImageInfo.Node.setPluginData("OperationId", msg.data);
 }
@@ -8505,26 +8543,26 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         else if (Value === "STRIKETHROUGH") Object.Text = `<s>${Object.Text}</s>`;
     },
     ["paddingLeft"]: (Value, Object, Node) => {
-        if (Value === 0 || !Flags.ApplyPadding || !Flags.ApplyAnchorPoint) return;
+        if (Value === 0 || Node.layoutMode === "NONE" || !Flags.ApplyPadding) return;
 
         Object.Position.XO += Value;
         Object.Size.XO -= Value;
     },
     ["paddingRight"]: (Value, Object, Node) => {
-        if (Value === 0 || !Flags.ApplyPadding || !Flags.ApplyAnchorPoint) return;
+        if (Value === 0 || Node.layoutMode === "NONE" || !Flags.ApplyPadding) return;
 
         Object.Size.XO -= Value;
     },
     ["paddingTop"]: (Value, Object, Node) => {
-        if (Value === 0 || !Flags.ApplyPadding || !Flags.ApplyAnchorPoint) return;
+        if (Value === 0 || Node.layoutMode === "NONE" || !Flags.ApplyPadding) return;
 
         Object.Position.YO += Value;
         Object.Size.YO -= Value;
     },
     ["paddingBottom"]: (Value, Object, Node) => {
-        if (Value === 0 || !Flags.ApplyPadding || !Flags.ApplyAnchorPoint) return;
+        if (Value === 0 || Node.layoutMode === "NONE" || !Flags.ApplyPadding) return;
 
-        Object.Size.XO -= Value;
+        Object.Size.YO -= Value;
     },
     ["layoutMode"]: (Value, Object, Node) => {
         /*
@@ -8557,7 +8595,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
                 Name: "UIListLayout",
                 Padding: {S: 0, O: IsHorizontal ? HorizontalCellPadding : VerticalCellPadding},
                 FillDirection: FillDirection,
-                SortOrder: 0,
+                SortOrder: 2,
                 Wraps: false, // both can be true in roblox, but not in Figma to my knowledge (only vertical wrap)
 
                 HorizontalAlignment: Conversions.HorizontalAlignment.indexOf(HorizontalAlignment),
@@ -9002,7 +9040,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
                 Active: true,
                 Visible: Node.visible,
                 BackgroundTransparency: 0.0,
-                ImageTransparency: 1 - Node.opacity,
+                ImageTransparency: Node.opacity,
                 ImageColor3: {R: 255, G: 255, B: 255},
                 _Transparency: Node.opacity,
                 BorderSizePixel: 0,
@@ -9122,7 +9160,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             Active: true,
             Visible: Node.visible,
             BackgroundTransparency: 0.0,
-            ImageTransparency: 1 - Node.opacity,
+            ImageTransparency: Node.opacity,
             ImageColor3: {R: 255, G: 255, B: 255},
             _Transparency: Node.opacity,
             BorderSizePixel: 0,
@@ -9163,7 +9201,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             Active: true,
             Visible: Node.visible,
             BackgroundTransparency: 0.0,
-            ImageTransparency: 1 - Node.opacity,
+            ImageTransparency: Node.opacity,
             ImageColor3: {R: 255, G: 255, B: 255},
             _Transparency: Node.opacity,
             BorderSizePixel: 0,
@@ -9361,10 +9399,11 @@ function GetNodeProperties(Node, Settings, ParentObject) {
         }
     }
 
-    if (Node.name.toLowerCase().match(/img|image/)) {
+    if (Node.name.match(/img|image/i)) {
+        Properties.Name = Properties.Name.replace(/img/i, "");
         Properties.Class = "ImageLabel";
         Properties.ImageColor3 = {R: 1, G: 1, B: 1};
-        Properties.ImageTransparency = Properties.BackgroundTransparency
+        //Properties.ImageTransparency = Properties.BackgroundTransparency;
         Properties.BackgroundTransparency = 0;
         Properties._hasExport = true;
         ExportImage(Node, Properties)
@@ -9385,11 +9424,15 @@ module.exports = {
 },{"./Conversions":42,"./Utilities":45,"create-hash/browser":7}],44:[function(require,module,exports){
 const { Debounce } = require("../Utilities");
 
-var HighlightedNodes = [];
-var NodeHighlightsTEMP = [];
-var CurrentGroup;
-var RecentMoves = {}
-var IsFirst = true;
+let HighlightedNodes = [];
+let NodeHighlightsTEMP = [];
+let CurrentGroup;
+let RecentMoves = {}
+let IsFirst = true;
+const FontName = {
+    family: "Inter",
+    style: "Regular"
+};
 
 const Types = {
     button: {
@@ -9407,6 +9450,7 @@ const Types = {
     },
     scroll: {
         text: "Scrolling Frame",
+
         alt: "scrl",
         color: {r: 0.8, g: 0.8, b: 0.4},
         textColor: {r: 0.1, g: 0.1, b: 0.1},
@@ -9466,7 +9510,7 @@ function HighlightNode(node, rm) {
 
     node.setPluginData("NodeId", ""); // NodeId
     HighlightedNodes.push(node);
-    
+
     var TextHeight = 0;
     var TextWidth = 0;
     var Text = "";
@@ -9482,7 +9526,7 @@ function HighlightNode(node, rm) {
         TextHeight += 20;
         Text += NodeType.text;
     }
-    
+
     const HighlightRect = figma.createRectangle();
     NodeHighlightsTEMP.push(HighlightRect);
     HighlightRect.name = NodeId + "B";
@@ -9497,13 +9541,13 @@ function HighlightNode(node, rm) {
     }];
     HighlightRect.strokeWeight = 3;
     HighlightRect.strokeAlign = "OUTSIDE";
-    
+
     const BodyRect = figma.createRectangle();
     NodeHighlightsTEMP.push(BodyRect);
     BodyRect.name = NodeId + "C";
     BodyRect.x = node.absoluteBoundingBox.x;
     BodyRect.y = node.absoluteBoundingBox.y + node.height + 8;
-    BodyRect.resize(0, 0);
+    BodyRect.resize(TextWidth + 20, TextHeight + 4);
     BodyRect.cornerRadius = 4;
     BodyRect.fills = [{
         type: "SOLID",
@@ -9516,7 +9560,10 @@ function HighlightNode(node, rm) {
     BodyTextRect.name = NodeId + "T";
     BodyTextRect.x = node.absoluteBoundingBox.x + 10;
     BodyTextRect.y = node.absoluteBoundingBox.y + node.height + 8;
-    BodyTextRect.resize(0, 0);
+    BodyTextRect.resize(TextWidth, TextHeight);
+    BodyTextRect.fontName = FontName;
+    BodyTextRect.fontSize = 18;
+    BodyTextRect.characters = Text;
     BodyTextRect.fills = [{
         type: "SOLID",
         color: FirstNode.textColor || {r: 1, g: 1, b: 1},
@@ -9529,14 +9576,7 @@ function HighlightNode(node, rm) {
         CurrentGroup.appendChild(BodyTextRect);
     }
 
-    figma.loadFontAsync(BodyTextRect.fontName).then(() => {
-        //if (TypeFlags[1] == "img") TODO: have 'Image Button' and not Image and/or Button, or have multiple texts in the Y axis
-
-        BodyTextRect.fontSize = 18
-        BodyTextRect.characters = Text //"BUTTON"
-        BodyTextRect.resize(TextWidth, TextHeight); // Math.max(TextWidth, Math.min(node.width - 20, 200))
-        BodyRect.resize(TextWidth + 20, TextHeight + 4);
-    });
+    //if (TypeFlags[1] == "img") TODO: have 'Image Button' and not Image and/or Button, or have multiple texts in the Y axis
 }
 
 const NodeChangeDebounce = Debounce((data) => {
@@ -9579,47 +9619,50 @@ const NodeChangeDebounce = Debounce((data) => {
 })
 
 function HighlightNodes() {
-    RecentMoves = []
-    NodeHighlightsTEMP = []
+    // Load required font ONCE
+    figma.loadFontAsync(FontName).then(() => {
+        RecentMoves = []
+        NodeHighlightsTEMP = []
 
-    const nodes = figma.currentPage.findAll(node => {
-        if (node.name === "FigmaToRoblox_TEMP") {
-            node.remove();
-            return;
-        } else if (node.name.match(/@FtR[0-9]+:[0-9]+/i)) {
-            NodeHighlightsTEMP.push(node)
-            return;
+        const nodes = figma.currentPage.findAll(node => {
+            if (node.name === "FigmaToRoblox_TEMP") {
+                node.remove();
+                return;
+            } else if (node.name.match(/@FtR[0-9]+:[0-9]+/i)) {
+                NodeHighlightsTEMP.push(node)
+                return;
+            }
+
+            return node.name.match(/btn|button|scrl|scroll|img|image/i);
+        });
+
+        figma.currentPage.on("nodechange", NodeChangeDebounce);
+
+        if (CurrentGroup) {
+            try {
+                CurrentGroup.remove();
+            } catch (e) {}
+            CurrentGroup = undefined
         }
-        
-        return node.name.match(/btn|button|scrl|scroll|img|image/i);
-    });
-    
-    figma.currentPage.on("nodechange", NodeChangeDebounce);
-    
-    if (CurrentGroup) {
-        try {
-            CurrentGroup.remove();
-        } catch (e) {}
-        CurrentGroup = undefined
-    }
 
-    for (var i=0; i< NodeHighlightsTEMP.length; i++) {
-        NodeHighlightsTEMP[i].remove();
-    }
-    
-    NodeHighlightsTEMP = [];
-    nodes.forEach(HighlightNode);
-    
-    CurrentGroup = figma.group(NodeHighlightsTEMP, figma.currentPage);
-    CurrentGroup.name = "FigmaToRoblox_TEMP"
-    CurrentGroup.locked = true;
-    NodeChangeDebounce.clear();
+        for (var i=0; i< NodeHighlightsTEMP.length; i++) {
+            NodeHighlightsTEMP[i].remove();
+        }
+
+        NodeHighlightsTEMP = [];
+        nodes.forEach(HighlightNode);
+
+        CurrentGroup = figma.group(NodeHighlightsTEMP, figma.currentPage);
+        CurrentGroup.name = "FigmaToRoblox_TEMP"
+        CurrentGroup.locked = true;
+        NodeChangeDebounce.clear();
+    });
 }
 
 function close() {
     figma.currentPage.off("nodechange", NodeChangeDebounce);
     NodeHighlightsTEMP = undefined;
-    
+
     if (CurrentGroup) {
         try {
             CurrentGroup.remove();
@@ -9949,7 +9992,8 @@ function LoopChildren(Children, ParentObject) {
 }
 
 function LoopNodes(Nodes, ParentObject) {
-    var FileContent = "";
+    let FileContent = "";
+    let LocalLayoutOrder = 0;
 
     const SortedNodes = []
 
@@ -9969,15 +10013,18 @@ function LoopNodes(Nodes, ParentObject) {
     // Loop Nodes
     for (var i = 0; i < SortedNodes.length; i++) {
         const Node = SortedNodes[i];
-
         if (Flags.IgnoreInvisible && !Node.visible) continue;
 
         const Properties = GetNodeProperties(Node, Settings, ParentObject); // Can't name it Object because of below v
-        Properties._OriginalNode = Node;
 
         //console.log("Props:", Properties, "Parent:", ParentObject)
         //console.log("Node:", Node);
         if (!Properties) continue;
+        Properties._OriginalNode = Node;
+        if (Settings.ApplyLayoutOrder) {
+            Properties.LayoutOrder = LocalLayoutOrder;
+            LocalLayoutOrder += 1;
+        }
 
         if (Node.type === "BOOLEAN_OPERATION") { // No ~Temp added as a NodeType & create as if a group
             figma.notify("Boolean Operations may give undesired results", {timeout: 1800})
@@ -10397,7 +10444,7 @@ async function RunPlugin() { // this is technecally a codegen plugin?
 
     if (Nodes) {
         try {
-            const ImageOperations = Nodes.replaceAll(/{FTR_([0-9a-zA-Z-:]+)}/g, (_, Id) => {
+            const ImageOperations = Nodes.replaceAll(/{FTR_([0-9a-zA-Z -:]+)}/g, (_, Id) => {
                 var ExportedImage = GetImageFromOperation(Id);
                 return ExportedImage.Properties.Image;
             });
@@ -10488,6 +10535,10 @@ new Promise((resolve, reject) => {
     figma.clientStorage.keysAsync().then(Keys => {
         var Done = 0;
         var StoredSettings = Flags;
+
+        for (const [key, value] of Object.entries(Settings)) {
+            StoredSettings[key] = value;
+        }
 
         for (var i = 0; i < Keys.length; i++) {
             const Key = Keys[i];

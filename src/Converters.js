@@ -19,7 +19,9 @@ const Settings = {
     //ApplyAspectRatio: false, // Changed to Flag (/Utilities.js)
     //ExportVectors: true, // Changed to Flag (/Utilities.js)
     ApplyZIndex: true, // Not implemented?
+    ApplyLayoutOrder: true,
     UploadImages: false,
+    DownloadImages: false,
     UploadEffects: false,
 };
 
@@ -83,7 +85,8 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
     const OperationId = Node.getPluginData("OperationId");
 
     if (AssetId && AssetId.match(/[0-9]+/)) AssetId = AssetId.match(/[0-9]+/)[0];
-    if (!Settings.UploadImages) return Properties.Image = `rbxassetid://${AssetId}`;
+
+    if (!Settings.UploadImages && !Settings.DownloadImages) return Properties.Image = `rbxassetid://${AssetId}`;
     if (AbortImageUpload) return;
 
     // Image Hashing
@@ -113,12 +116,40 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
         console.warn("Exporting Image with NO ImageHash!!")
     }
 
+    //
+
+    function TryDownloadImage() {
+        ImagesRemaining += 1;
+        ExportNode.exportAsync(CustomExport || Settings.DefaultExport).then(Bytes => {
+            figma.ui.postMessage({
+                type: "ExportImage",
+                data: {
+                    Data: Bytes,
+                    Name: Properties.Name.substr(0, 30),
+                    Format: (CustomExport ? CustomExport.format : "PNG").toLowerCase()
+                }
+            });
+            ImagesRemaining -= 1;
+        });
+    }
+
+    if (!Settings.UploadImages && Settings.DownloadImages) return TryDownloadImage()
+
+    //
+
+    let UploadId = OperationId || Properties._ImageHash || AssetId || Properties.Name.replace(/[[:alnum:]\-:]+/g, "") //Node.id
+
+    if (!UploadId || UploadId.length < 2) NotifyError(`Node "${Node.name}" {${Node.id}} has an invalid UploadId`, true);
+
+    //
+
     if (!ForceReupload && !Flags.ForceUploadImages && Node.getPluginData("ImageHash") === Properties._ImageHash) {
         if (AssetId && AssetId.length > 5 && !AssetId.match(/TransparentWhiteImagePlaceholder.png/)) {
             // Check if image hashes match
 
             console.log("Image has not changed, using ImageId:", AssetId)
             Properties.Image = `rbxassetid://${AssetId}`
+            if (Settings.DownloadImages) return TryDownloadImage();
 
             return;
         }
@@ -147,12 +178,6 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
             return OperationId
         }
     }
-
-    //
-
-    let UploadId = OperationId || Properties._ImageHash || AssetId || Properties.Name.replace(/[[:alnum:]\-:]+/g, "") //Node.id
-
-    if (!UploadId || UploadId.length < 2) NotifyError(`Node "${Node.name}" {${Node.id}} has an invalid UploadId`, true);
 
     //Properties.UploadId = UploadId;
     Properties.Image = `{FTR_${UploadId}}`
@@ -193,6 +218,16 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                 if (!ForceReupload && !Flags.ForceUploadImages) {
                     if (AssetId && Node.getPluginData("ImageHash") === _ImageHash) {
                         console.log("Node exported image has not changed, using ImageId:", AssetId)
+
+                        figma.ui.postMessage({
+                            type: "ExportImage",
+                            data: {
+                                Data: Bytes,
+                                Name: Properties.Name.substr(0, 30),
+                                Format: (CustomExport ? CustomExport.format : "PNG").toLowerCase()
+                            }
+                        });
+
                         Properties.Image = `rbxassetid://${AssetId}`
                         UpdateImage({id: UploadId, data: {
                             "assetId": AssetId,
@@ -321,6 +356,9 @@ function UpdateOperationId(msg) {
         console.warn(`Failed to find Image Node "${msg.id}":`, msg);
         return;
     }
+
+    console.log(msg);
+    if (!msg.data && msg.co) return ExportImage(ImageInfo.Node, ImageInfo.Properties, null, true);
 
     ImageInfo.Node.setPluginData("OperationId", msg.data);
 }
@@ -612,26 +650,26 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         else if (Value === "STRIKETHROUGH") Object.Text = `<s>${Object.Text}</s>`;
     },
     ["paddingLeft"]: (Value, Object, Node) => {
-        if (Value === 0 || !Flags.ApplyPadding || !Flags.ApplyAnchorPoint) return;
+        if (Value === 0 || Node.layoutMode === "NONE" || !Flags.ApplyPadding) return;
 
         Object.Position.XO += Value;
         Object.Size.XO -= Value;
     },
     ["paddingRight"]: (Value, Object, Node) => {
-        if (Value === 0 || !Flags.ApplyPadding || !Flags.ApplyAnchorPoint) return;
+        if (Value === 0 || Node.layoutMode === "NONE" || !Flags.ApplyPadding) return;
 
         Object.Size.XO -= Value;
     },
     ["paddingTop"]: (Value, Object, Node) => {
-        if (Value === 0 || !Flags.ApplyPadding || !Flags.ApplyAnchorPoint) return;
+        if (Value === 0 || Node.layoutMode === "NONE" || !Flags.ApplyPadding) return;
 
         Object.Position.YO += Value;
         Object.Size.YO -= Value;
     },
     ["paddingBottom"]: (Value, Object, Node) => {
-        if (Value === 0 || !Flags.ApplyPadding || !Flags.ApplyAnchorPoint) return;
+        if (Value === 0 || Node.layoutMode === "NONE" || !Flags.ApplyPadding) return;
 
-        Object.Size.XO -= Value;
+        Object.Size.YO -= Value;
     },
     ["layoutMode"]: (Value, Object, Node) => {
         /*
@@ -664,7 +702,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
                 Name: "UIListLayout",
                 Padding: {S: 0, O: IsHorizontal ? HorizontalCellPadding : VerticalCellPadding},
                 FillDirection: FillDirection,
-                SortOrder: 0,
+                SortOrder: 2,
                 Wraps: false, // both can be true in roblox, but not in Figma to my knowledge (only vertical wrap)
 
                 HorizontalAlignment: Conversions.HorizontalAlignment.indexOf(HorizontalAlignment),
@@ -1109,7 +1147,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
                 Active: true,
                 Visible: Node.visible,
                 BackgroundTransparency: 0.0,
-                ImageTransparency: 1 - Node.opacity,
+                ImageTransparency: Node.opacity,
                 ImageColor3: {R: 255, G: 255, B: 255},
                 _Transparency: Node.opacity,
                 BorderSizePixel: 0,
@@ -1229,7 +1267,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             Active: true,
             Visible: Node.visible,
             BackgroundTransparency: 0.0,
-            ImageTransparency: 1 - Node.opacity,
+            ImageTransparency: Node.opacity,
             ImageColor3: {R: 255, G: 255, B: 255},
             _Transparency: Node.opacity,
             BorderSizePixel: 0,
@@ -1270,7 +1308,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             Active: true,
             Visible: Node.visible,
             BackgroundTransparency: 0.0,
-            ImageTransparency: 1 - Node.opacity,
+            ImageTransparency: Node.opacity,
             ImageColor3: {R: 255, G: 255, B: 255},
             _Transparency: Node.opacity,
             BorderSizePixel: 0,
@@ -1468,10 +1506,11 @@ function GetNodeProperties(Node, Settings, ParentObject) {
         }
     }
 
-    if (Node.name.toLowerCase().match(/img|image/)) {
+    if (Node.name.match(/img|image/i)) {
+        Properties.Name = Properties.Name.replace(/img/i, "");
         Properties.Class = "ImageLabel";
         Properties.ImageColor3 = {R: 1, G: 1, B: 1};
-        Properties.ImageTransparency = Properties.BackgroundTransparency
+        //Properties.ImageTransparency = Properties.BackgroundTransparency;
         Properties.BackgroundTransparency = 0;
         Properties._hasExport = true;
         ExportImage(Node, Properties)

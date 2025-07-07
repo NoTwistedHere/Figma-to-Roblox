@@ -139,7 +139,8 @@ function LoopChildren(Children, ParentObject) {
 }
 
 function LoopNodes(Nodes, ParentObject) {
-    var FileContent = "";
+    let FileContent = "";
+    let LocalLayoutOrder = 0;
 
     const SortedNodes = []
 
@@ -159,15 +160,18 @@ function LoopNodes(Nodes, ParentObject) {
     // Loop Nodes
     for (var i = 0; i < SortedNodes.length; i++) {
         const Node = SortedNodes[i];
-
         if (Flags.IgnoreInvisible && !Node.visible) continue;
 
         const Properties = GetNodeProperties(Node, Settings, ParentObject); // Can't name it Object because of below v
-        Properties._OriginalNode = Node;
 
         //console.log("Props:", Properties, "Parent:", ParentObject)
         //console.log("Node:", Node);
         if (!Properties) continue;
+        Properties._OriginalNode = Node;
+        if (Settings.ApplyLayoutOrder) {
+            Properties.LayoutOrder = LocalLayoutOrder;
+            LocalLayoutOrder += 1;
+        }
 
         if (Node.type === "BOOLEAN_OPERATION") { // No ~Temp added as a NodeType & create as if a group
             figma.notify("Boolean Operations may give undesired results", {timeout: 1800})
@@ -587,7 +591,7 @@ async function RunPlugin() { // this is technecally a codegen plugin?
 
     if (Nodes) {
         try {
-            const ImageOperations = Nodes.replaceAll(/{FTR_([0-9a-zA-Z-:]+)}/g, (_, Id) => {
+            const ImageOperations = Nodes.replaceAll(/{FTR_([0-9a-zA-Z -:]+)}/g, (_, Id) => {
                 var ExportedImage = GetImageFromOperation(Id);
                 return ExportedImage.Properties.Image;
             });
@@ -678,6 +682,10 @@ new Promise((resolve, reject) => {
     figma.clientStorage.keysAsync().then(Keys => {
         var Done = 0;
         var StoredSettings = Flags;
+
+        for (const [key, value] of Object.entries(Settings)) {
+            StoredSettings[key] = value;
+        }
 
         for (var i = 0; i < Keys.length; i++) {
             const Key = Keys[i];

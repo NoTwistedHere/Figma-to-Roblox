@@ -4,8 +4,8 @@
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/dark.css">
         <!-- Axios - Required for Uploading Images, but can be omitted otherwise -->
         <script src="https://unpkg.com/axios@1.4.0/dist/axios.min.js" integrity="sha384-I4Qw/vWb/sK/7VwepTtkaq636YLYClbEgEwKp3ueUCvjiLFrcoKUFAY5mOl40Fj3" crossorigin="anonymous" defer></script>
-        <!-- JSZip - Required for Downloading(/saving a local copy of every) Images, though not required for typical use
-        <script src="https://unpkg.com/jszip@3.7.1/dist/jszip.js" integrity="sha384-Lqk2um7o0W+Ke7IGh8Mk9EE7g2IrhepxXvttF/iw5hFqpMjFGKP4jcKYhNLAi/ZD" crossorigin="anonymous" defer></script> -->
+        <!-- JSZip - Required for Downloading(/saving a local copy of every) Images, though not required for typical use -->
+        <script src="https://unpkg.com/jszip@3.7.1/dist/jszip.js" integrity="sha384-Lqk2um7o0W+Ke7IGh8Mk9EE7g2IrhepxXvttF/iw5hFqpMjFGKP4jcKYhNLAi/ZD" crossorigin="anonymous" defer></script>
         <!--<script type="module" src="./main.js"></script> -->
 
         <style>
@@ -70,6 +70,14 @@
             <label for="ApplyAspectRatio">Apply AspectRatio globally</label>
             <div></div>
 
+            <input type="checkbox" id="ApplyPadding" name="Apply AspectRatio" />
+            <label for="ApplyPadding">Apply Padding to AutoLayouts</label>
+            <div></div>
+
+            <input type="checkbox" id="ApplyLayoutOrder" name="Apply LayoutOrder" />
+            <label for="ApplyLayoutOrder">Apply Local LayoutOrder</label>
+            <div></div>
+
             <label for="ApplyAnchorPoint">
                 <input type="checkbox" id="ApplyAnchorPoint" name="Apply AnchorPoint" />
                 Apply AnchorPoint globally
@@ -111,7 +119,9 @@
             <label for="uploadimages">Upload Images</label>
             <div></div>
 
-            <label for="alwaysexportimages"><input type="checkbox" id="alwaysexportimages" name="Export Images (disable Uploading)"/> Export Images <small>(only applies if Uploading is disabled)</small></label>
+            <label for="alwaysexportimages"><input type="checkbox" id="alwaysexportimages" name="Export ImageLabels (applies if Uploading is disabled)"/> Export ImageLabels <small>(only applies if Uploading is disabled)</small></label>
+            <div></div>
+            <label for="DownloadImages"><input type="checkbox" id="DownloadImages" name="Export Images as zip"/>Export Images as zip</label>
             <div></div>
 
             <input type="checkbox" id="forcereupload" name="Force Reupload Images" />
@@ -202,6 +212,11 @@
                     type: "checkbox",
                 },
                 {
+                    name: "DownloadImages",
+                    id: "DownloadImages",
+                    type: "checkbox",
+                },
+                {
                     name: "ForceUploadImages",
                     id: "forcereupload",
                     type: "checkbox",
@@ -264,6 +279,16 @@
                     name: "ApplyAspectRatio",
                     id: "ApplyAspectRatio",
                     type: "checkbox",
+                },
+                {
+                    name: "ApplyPadding",
+                    id: "ApplyPadding",
+                    type: "checkbox",
+                },
+                {
+                    name: "ApplyLayoutOrder",
+                    id: "ApplyLayoutOrder",
+                    type: "checkbox"
                 },
                 {
                     name: "ConvertOffsetToScale",
@@ -421,6 +446,10 @@
                     }
                 });
 
+                NumImagesTotal = 0;
+                NumImagesFinished = 0;
+                NumImagesPendingApproval = 0;
+                NumImagesFailed = 0;
                 AbortUpload = false;
                 PostMessage({ type: 'run' });
             }
@@ -435,29 +464,76 @@
             const DownloadLink = document.getElementById("download");
             var Images = [];
 
-            // function DownloadImages() {
-            //     if (!ExportImages || Images.length == 0) {
-            //         return;
-            //     }
+            function DownloadImages() {
+                if (!Settings.DownloadImages || Images.length == 0) {
+                    return;
+                }
 
-            //     let Zip = new JSZip();
+                while (JSZip === undefined) Sleep(200);
 
-            //     for (let i = 0; i < Images.length; i++) {
-            //         var Image = Images[i];
-            //         Zip.file(`image-${Image.ImageName}(${i}).png`, new Blob([Image.ImageData.buffer], { type: "image/png" }));
-            //     }
+                let Zip = new JSZip();
 
-            //     Zip.generateAsync({ type: "blob" }).then((Content) => {
-            //         DownloadLink.href = URL.createObjectURL(Content);
-            //         DownloadLink.download = "images.zip";
-            //         DownloadLink.click();
-            //     });
+                for (let i = 0; i < Images.length; i++) {
+                    var Image = Images[i];
+                    Zip.file(`${Image.Name}(${i}).png`, Image.ImageBlob);
+                }
 
-            //     Images = [];
-            // }
+                Zip.generateAsync({ type: "blob" }).then((Content) => {
+                    DownloadLink.href = URL.createObjectURL(Content);
+                    DownloadLink.download = "images.zip";
+                    DownloadLink.click();
+                });
+
+                Images = [];
+            }
+
+            async function CheckOperation(data, i) {
+                const UploadResponse = await (await fetch(`https://apis.roblox.com/assets/v1/operations/${data.operationId || data.Id}`, {
+                    method: "GET",
+                    //mode: "no-cors",
+                    headers: {
+                        ["Accept"]: "data/json",
+                        ["Content-Language"]: "en-US",
+                        ["x-api-key"]: Settings.CloudApiKey
+                    }
+                })).json();
+
+                if (UploadResponse.code == "PERMISSION_DENIED" || UploadResponse.message) {
+                    if (i === undefined) PostMessage({type: "UpdateOperationId", id: data.Id, co: true});
+                    PostImageUploaded(data.Id, {
+                        imageContent: "rbxasset://textures/StudioSharedUI/TransparentWhiteImagePlaceholder.png"
+                    });
+                    const StatusMessage = UploadResponse.message.match(/status: (.*)$/im);
+                    PostMessage({ type: "UploadError", message: StatusMessage ? StatusMessage[1] : UploadResponse.message || UploadResponse.code });
+                    return false;
+                } else if (UploadResponse.done == true) {
+                    if (!data.IsUploaded) {
+                        NumImagesPendingApproval += 1;
+                        UpdateUploadStatus();
+                        data.IsUploaded = true;
+                    }
+
+                    if (Settings.AwaitModeration && !AbortUpload && UploadResponse.response && UploadResponse.response.moderationResult && UploadResponse.response.moderationResult.moderationState == "Reviewing") {
+                        // This should be ran every time the image is still for review
+                        //ModerationReviewing = true;
+
+                        // Admit defeat (don't decrease NumImagesPendingApproval)
+                        if (i !== 80) return;
+                    }
+
+                    const IsCheckOperation = i === undefined;
+                    if (IsCheckOperation) PostMessage({type: "UpdateOperationId", id: data.Id, data: UploadResponse, co: true})
+                    else {
+                        if (i !== 80) NumImagesPendingApproval -= 1;
+                        NumImagesFinished += 1;
+                        PostImageUploaded(data.Id, UploadResponse, IsCheckOperation);
+                    }
+                    return true;
+                }
+            }
 
             onmessage = async (event) => {
-                const { type, data } = event.data.pluginMessage;
+                const { type, data, wait } = event.data.pluginMessage;
 
                 switch (type) {
                     case "Download":
@@ -465,25 +541,39 @@
                         DownloadLink.download = (data.name || "export") + ".rbxmx";
                         DownloadLink.click();
 
-                        //DownloadImages();
+                        NumImagesTotal = 0;
+                        NumImagesFinished = 0;
+                        NumImagesPendingApproval = 0;
+                        NumImagesFailed = 0;
+
+                        setTimeout(() => {
+                            if (NumImagesTotal === 0) {
+                                document.getElementById("abortupload").setAttribute("hidden", true);
+                                UploadStatus.textContent = "";
+                            }
+                        }, 5000);
+
+                        DownloadImages();
                         break;
                     case "CheckOperation":
-                        const UploadResponse = await (await fetch(`https://apis.roblox.com/assets/v1/operations/${data.Id}`, {
-                            method: "GET",
-                            //mode: "no-cors",
-                            headers: {
-                                //["Content-Type"]: "text/plain",
-                                //["Content-Language"]: "en-US",
-                                ["x-api-key"]: Settings.CloudApiKey
+                        for (var i = 0; i < 5; i++) {
+                            if (await CheckOperation(data, i) !== undefined) {
+                                break;
                             }
-                        })).json();
 
-                        if (UploadResponse.done) PostImageUploaded(data.Id, UploadResponse, true)
-                        else console.warn("Image operation not complete:", UploadResponse)
+                            Sleep((wait || 1250) * i);
+                        }
 
                         break;
+                    case "ExportImage":
+                        if (Settings.DownloadImages) {
+                            const blob = new Blob([data.Data.buffer], { type: "image/" + data.Format });
+
+                            data.ImageBlob = blob;
+                            Images.push(data);
+                        }
+                        break;
                     case "UploadImage":
-                        //if (ExportImages) Images.push(data);
                         if (!Settings.UploadImages) {
                             console.warn("[Figma to Roblox] Tried exporting Image, but Upload Images is disabled")
                             PostImageUploaded(data.Id, {
@@ -507,6 +597,11 @@
 
                         const Form = new FormData();
                         const blob = new Blob([data.Data.buffer], { type: "image/" + data.Format });
+
+                        if (Settings.DownloadImages) {
+                            data.ImageBlob = blob;
+                            Images.push(data);
+                        }
 
                         Form.append("request", JSON.stringify({
                             assetType: "Image",
@@ -564,41 +659,12 @@
 
                             Sleep(1200);
                             let IsUploading = true;
+                            data.operationId = InitialResponse.operationId;
 
-                            for (var i = 0; i < 40; i++) {
-                                const UploadResponse = await (await fetch(`https://apis.roblox.com/assets/v1/${InitialResponse.path}`, {
-                                    method: "GET",
-                                    //mode: "no-cors",
-                                    headers: {
-                                        ["Accept"]: "data/json",
-                                        ["Content-Language"]: "en-US",
-                                        ["x-api-key"]: Settings.CloudApiKey
-                                    }
-                                })).json();
+                            for (var i = 0; i < 80; i++) {
+                                if (await CheckOperation(data, i) !== undefined) break;
 
-                                if (UploadResponse.done == true) {
-                                    if (IsUploading) {
-                                        NumImagesPendingApproval += 1;
-                                        UpdateUploadStatus();
-                                        IsUploading = undefined;
-                                    }
-
-                                    if (Settings.AwaitModeration && !AbortUpload && UploadResponse.response && UploadResponse.response.moderationResult && UploadResponse.response.moderationResult.moderationState == "Reviewing") {
-                                        // This should be ran every time the image is still for review
-                                        //ModerationReviewing = true;
-
-                                        Sleep((data.wait || 4000) * i / 4);
-                                        // Admit defeat (don't decrease NumImagesPendingApproval)
-                                        if (i !== 40) continue;
-                                    }
-
-                                    if (i !== 40) NumImagesPendingApproval -= 1;
-                                    NumImagesFinished += 1;
-                                    PostImageUploaded(data.Id, UploadResponse);
-                                    return;
-                                }
-
-                                Sleep(data.wait || 3000);
+                                Sleep((wait || 1000) * i);
                             }
                         });
 
