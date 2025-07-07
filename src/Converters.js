@@ -496,7 +496,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
                         Object.EffectRadius = clamp(Object.EffectRadius, Effect.offset.x, Effect.offset.y);
                     }
 
-                    if (Settings.UploadEffects) {
+                    if (Object.Class !== "ImageLabel" && Settings.UploadEffects) {
                         // Export as image
                         Object.Class = "ImageLabel"; // or ImageButton?!
                         Object.ImageColor3 = {R: 1, G: 1, B: 1};

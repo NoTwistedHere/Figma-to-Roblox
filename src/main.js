@@ -434,23 +434,6 @@ function LoopNodes(Nodes, ParentObject) {
                      Properties.Position.XO = 0;
                      Properties.Position.YO = 0;
                 // }
-
-                /*if (Properties.AnchorPoint) {
-                    const AX = Properties.AnchorPoint.X
-                    Properties.Position.XS = AX
-                    //Properties.Position.XO = Properties.Position.XO;
-
-                    Properties.Position.XO = -(Properties.Position.XO + Properties.Size.XO * AX);
-                    Properties.Position.YO = 0;
-                    Properties.Size.XO = 0;
-                    Properties.Size.YO = 0;
-                } else {*/
-                //}
-
-                // if (Properties.AnchorPoint) {
-                //     Properties.Position.XO += Properties.Size.XO * Properties.AnchorPoint.X;
-                //     Properties.Position.YS -= Properties.AnchorPoint.Y;
-                // }
             }
         } else if (!Flags.UseSelectionPositionRelativeToScene) {
             // Set Position of upmost Element (most likely a Group) to (0,0)
@@ -480,16 +463,13 @@ function LoopNodes(Nodes, ParentObject) {
         // Adjust element Size & Position to account for effects
         if (Properties.EffectRadius) {
             const EffectRadius = Properties.EffectRadius;
+            EffectRadius.X *= 2;
+            EffectRadius.Y *= 2;
 
-            // if (Properties.Position.XS)
-            // if XS == 0, Position -= EffectRadius.X
-            // if XS == 0.5, Position -= 0
-            // if XS == 1, Position += EffectRadius.X
-            // (XS * 2) - 1
-            Properties.Position.XO += (Properties.Position.XS - 0.5) * EffectRadius.X; //((Properties.Position.XS * 2) - 1) * EffectRadius.X;
-            Properties.Position.YO += (Properties.Position.YS - 0.5) * EffectRadius.Y; //((Properties.Position.YS * 2) - 1) * EffectRadius.Y;
-            Properties.Size.XO += EffectRadius.X * 2;
-            Properties.Size.YO += EffectRadius.Y * 2;
+            Properties.Position.XO += (Properties.AnchorPoint.X - 0.5) * EffectRadius.X;
+            Properties.Position.YO += (Properties.AnchorPoint.Y - 0.5) * EffectRadius.Y;
+            Properties.Size.XO += EffectRadius.X;
+            Properties.Size.YO += EffectRadius.Y;
 
 
             /*const CornerRadiusOffset = Node.cornerRadius && Node.cornerRadius !== figma.mixed ? Node.cornerRadius * 2 : 0;

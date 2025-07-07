@@ -603,6 +603,8 @@
                             Images.push(data);
                         }
 
+                        if (data.Name === "") data.Name = "ExportedImage";
+
                         Form.append("request", JSON.stringify({
                             assetType: "Image",
                             displayName: data.Name,
