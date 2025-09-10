@@ -33,13 +33,13 @@
 
     TODO:
         Implement section support
-        Finish implementing Image uploading (DONE?)
         Better ui (DONE?)
         Update that damn README
         Remove the old/unneeded todos
         [Clip] Masks (i.e. VECTOR masks - liklely requires being converted to an img)
         Add a help page in the plugin, containing tips & guidance
         Look into automatically converting layout mode into scrolling frames?
+        Add a way to disable/enable uploading effects on frames
 */
 
 const Conversions = require('./Conversions.js');

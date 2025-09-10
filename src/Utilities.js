@@ -20,6 +20,7 @@ var Flags = {
     AlwaysExportImages: true, // Only applies when UploadImages setting is disabled, allows for Images (including Buttons) to be exported without an image id
     ShowHighlights: false, // True: Temporarily creates highlights around Images, Buttons and Scrolls, with a name tag below
     ApplyPadding: false, // True: will offset to account for padding (requires ApplyAnchorPoint to be enabled)
+    ConvertAutoLayoutsToScrollFrames: true, // True: will convert auto layouts to scrolling frames globally
 
     // Debugging
     ForceUploadImages: false, // Skips image matching (ignoring cached ids), upload is still overwritten by ImageUploadTesting

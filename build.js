@@ -7636,7 +7636,7 @@ const FontStyle = {
         Weight: 100,
         Style: "Normal",
     },
-    ["ExtraLight"]: {
+    ["Extra Light"]: {
         Weight: 200,
         Style: "Normal",
     },
@@ -7652,7 +7652,7 @@ const FontStyle = {
         Weight: 500,
         Style: "Normal",
     },
-    ["SemiBold"]: {
+    ["Semi Bold"]: {
         Weight: 600,
         Style: "Normal",
     },
@@ -7660,7 +7660,7 @@ const FontStyle = {
         Weight: 700,
         Style: "Normal",
     },
-    ["ExtraBold"]: {
+    ["Extra Bold"]: {
         Weight: 800,
         Style: "Normal",
     },
@@ -7672,7 +7672,7 @@ const FontStyle = {
         Weight: 100,
         Style: "Italic",
     },
-    ["ExtraLight Italic"]: {
+    ["Extra Light Italic"]: {
         Weight: 200,
         Style: "Italic",
     },
@@ -7688,7 +7688,7 @@ const FontStyle = {
         Weight: 500,
         Style: "Italic",
     },
-    ["SemiBold Italic"]: {
+    ["Semi Bold Italic"]: {
         Weight: 600,
         Style: "Italic",
     },
@@ -7696,7 +7696,7 @@ const FontStyle = {
         Weight: 700,
         Style: "Italic",
     },
-    ["ExtraBold Italic"]: {
+    ["Extra Bold Italic"]: {
         Weight: 800,
         Style: "Italic",
     },
@@ -7708,6 +7708,7 @@ const FontStyle = {
 
 /*
 
+// Fetch marketplace fonts
 fetch("https://apis.roblox.com/toolbox-service/v1/marketplace/73?limit=800&includeOnlyVerifiedCreators=true")
     .then(res => res.json())
     .then(res => {
@@ -7717,7 +7718,7 @@ fetch("https://apis.roblox.com/toolbox-service/v1/marketplace/73?limit=800&inclu
         });
 
         var Fonts = "";
-    
+
         fetch("https://apis.roblox.com/toolbox-service/v1/items/details?assetIds=" + AssetIds.join(","))
             .then(res => res.json())
             .then(res => {
@@ -8009,6 +8010,11 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
         console.warn("Exporting Image with NO ImageHash!!")
     }
 
+    if (!FullWhiteout) {
+        Properties._hasExport = true;
+        Properties.Children = [];
+    }
+
     //
 
     function TryDownloadImage() {
@@ -8150,6 +8156,10 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                             return OperationId
                         } else console.log("Operation exists but Hashes don't match, uploading..")
                     }
+                }
+
+                if (!FullWhiteout) {
+                    Properties.Children = [];
                 }
 
                 Node.setPluginData("ImageHash", _ImageHash);
@@ -8344,7 +8354,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         }
     },
     ["cornerRadius"]: (Value, Object) => {
-        if (Value !== 0 && Value !== figma.mixed) {
+        if (Value !== 0 && Value !== figma.mixed && !Object._hasExport) {
             Object.Children.forEach((Stroke) => {
                 if (Stroke.Class === "UIStroke") Stroke.LineJoinMode = Conversions.LineJoinModes.indexOf("ROUND");
             })
@@ -8404,7 +8414,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
     },
     ["strokes"]: (Value, Object, Node) => {
         if (Value.length > 1) return console.warn(`Frame ${Object.Name} cannot have more than 1 stroke`);
-        else if (Value.length === 0) {
+        else if (Value.length === 0 || Object._ExportAsImage) {
             return;
         }
 
@@ -8454,6 +8464,11 @@ const PropertyTypes = {// the only return value should be nothing or an object c
             const TextCase = Node.textCase
 
             Segments.forEach(Segment => {
+                if (Segment.characters.replace(/[ \t\n]+/) == "") {
+                    Text += Segment.characters
+                    return;
+                }
+
                 var NewText = ""
 
                 if (Segment.fills && Segment.fills.length !== 0) {
@@ -8498,7 +8513,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
                 };
 
                 if (Object.TextSize == undefined || Segment.fontSize !== Object.TextSize) {
-                    NewText += ` size="${Segment.fontSize * Flags.TextSizeAdjustment}"`;
+                    NewText += ` size="${Round(Segment.fontSize * Flags.TextSizeAdjustment, 1)}"`;
                 };
 
                 if (Object.FontFace && Segment.fontWeight !== Object.FontFace.Weight) {
@@ -8528,7 +8543,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
                 }
 
                 // We only want to add font tags if we have new data to add
-                if (NewText.length > 0) Text += `<font ${NewText}>${Characters}</font>`
+                if (NewText.replace(/\s+/g).length > 0) Text += `<font${NewText}>${Characters}</font>`
                 else Text += Characters;
             })
 
@@ -8569,7 +8584,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
             TODO: Support reverse ZIndex
         */
 
-        if (Value === "NONE") return;
+        if (Value === "NONE" || !Flags.ConvertAutoLayoutsToScrollFrames) return;
 
         const FillDirection = Conversions.FillDirection.indexOf(Value);
         const IsHorizontal = FillDirection === 0;
@@ -8938,6 +8953,12 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
                         S: 1,
                         O: 0,
                     }
+                },
+                {
+                    Class: "UIAspectRatioConstraint",
+                    AspectRatio: 1,
+                    AspectType: 0,
+                    DominantAxis: 0
                 }
             ],
             Node: Node,
@@ -8945,7 +8966,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
     },
     ["TEXT"]: (Node) => {
         const FontStyle = Conversions.FontStyle[Node.fontName.style];
-        const FontFamily = Node.fontName !== figma.mixed && Conversions.MarketplaceFonts[Node.fontName.family];
+        const FontFamily = Conversions.MarketplaceFonts[Node.fontName !== figma.mixed ? Node.fontName.family : "Inter"]; // default to using Inter, what happens if not installed by the user?
 
         let Properties = {
             Class: "TextLabel",
@@ -8969,7 +8990,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             FontFace: {
                 Family: FontFamily ? `<url>rbxassetid://${FontFamily}</url>` : `<url>rbxasset://fonts/families/${(Node.fontName !== figma.mixed ? Node.fontName.family : "Source Sans Pro").replace(/ /g, "")}.json</url>`, // Use Marketplace Font if available, if not try local font
                 Weight: FontStyle ? FontStyle.Weight: 400,
-                Style: FontStyle ? FontStyle.Style: "Regular"
+                Style: FontStyle ? FontStyle.Style: "Normal"
             },
 
             AnchorPoint: {
@@ -9699,6 +9720,7 @@ var Flags = {
     AlwaysExportImages: true, // Only applies when UploadImages setting is disabled, allows for Images (including Buttons) to be exported without an image id
     ShowHighlights: false, // True: Temporarily creates highlights around Images, Buttons and Scrolls, with a name tag below
     ApplyPadding: false, // True: will offset to account for padding (requires ApplyAnchorPoint to be enabled)
+    ConvertAutoLayoutsToScrollFrames: true, // True: will convert auto layouts to scrolling frames globally
 
     // Debugging
     ForceUploadImages: false, // Skips image matching (ignoring cached ids), upload is still overwritten by ImageUploadTesting
@@ -9886,13 +9908,13 @@ module.exports = {
 
     TODO:
         Implement section support
-        Finish implementing Image uploading (DONE?)
         Better ui (DONE?)
         Update that damn README
         Remove the old/unneeded todos
         [Clip] Masks (i.e. VECTOR masks - liklely requires being converted to an img)
         Add a help page in the plugin, containing tips & guidance
         Look into automatically converting layout mode into scrolling frames?
+        Add a way to disable/enable uploading effects on frames
 */
 
 const Conversions = require('./Conversions.js');

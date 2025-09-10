@@ -3,7 +3,7 @@ const FontStyle = {
         Weight: 100,
         Style: "Normal",
     },
-    ["ExtraLight"]: {
+    ["Extra Light"]: {
         Weight: 200,
         Style: "Normal",
     },
@@ -19,7 +19,7 @@ const FontStyle = {
         Weight: 500,
         Style: "Normal",
     },
-    ["SemiBold"]: {
+    ["Semi Bold"]: {
         Weight: 600,
         Style: "Normal",
     },
@@ -27,7 +27,7 @@ const FontStyle = {
         Weight: 700,
         Style: "Normal",
     },
-    ["ExtraBold"]: {
+    ["Extra Bold"]: {
         Weight: 800,
         Style: "Normal",
     },
@@ -39,7 +39,7 @@ const FontStyle = {
         Weight: 100,
         Style: "Italic",
     },
-    ["ExtraLight Italic"]: {
+    ["Extra Light Italic"]: {
         Weight: 200,
         Style: "Italic",
     },
@@ -55,7 +55,7 @@ const FontStyle = {
         Weight: 500,
         Style: "Italic",
     },
-    ["SemiBold Italic"]: {
+    ["Semi Bold Italic"]: {
         Weight: 600,
         Style: "Italic",
     },
@@ -63,7 +63,7 @@ const FontStyle = {
         Weight: 700,
         Style: "Italic",
     },
-    ["ExtraBold Italic"]: {
+    ["Extra Bold Italic"]: {
         Weight: 800,
         Style: "Italic",
     },
@@ -75,6 +75,7 @@ const FontStyle = {
 
 /*
 
+// Fetch marketplace fonts
 fetch("https://apis.roblox.com/toolbox-service/v1/marketplace/73?limit=800&includeOnlyVerifiedCreators=true")
     .then(res => res.json())
     .then(res => {
@@ -84,7 +85,7 @@ fetch("https://apis.roblox.com/toolbox-service/v1/marketplace/73?limit=800&inclu
         });
 
         var Fonts = "";
-    
+
         fetch("https://apis.roblox.com/toolbox-service/v1/items/details?assetIds=" + AssetIds.join(","))
             .then(res => res.json())
             .then(res => {

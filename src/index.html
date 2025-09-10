@@ -78,6 +78,11 @@
             <label for="ApplyLayoutOrder">Apply Local LayoutOrder</label>
             <div></div>
 
+            <label for="ConvertAutoLayouts">
+                <input type="checkbox" id="ConvertAutoLayouts" name="Convert AutoLayouts" />
+                Convert AutoLayouts to ScrollingFrames
+            </label>
+
             <label for="ApplyAnchorPoint">
                 <input type="checkbox" id="ApplyAnchorPoint" name="Apply AnchorPoint" />
                 Apply AnchorPoint globally
@@ -257,11 +262,6 @@
                     type: "text",
                     placeholder: "xxxxxxxxxx",
                 },
-                // {
-                //     name: "UploadToGroup",
-                //     id: "isgroup",
-                //     type: "checkbox",
-                // },
                 {
                     name: "UploaderType",
                     id: "uploadertype",
@@ -313,6 +313,11 @@
                 {
                     name: "ScrollFrame_ScaleDominantAxis",
                     id: "ScaleScrollFramesDominantAxis",
+                    type: "checkbox",
+                },
+                {
+                    name: "ConvertAutoLayoutsToScrollFrames",
+                    id: "ConvertAutoLayouts",
                     type: "checkbox",
                 },
             ]
