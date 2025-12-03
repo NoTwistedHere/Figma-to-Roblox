@@ -256,5 +256,10 @@ module.exports = {
     ApplyStrokeMode: [
         "Contextual",
         "Border"
+    ],
+    BorderStrokePosition: [
+        "OUTSIDE",
+        "CENTER",
+        "INSIDE"
     ]
 }

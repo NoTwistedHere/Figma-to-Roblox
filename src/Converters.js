@@ -4,6 +4,7 @@ const createHash = require("create-hash/browser");
 
 let AbortImageUpload = false;
 let ImagesRemaining = 0;
+let ImageUploadsReady = 0;
 const ImageExports = {};
 const ImageUploads = [];
 const Settings = {
@@ -86,6 +87,9 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
 
     if (AssetId && AssetId.match(/[0-9]+/)) AssetId = AssetId.match(/[0-9]+/)[0];
 
+    Properties._ExportAsImage = true;
+    //Properties.BackgroundTransparency = 0;
+
     if (!Settings.UploadImages && !Settings.DownloadImages) return Properties.Image = `rbxassetid://${AssetId}`;
     if (AbortImageUpload) return;
 
@@ -98,13 +102,16 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
     }
 
     let ExportNode = Node;
+    let NodeWasCloned = false;
     if (Node.fills && Node.fills[0]) {
         if (!Properties._ImageHash) Properties._ImageHash = Node.fills[0].imageHash;
 
         if (FullWhiteout) {
+            NodeWasCloned = true;
             ExportNode = Node.clone();
             ExportNode.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
         } else if (Node.fills[0].opacity < 1) {
+            NodeWasCloned = true;
             ExportNode = Node.clone();
             const NewFills = JSON.parse(JSON.stringify(Node.fills));
             NewFills[0].opacity = 1
@@ -116,9 +123,22 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
         console.warn("Exporting Image with NO ImageHash!!")
     }
 
+    if (Flags.IgnoreImageStrokeExport) {
+        if (!NodeWasCloned) {
+            NodeWasCloned = true;
+            ExportNode = Node.clone();
+        }
+        if (ExportNode.strokes) ExportNode.strokes = [];
+        Properties._ExportWithoutStroke = true;
+    }
+
     if (!FullWhiteout) {
         Properties._hasExport = true;
-        Properties.Children = [];
+
+        if (!Flags.IgnoreImageStrokeExport) Properties.Children = [];
+        else {
+            Properties.Children = Properties.Children.filter(Child => Child.Class === "UIStroke");
+        }
     }
 
     //
@@ -138,7 +158,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
         });
     }
 
-    if (!Settings.UploadImages && Settings.DownloadImages) return TryDownloadImage()
+    if (!Settings.UploadImages && Settings.DownloadImages) TryDownloadImage()
 
     //
 
@@ -154,8 +174,8 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
 
             console.log("Image has not changed, using ImageId:", AssetId)
             Properties.Image = `rbxassetid://${AssetId}`
-            if (Settings.DownloadImages) return TryDownloadImage();
-
+            if (Settings.DownloadImages) TryDownloadImage();
+            if (NodeWasCloned) ExportNode.remove();
             return;
         }
 
@@ -163,7 +183,6 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
             // try fetching before attempting to re-upload
             console.log("Image was uploaded, checking Operation (Id):", OperationId);
 
-            ImagesRemaining += 1;
             Properties.Image = `{FTR_${OperationId}}`
             Node.setPluginData("ImageHash", Properties._ImageHash);
 
@@ -180,6 +199,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                 }
             });
 
+            if (NodeWasCloned) ExportNode.remove();
             return OperationId
         }
     }
@@ -187,12 +207,16 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
     //Properties.UploadId = UploadId;
     Properties.Image = `{FTR_${UploadId}}`
 
-    if (ImageUploads.find((id) => id === UploadId)) return UploadId;
+    if (ImageUploads.find((id) => id === UploadId)) {
+        if (NodeWasCloned) ExportNode.remove();
+        return UploadId;
+    }
     ImageUploads.push(UploadId);
     ImagesRemaining += 1;
     if (Properties._ImageHash) Node.setPluginData("ImageHash", Properties._ImageHash);
 
     ExportNode.exportAsync(CustomExport || Settings.DefaultExport).then(Bytes => {
+        if (NodeWasCloned) ExportNode.remove();
         Node.setPluginData("AssetId", "");
         Node.setPluginData("OperationId", "");
 
@@ -213,6 +237,8 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                 UploadId: UploadId
             }
         }
+
+        ImageUploadsReady += 1;
 
         if (!Properties._ImageHash) {
             const _ImageHash = createHash("sha256").update(Bytes).digest("hex");
@@ -283,7 +309,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
         else setTimeout(() => {
             figma.ui.postMessage({
                 type: "UploadImage",
-                wait: ImagesRemaining > 5 ? 6500 : ImagesRemaining > 2 ? 3200 : 2150,
+                wait: ImageUploadsReady > 5 ? 6500 : ImageUploadsReady > 2 ? 3200 : 2150,
                 data: {
                     Data: Bytes,
                     Id: UploadId,
@@ -291,7 +317,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                     Format: (CustomExport ? CustomExport.format : "PNG").toLowerCase()
                 }
             })
-        }, ImagesRemaining > 3 ? (ImagesRemaining / 5) * 1000 : 0)
+        }, ImageUploadsReady > 3 ? (ImageUploadsReady / 5) * 1000 : 0)
     });
 
     return UploadId
@@ -301,6 +327,7 @@ function UpdateImage(msg, abort) {
     if (abort) {
         AbortImageUpload = true;
         ImagesRemaining = 0;
+        ImageUploadsReady = 0;
         return;
     }
 
@@ -323,7 +350,7 @@ function UpdateImage(msg, abort) {
 
     if (Flags.AwaitModeration && ModerationResult && (ModerationResult.moderationState != "Approved" && ModerationResult.moderationState != "MODERATION_STATE_APPROVED")) {
         if (msg.co && Flags.ReuploadStuckImages) {
-            ExportImage(ImageInfo.Node, ImageInfo.Properties, false, true)
+            ExportImage(ImageInfo.Node, ImageInfo.Properties, false)
             return;
         }else if (ModerationResult.moderationState === "Reviewing") {
             figma.notify(`Image Element ${msg.id} took too long to pass moderation, Image Id: ${msg.data.assetId || msg.data.path}`)
@@ -366,8 +393,7 @@ function UpdateOperationId(msg) {
         return;
     }
 
-    console.log(msg);
-    if (!msg.data && msg.co) return ExportImage(ImageInfo.Node, ImageInfo.Properties, null, true);
+    if (!msg.data && msg.co) return ExportImage(ImageInfo.Node, ImageInfo.Properties, null);
 
     ImageInfo.Node.setPluginData("OperationId", msg.data);
 }
@@ -380,6 +406,7 @@ function IsDone() {
     console.log("Checking IsDone, Images Remaning:", ImagesRemaining);
     if (ImagesRemaining === 0) {
         ImageUploads.splice(0, ImageUploads.length);
+        ImageUploadsReady = 0;
         return true
     }
     return false
@@ -501,8 +528,12 @@ const PropertyTypes = {// the only return value should be nothing or an object c
                 default:
                     if (Effect.radius) {
                         Object.EffectRadius = clamp(Object.EffectRadius, Effect.radius, Effect.radius);
-                    } else if (Effect.offset) {
+                    }
+                    if (Effect.offset) {
                         Object.EffectRadius = clamp(Object.EffectRadius, Effect.offset.x, Effect.offset.y);
+                    }
+                    if (Effect.spread) {
+                        Object.EffectRadius = clamp(Object.EffectRadius, Effect.spread, Effect.spread);
                     }
 
                     if (Object.Class !== "ImageLabel" && Settings.UploadEffects) {
@@ -512,7 +543,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
                         Object._hasExport = true
                         //Object.BackgroundTransparency = 0; // Images can't have backgrounds from what I can tell (in figma)
 
-                        ExportImage(Node, Object, null, null, true)
+                        ExportImage(Node, Object, null, null)
                     }
                     break;
                 }
@@ -520,7 +551,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
     },
     ["strokes"]: (Value, Object, Node) => {
         if (Value.length > 1) return console.warn(`Frame ${Object.Name} cannot have more than 1 stroke`);
-        else if (Value.length === 0 || Object._ExportAsImage) {
+        else if (Value.length === 0 || Object._ExportAsImage && !Object._ExportWithoutStroke) {
             return;
         }
 
@@ -530,6 +561,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
             Class: "UIStroke",
             Name: "UIStroke",
             ApplyStrokeMode: Conversions.ApplyStrokeMode.indexOf(Object.Class === "TextLabel" ? "Contextual" : "Border"),
+            BorderStrokePosition: Conversions.BorderStrokePosition.indexOf(Node.strokeAlign),
             // Color: {
             //     R: Stroke.color.r,
             //     G: Stroke.color.g,
@@ -548,11 +580,15 @@ const PropertyTypes = {// the only return value should be nothing or an object c
             Children: [],
         }
 
-        if (Object.EffectRadius) {
-            Object.EffectRadius.X += Node.strokeWeight;
-            Object.EffectRadius.Y += Node.strokeWeight;
-        } else Object.EffectRadius = {X: Node.strokeWeight, Y: Node.strokeWeight}
-        //Object.EffectRadius = clamp(Object.EffectRadius, Node.strokeWeight, Node.strokeWeight);
+        const Alignment = Node.strokeAlign; // INSIDE, OUTSIDE, CENTER
+        const Weight = Node.strokeWeight * (Alignment === "INSIDE" ? 0 : Alignment === "CENTER" ? 0.5 : 1);
+
+        if (Weight > 0) {
+            if (Object.EffectRadius) {
+                Object.EffectRadius.X += Weight;
+                Object.EffectRadius.Y += Weight;
+            } else Object.EffectRadius = {X: Weight, Y: Weight}
+        }
 
         var [Colour, Transparency] = ConvertFill(Stroke, StrokeObject);
 
@@ -1533,10 +1569,15 @@ function GetNodeProperties(Node, Settings, ParentObject) {
         //Properties.ImageTransparency = Properties.BackgroundTransparency;
         Properties.BackgroundTransparency = 0;
         Properties._hasExport = true;
-        ExportImage(Node, Properties)
+        ExportImage(Node, Properties);
     }
 
     return Properties;
+}
+
+function OnStart() {
+    ImagesRemaining = 0;
+    ImageUploadsReady = 0;
 }
 
 module.exports = {
@@ -1546,5 +1587,6 @@ module.exports = {
     UpdateImage,
     UpdateOperationId,
     GetImageFromOperation,
-    IsDone
+    IsDone,
+    OnStart
 }

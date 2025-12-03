@@ -141,6 +141,10 @@
             <label for="awaitmoderation">Await Moderation</label>
             <div></div>
 
+            <input type="checkbox" id="IgnoreImageStrokeExport" name="Export Image Strokes Separately" />
+            <label for="IgnoreImageStrokeExport">Export Image Strokes Separately</label>
+            <div></div>
+
             <input type="checkbox" id="uploadeffects" name="Upload effects" />
             <label for="uploadeffects">Upload effects</label>
             <div></div>
@@ -230,6 +234,11 @@
                 {
                     name: "AwaitModeration",
                     id: "awaitmoderation",
+                    type: "checkbox"
+                },
+                {
+                    name: "IgnoreImageStrokeExport",
+                    id: "IgnoreImageStrokeExport",
                     type: "checkbox"
                 },
                 {
@@ -642,7 +651,6 @@
                                 return;
                             } else if (InitialResponse.errors || !InitialResponse.operationId || !InitialResponse.path) {
                                 NumImagesFailed += 1;
-                                console.log("POST Response:", InitialResponse);
                                 // return placeholder as to not interrupt exporting
                                 PostImageUploaded(data.Id, {
                                     imageContent: "rbxasset://textures/StudioSharedUI/TransparentWhiteImagePlaceholder.png"

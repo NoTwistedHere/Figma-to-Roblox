@@ -21,6 +21,7 @@ var Flags = {
     ShowHighlights: false, // True: Temporarily creates highlights around Images, Buttons and Scrolls, with a name tag below
     ApplyPadding: false, // True: will offset to account for padding (requires ApplyAnchorPoint to be enabled)
     ConvertAutoLayoutsToScrollFrames: true, // True: will convert auto layouts to scrolling frames globally
+    IgnoreImageStrokeExport: true, // When uploading an element as an image this will remove the stroke on the uploaded image
 
     // Debugging
     ForceUploadImages: false, // Skips image matching (ignoring cached ids), upload is still overwritten by ImageUploadTesting

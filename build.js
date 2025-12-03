@@ -7889,6 +7889,11 @@ module.exports = {
     ApplyStrokeMode: [
         "Contextual",
         "Border"
+    ],
+    BorderStrokePosition: [
+        "OUTSIDE",
+        "CENTER",
+        "INSIDE"
     ]
 }
 },{}],43:[function(require,module,exports){
@@ -7898,6 +7903,7 @@ const createHash = require("create-hash/browser");
 
 let AbortImageUpload = false;
 let ImagesRemaining = 0;
+let ImageUploadsReady = 0;
 const ImageExports = {};
 const ImageUploads = [];
 const Settings = {
@@ -7980,6 +7986,9 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
 
     if (AssetId && AssetId.match(/[0-9]+/)) AssetId = AssetId.match(/[0-9]+/)[0];
 
+    Properties._ExportAsImage = true;
+    //Properties.BackgroundTransparency = 0;
+
     if (!Settings.UploadImages && !Settings.DownloadImages) return Properties.Image = `rbxassetid://${AssetId}`;
     if (AbortImageUpload) return;
 
@@ -7992,13 +8001,16 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
     }
 
     let ExportNode = Node;
+    let NodeWasCloned = false;
     if (Node.fills && Node.fills[0]) {
         if (!Properties._ImageHash) Properties._ImageHash = Node.fills[0].imageHash;
 
         if (FullWhiteout) {
+            NodeWasCloned = true;
             ExportNode = Node.clone();
             ExportNode.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
         } else if (Node.fills[0].opacity < 1) {
+            NodeWasCloned = true;
             ExportNode = Node.clone();
             const NewFills = JSON.parse(JSON.stringify(Node.fills));
             NewFills[0].opacity = 1
@@ -8010,9 +8022,22 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
         console.warn("Exporting Image with NO ImageHash!!")
     }
 
+    if (Flags.IgnoreImageStrokeExport) {
+        if (!NodeWasCloned) {
+            NodeWasCloned = true;
+            ExportNode = Node.clone();
+        }
+        if (ExportNode.strokes) ExportNode.strokes = [];
+        Properties._ExportWithoutStroke = true;
+    }
+
     if (!FullWhiteout) {
         Properties._hasExport = true;
-        Properties.Children = [];
+
+        if (!Flags.IgnoreImageStrokeExport) Properties.Children = [];
+        else {
+            Properties.Children = Properties.Children.filter(Child => Child.Class === "UIStroke");
+        }
     }
 
     //
@@ -8032,7 +8057,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
         });
     }
 
-    if (!Settings.UploadImages && Settings.DownloadImages) return TryDownloadImage()
+    if (!Settings.UploadImages && Settings.DownloadImages) TryDownloadImage()
 
     //
 
@@ -8048,8 +8073,8 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
 
             console.log("Image has not changed, using ImageId:", AssetId)
             Properties.Image = `rbxassetid://${AssetId}`
-            if (Settings.DownloadImages) return TryDownloadImage();
-
+            if (Settings.DownloadImages) TryDownloadImage();
+            if (NodeWasCloned) ExportNode.remove();
             return;
         }
 
@@ -8057,7 +8082,6 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
             // try fetching before attempting to re-upload
             console.log("Image was uploaded, checking Operation (Id):", OperationId);
 
-            ImagesRemaining += 1;
             Properties.Image = `{FTR_${OperationId}}`
             Node.setPluginData("ImageHash", Properties._ImageHash);
 
@@ -8074,6 +8098,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                 }
             });
 
+            if (NodeWasCloned) ExportNode.remove();
             return OperationId
         }
     }
@@ -8081,12 +8106,16 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
     //Properties.UploadId = UploadId;
     Properties.Image = `{FTR_${UploadId}}`
 
-    if (ImageUploads.find((id) => id === UploadId)) return UploadId;
+    if (ImageUploads.find((id) => id === UploadId)) {
+        if (NodeWasCloned) ExportNode.remove();
+        return UploadId;
+    }
     ImageUploads.push(UploadId);
     ImagesRemaining += 1;
     if (Properties._ImageHash) Node.setPluginData("ImageHash", Properties._ImageHash);
 
     ExportNode.exportAsync(CustomExport || Settings.DefaultExport).then(Bytes => {
+        if (NodeWasCloned) ExportNode.remove();
         Node.setPluginData("AssetId", "");
         Node.setPluginData("OperationId", "");
 
@@ -8107,6 +8136,8 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                 UploadId: UploadId
             }
         }
+
+        ImageUploadsReady += 1;
 
         if (!Properties._ImageHash) {
             const _ImageHash = createHash("sha256").update(Bytes).digest("hex");
@@ -8177,7 +8208,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
         else setTimeout(() => {
             figma.ui.postMessage({
                 type: "UploadImage",
-                wait: ImagesRemaining > 5 ? 6500 : ImagesRemaining > 2 ? 3200 : 2150,
+                wait: ImageUploadsReady > 5 ? 6500 : ImageUploadsReady > 2 ? 3200 : 2150,
                 data: {
                     Data: Bytes,
                     Id: UploadId,
@@ -8185,7 +8216,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                     Format: (CustomExport ? CustomExport.format : "PNG").toLowerCase()
                 }
             })
-        }, ImagesRemaining > 3 ? (ImagesRemaining / 5) * 1000 : 0)
+        }, ImageUploadsReady > 3 ? (ImageUploadsReady / 5) * 1000 : 0)
     });
 
     return UploadId
@@ -8195,6 +8226,7 @@ function UpdateImage(msg, abort) {
     if (abort) {
         AbortImageUpload = true;
         ImagesRemaining = 0;
+        ImageUploadsReady = 0;
         return;
     }
 
@@ -8217,7 +8249,7 @@ function UpdateImage(msg, abort) {
 
     if (Flags.AwaitModeration && ModerationResult && (ModerationResult.moderationState != "Approved" && ModerationResult.moderationState != "MODERATION_STATE_APPROVED")) {
         if (msg.co && Flags.ReuploadStuckImages) {
-            ExportImage(ImageInfo.Node, ImageInfo.Properties, false, true)
+            ExportImage(ImageInfo.Node, ImageInfo.Properties, false)
             return;
         }else if (ModerationResult.moderationState === "Reviewing") {
             figma.notify(`Image Element ${msg.id} took too long to pass moderation, Image Id: ${msg.data.assetId || msg.data.path}`)
@@ -8260,8 +8292,7 @@ function UpdateOperationId(msg) {
         return;
     }
 
-    console.log(msg);
-    if (!msg.data && msg.co) return ExportImage(ImageInfo.Node, ImageInfo.Properties, null, true);
+    if (!msg.data && msg.co) return ExportImage(ImageInfo.Node, ImageInfo.Properties, null);
 
     ImageInfo.Node.setPluginData("OperationId", msg.data);
 }
@@ -8274,6 +8305,7 @@ function IsDone() {
     console.log("Checking IsDone, Images Remaning:", ImagesRemaining);
     if (ImagesRemaining === 0) {
         ImageUploads.splice(0, ImageUploads.length);
+        ImageUploadsReady = 0;
         return true
     }
     return false
@@ -8395,8 +8427,12 @@ const PropertyTypes = {// the only return value should be nothing or an object c
                 default:
                     if (Effect.radius) {
                         Object.EffectRadius = clamp(Object.EffectRadius, Effect.radius, Effect.radius);
-                    } else if (Effect.offset) {
+                    }
+                    if (Effect.offset) {
                         Object.EffectRadius = clamp(Object.EffectRadius, Effect.offset.x, Effect.offset.y);
+                    }
+                    if (Effect.spread) {
+                        Object.EffectRadius = clamp(Object.EffectRadius, Effect.spread, Effect.spread);
                     }
 
                     if (Object.Class !== "ImageLabel" && Settings.UploadEffects) {
@@ -8406,7 +8442,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
                         Object._hasExport = true
                         //Object.BackgroundTransparency = 0; // Images can't have backgrounds from what I can tell (in figma)
 
-                        ExportImage(Node, Object, null, null, true)
+                        ExportImage(Node, Object, null, null)
                     }
                     break;
                 }
@@ -8414,7 +8450,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
     },
     ["strokes"]: (Value, Object, Node) => {
         if (Value.length > 1) return console.warn(`Frame ${Object.Name} cannot have more than 1 stroke`);
-        else if (Value.length === 0 || Object._ExportAsImage) {
+        else if (Value.length === 0 || Object._ExportAsImage && !Object._ExportWithoutStroke) {
             return;
         }
 
@@ -8424,6 +8460,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
             Class: "UIStroke",
             Name: "UIStroke",
             ApplyStrokeMode: Conversions.ApplyStrokeMode.indexOf(Object.Class === "TextLabel" ? "Contextual" : "Border"),
+            BorderStrokePosition: Conversions.BorderStrokePosition.indexOf(Node.strokeAlign),
             // Color: {
             //     R: Stroke.color.r,
             //     G: Stroke.color.g,
@@ -8442,11 +8479,15 @@ const PropertyTypes = {// the only return value should be nothing or an object c
             Children: [],
         }
 
-        if (Object.EffectRadius) {
-            Object.EffectRadius.X += Node.strokeWeight;
-            Object.EffectRadius.Y += Node.strokeWeight;
-        } else Object.EffectRadius = {X: Node.strokeWeight, Y: Node.strokeWeight}
-        //Object.EffectRadius = clamp(Object.EffectRadius, Node.strokeWeight, Node.strokeWeight);
+        const Alignment = Node.strokeAlign; // INSIDE, OUTSIDE, CENTER
+        const Weight = Node.strokeWeight * (Alignment === "INSIDE" ? 0 : Alignment === "CENTER" ? 0.5 : 1);
+
+        if (Weight > 0) {
+            if (Object.EffectRadius) {
+                Object.EffectRadius.X += Weight;
+                Object.EffectRadius.Y += Weight;
+            } else Object.EffectRadius = {X: Weight, Y: Weight}
+        }
 
         var [Colour, Transparency] = ConvertFill(Stroke, StrokeObject);
 
@@ -9427,10 +9468,15 @@ function GetNodeProperties(Node, Settings, ParentObject) {
         //Properties.ImageTransparency = Properties.BackgroundTransparency;
         Properties.BackgroundTransparency = 0;
         Properties._hasExport = true;
-        ExportImage(Node, Properties)
+        ExportImage(Node, Properties);
     }
 
     return Properties;
+}
+
+function OnStart() {
+    ImagesRemaining = 0;
+    ImageUploadsReady = 0;
 }
 
 module.exports = {
@@ -9440,7 +9486,8 @@ module.exports = {
     UpdateImage,
     UpdateOperationId,
     GetImageFromOperation,
-    IsDone
+    IsDone,
+    OnStart
 }
 },{"./Conversions":42,"./Utilities":45,"create-hash/browser":7}],44:[function(require,module,exports){
 const { Debounce } = require("../Utilities");
@@ -9721,6 +9768,7 @@ var Flags = {
     ShowHighlights: false, // True: Temporarily creates highlights around Images, Buttons and Scrolls, with a name tag below
     ApplyPadding: false, // True: will offset to account for padding (requires ApplyAnchorPoint to be enabled)
     ConvertAutoLayoutsToScrollFrames: true, // True: will convert auto layouts to scrolling frames globally
+    IgnoreImageStrokeExport: true, // When uploading an element as an image this will remove the stroke on the uploaded image
 
     // Debugging
     ForceUploadImages: false, // Skips image matching (ignoring cached ids), upload is still overwritten by ImageUploadTesting
@@ -9919,7 +9967,7 @@ module.exports = {
 
 const Conversions = require('./Conversions.js');
 const { Flags, NotifyError, Notify } = require('./Utilities.js');
-const { GetNodeProperties, XMLTypes, Settings, UpdateImage, UpdateOperationId, GetImageFromOperation, IsDone } = require('./Converters.js');
+const { GetNodeProperties, XMLTypes, Settings, UpdateImage, UpdateOperationId, GetImageFromOperation, IsDone, OnStart } = require('./Converters.js');
 const HighlightNodes = require("./Flags/HighlightNodes.js");
 
 var RunDebounce = false;
@@ -10210,13 +10258,13 @@ function LoopNodes(Nodes, ParentObject) {
         // Misc
         var New = "";
 
-        if (!Properties._hasExport) {
+        //if (!Properties._hasExport) { // if true then unwanted Children should already be removed
             if (Properties.Children) {
                 New += LoopChildren(Properties.Children, ParentObject);
             }
             // Loop all Node Children
             if ((Properties._hasExport || !Properties.Image) && Node.children) New += LoopNodes(Node.children, Properties);
-        }
+        //}
 
         const ConvertAnchorPoint = function(SizeX, SizeY) {
             var AX = (Properties.Position.XO + Properties.Size.XO / 2) / SizeX;
@@ -10423,7 +10471,8 @@ async function RunPlugin() { // this is technecally a codegen plugin?
 
     RunDebounce = true
     console.log("[FTR] Starting");
-    Notify("Figma to roblox is exporting, support can be found at https://discord.gg/DWCGss4vry", { timeout: 12000 })
+    Notify("Figma to roblox is exporting, support can be found at https://discord.gg/DWCGss4vry", { timeout: 12000 });
+    OnStart();
 
     // Start Converting Nodes
     let FileContent = '<!--\n\tGenerated by Figma to Roblox\n\tReport any bugs/issues to notwistedhere on discord/github\n-->\n\n<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Meta name="ExplicitAutoJoints">true</Meta>\n';
@@ -10435,19 +10484,20 @@ async function RunPlugin() { // this is technecally a codegen plugin?
         await new Promise((resolve, reject) => {
             function Timeout() {
                 if (IsDone()) return resolve();
-                else setTimeout(Timeout, 500);
+                else setTimeout(Timeout, 1200);
             }
 
             Timeout()
         })
     } catch (e) {
-        NotifyError("Figma to Roblox experienced an unexpected error, please make a bug report in discord https://discord.gg/DWCGss4vry;" + e);
+        NotifyError("Figma to Roblox experienced an unexpected error, please make a bug report in discord https://discord.gg/DWCGss4vry; " + e.message);
     }
 
     if (Nodes) {
         try {
             const ImageOperations = Nodes.replaceAll(/{FTR_([0-9a-zA-Z -:]+)}/g, (_, Id) => {
                 var ExportedImage = GetImageFromOperation(Id);
+                console.log(ExportedImage);
                 return ExportedImage.Properties.Image;
             });
 
@@ -10460,7 +10510,7 @@ async function RunPlugin() { // this is technecally a codegen plugin?
 
             Notify("Successfully exported");
         } catch (e) {
-            NotifyError("Figma to Roblox experienced an unexpected error, please make a bug report in discord https://discord.gg/DWCGss4vry;" + e);
+            NotifyError("Figma to Roblox experienced an unexpected error, please make a bug report in discord https://discord.gg/DWCGss4vry; " + e.message);
         }
     }
     console.log("[FTR] Done");
