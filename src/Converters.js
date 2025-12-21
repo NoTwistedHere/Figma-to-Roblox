@@ -595,8 +595,14 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         StrokeObject.Color = Colour;
         StrokeObject.Transparency *= Transparency;
 
-        //Object._HasStroke = true;
-        Object.Children.push(StrokeObject);
+        if (Object._IsLine) {
+            Object.BackgroundColor3 = Colour;
+            Object.BackgroundTransparency = Transparency;
+            Object.Size.YO = Node.strokeWeight;
+        } else {
+            //Object._HasStroke = true;
+            Object.Children.push(StrokeObject);
+        }
     },
     ["characters"]: (Value, Object, Node) => {
         var Segments = Node.getStyledTextSegments(["fills", "fontSize", "fontWeight", "textDecoration", "textCase"]);
@@ -980,7 +986,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
 
         return Properties
     },
-    /*["LINE"]: (Node) => { // TODO: Better support
+    ["LINE"]: (Node) => { // TODO: Better support
         let Properties = {
             Class: "Frame",
             Name: Node.name,
@@ -988,6 +994,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
             Visible: Node.visible,
             BackgroundTransparency: Node.opacity,
             _Transparency: Node.opacity,
+            _IsLine: true,
             BorderSizePixel: 0,
 
             Rotation: -Node.rotation,
@@ -1015,7 +1022,7 @@ const NodeTypes = { // Is this really needed? I could probably make it less repe
         }
 
         return Properties
-    },*/
+    },
     ["RECTANGLE"]: (Node) => {
         let Properties = {
             Class: "Frame",
@@ -1545,7 +1552,7 @@ function GetNodeProperties(Node, Settings, ParentObject) {
     Properties._OriginalSize = Properties.Size;
 
     if (Properties.Rotation) {
-        Properties.Rotation = Math.round(Properties.Rotation / 1000) * 1000;
+        Properties.Rotation = Math.round(Properties.Rotation * 1000) / 1000;
         if (Properties.Rotation !== 0 /*&& Properties.Size.XO !== 0 && Properties.Size.YO !== 0*/) {
             const BoundingBox = Node.absoluteBoundingBox;
 
