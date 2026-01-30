@@ -7898,7 +7898,7 @@ module.exports = {
 }
 },{}],43:[function(require,module,exports){
 const Conversions = require("./Conversions");
-const { Flags, NotifyError, Notify } = require("./Utilities");
+const { Flags, NotifyError, NotifyImportantMessage, AppendUnsupportedAction } = require("./Utilities");
 const createHash = require("create-hash/browser");
 
 let AbortImageUpload = false;
@@ -7982,7 +7982,7 @@ function ConvertFill(Fill, Object) {
 
 function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout) {
     let AssetId = Node.getPluginData("AssetId");
-    const OperationId = Node.getPluginData("OperationId");
+    const OperationId = false; //Node.getPluginData("OperationId");
 
     if (AssetId && AssetId.match(/[0-9]+/)) AssetId = AssetId.match(/[0-9]+/)[0];
 
@@ -8159,13 +8159,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                         });
 
                         Properties.Image = `rbxassetid://${AssetId}`
-                        UpdateImage({id: UploadId, data: {
-                            "assetId": AssetId,
-                            "moderationResult": {
-                                "moderationState": "Approved"
-                            },
-                            "state": "Active"
-                        }});
+                        UpdateImage({id: UploadId, data: AssetId});
                         return;
                     } else if (AssetId) console.warn("Node's image has changed, uploading")
 
@@ -8194,8 +8188,8 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                 }
 
                 Node.setPluginData("ImageHash", _ImageHash);
-            } {
-                NotifyError(`FAILED to save image hash for Node "${Node.name}" (${Node.id}), this means it might be reuploaded every time`)
+            } else {
+                NotifyError(`FAILED to create an image hash for Node "${Node.name}" (${Node.id}), this means it might be reuploaded every time`)
                 console.warn("FAILED to create an ImageHash for Node", Node, Properties);
             }
         }
@@ -8237,7 +8231,7 @@ function UpdateImage(msg, abort) {
         console.warn(`Failed to find Image Node "${msg.id}":`, msg);
         ImagesRemaining -= 1;
         return;
-    } else if (typeof(msg.data) === "string") { // Image uploaded
+    } else if (typeof(msg.data) === "string") {
         //ImageInfo.Node.setPluginData("OperationId", "");
         //figma.notify(`Failed to upload Image Node "${msg.id}": ${msg.data}`);
         console.warn(`Failed to upload Image Node "${msg.id}":`, msg);
@@ -8245,22 +8239,22 @@ function UpdateImage(msg, abort) {
         return;
     }
 
-    let ModerationResult = msg.data.moderationResult
+    // let ModerationResult = msg.data.moderationResult
 
-    if (Flags.AwaitModeration && ModerationResult && (ModerationResult.moderationState != "Approved" && ModerationResult.moderationState != "MODERATION_STATE_APPROVED")) {
-        if (msg.co && Flags.ReuploadStuckImages) {
-            ExportImage(ImageInfo.Node, ImageInfo.Properties, false)
-            return;
-        }else if (ModerationResult.moderationState === "Reviewing") {
-            figma.notify(`Image Element ${msg.id} took too long to pass moderation, Image Id: ${msg.data.assetId || msg.data.path}`)
-            console.warn(`Image Element ${msg.id} took too long to pass moderation:`, ModerationResult, msg);
-        } else {
-            figma.notify(`Image Element ${msg.id} failed moderation (check console for more info); moderation state: ${ModerationResult.moderationState}`);
-            console.warn(`Image Element ${msg.id} failed moderation:`, ModerationResult, msg);
-        }
+    // if (Flags.AwaitModeration && ModerationResult && (ModerationResult.moderationState != "Approved" && ModerationResult.moderationState != "MODERATION_STATE_APPROVED")) {
+    //     if (msg.co && Flags.ReuploadStuckImages) {
+    //         ExportImage(ImageInfo.Node, ImageInfo.Properties, false)
+    //         return;
+    //     }else if (ModerationResult.moderationState === "Reviewing") {
+    //         figma.notify(`Image Element ${msg.id} took too long to pass moderation, Image Id: ${msg.data.assetId || msg.data.path}`)
+    //         console.warn(`Image Element ${msg.id} took too long to pass moderation:`, ModerationResult, msg);
+    //     } else {
+    //         figma.notify(`Image Element ${msg.id} failed moderation (check console for more info); moderation state: ${ModerationResult.moderationState}`);
+    //         console.warn(`Image Element ${msg.id} failed moderation:`, ModerationResult, msg);
+    //     }
 
-        //ImagesRemaining -= 1; return;
-    }
+    //     //ImagesRemaining -= 1; return;
+    // }
 
     const PreviousAssetId = ImageInfo.Node.getPluginData("AssetId");
     let Content = msg.data.imageContent || msg.data.assetId;
@@ -8303,7 +8297,7 @@ function GetImageFromOperation(OperationId) {
 
 function IsDone() {
     console.log("Checking IsDone, Images Remaning:", ImagesRemaining);
-    if (ImagesRemaining === 0) {
+    if (ImagesRemaining <= 0) {
         ImageUploads.splice(0, ImageUploads.length);
         ImageUploadsReady = 0;
         return true
@@ -8333,6 +8327,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
     },
     ["fills"]: (Value, Object, Node) => {
         if (/*Value.length > 1 ||*/ Value == figma.mixed) {
+            AppendUnsupportedAction("Frames can only support the following 'Fill' types: Solid Colour, Image, Linear Gradient - any other must be exproted as an image!", Node)
             return console.warn(`Frame ${Object.Name} cannot have more than 1 fill`);
         } else if (Value.length === 0 /*|| Object._hasExport*/) { // if the export is exported white, _hasExport should be false so we can recover the per-item colours:
             Object.BackgroundTransparency = 0;
@@ -8385,8 +8380,12 @@ const PropertyTypes = {// the only return value should be nothing or an object c
             Object.BackgroundTransparency = Transparency;
         }
     },
-    ["cornerRadius"]: (Value, Object) => {
-        if (Value !== 0 && Value !== figma.mixed && !Object._hasExport) {
+    ["cornerRadius"]: (Value, Object, Node) => {
+        if (Value == figma.mixed) {
+            AppendUnsupportedAction("CornerRadius must be the same for all corners!", Node)
+            return;
+        }
+        if (Value !== 0 && !Object._hasExport) {
             Object.Children.forEach((Stroke) => {
                 if (Stroke.Class === "UIStroke") Stroke.LineJoinMode = Conversions.LineJoinModes.indexOf("ROUND");
             })
@@ -8449,12 +8448,15 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         })
     },
     ["strokes"]: (Value, Object, Node) => {
-        if (Value.length > 1) return console.warn(`Frame ${Object.Name} cannot have more than 1 stroke`);
-        else if (Value.length === 0 || Object._ExportAsImage && !Object._ExportWithoutStroke) {
+        if (Value.length > 1) {
+            AppendUnsupportedAction("Maxiumum number of strokes on any given Node is 1!", Node)
+            return console.warn(`Frame ${Object.Name} cannot have more than 1 stroke`);
+        } else if (Value.length === 0 || Object._ExportAsImage && !Object._ExportWithoutStroke) {
+            return;
+        } else if (Node.strokeWeight == figma.mixed) {
+            AppendUnsupportedAction("Strokes can only be applied to ALL SIDES!", Node)
             return;
         }
-
-        var Stroke = Value[0];
 
         var StrokeObject = {
             Class: "UIStroke",
@@ -8479,16 +8481,6 @@ const PropertyTypes = {// the only return value should be nothing or an object c
             Children: [],
         }
 
-        const Alignment = Node.strokeAlign; // INSIDE, OUTSIDE, CENTER
-        const Weight = Node.strokeWeight * (Alignment === "INSIDE" ? 0 : Alignment === "CENTER" ? 0.5 : 1);
-
-        if (Weight > 0) {
-            if (Object.EffectRadius) {
-                Object.EffectRadius.X += Weight;
-                Object.EffectRadius.Y += Weight;
-            } else Object.EffectRadius = {X: Weight, Y: Weight}
-        }
-
         var [Colour, Transparency] = ConvertFill(Stroke, StrokeObject);
 
         StrokeObject.Color = Colour;
@@ -8501,6 +8493,16 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         } else {
             //Object._HasStroke = true;
             Object.Children.push(StrokeObject);
+        }
+
+        const Alignment = Node.strokeAlign; // INSIDE, OUTSIDE, CENTER
+        const Weight = Node.strokeWeight * (Alignment === "INSIDE" ? 0 : Alignment === "CENTER" ? 0.5 : 1);
+
+        if (Weight > 0) {
+            if (Object.EffectRadius) {
+                Object.EffectRadius.X += Weight;
+                Object.EffectRadius.Y += Weight;
+            } else Object.EffectRadius = {X: Weight, Y: Weight}
         }
     },
     ["characters"]: (Value, Object, Node) => {
@@ -9443,7 +9445,11 @@ function GetNodeProperties(Node, Settings, ParentObject) {
     // Loop Node properties
     Object.getOwnPropertyNames(Object.getPrototypeOf(Node)).forEach((i) => {
         if (PropertyTypes[i]) {
-            PropertyTypes[i](Node[i], Properties, Node, ParentObject);
+            try {
+                PropertyTypes[i](Node[i], Properties, Node, ParentObject);
+            } catch (e) {
+                NotifyImportantMessage(`Unhandled error while converting property "${i}" for Node "${i}", error: "${e}"\nPlease report this in #bug-reports OR #plugin-help in the discord server (https://discord.gg/DWCGss4vry)`)
+            }
         }
     });
 
@@ -9776,6 +9782,7 @@ var Flags = {
     ApplyPadding: false, // True: will offset to account for padding (requires ApplyAnchorPoint to be enabled)
     ConvertAutoLayoutsToScrollFrames: true, // True: will convert auto layouts to scrolling frames globally
     IgnoreImageStrokeExport: true, // When uploading an element as an image this will remove the stroke on the uploaded image
+    UseLocalProxy: false, // True: use localhost:10582, False: use a proxy in nearest region
 
     // Debugging
     ForceUploadImages: false, // Skips image matching (ignoring cached ids), upload is still overwritten by ImageUploadTesting
@@ -9817,6 +9824,37 @@ function Notify(Message, Options) {
     if (CurrentNotification) CurrentNotification.cancel();
 
     CurrentNotification = figma.notify(Message, Options || undefined);
+}
+
+function NotifyImportantMessage(Message) {
+    alert(Message)
+}
+
+let MessageQueue = [];
+
+function AppendUnsupportedAction(message, node) {
+    MessageQueue.push({
+        // type: "Unsupported",
+        message,
+        node
+    })
+}
+
+function PushMessageQueue() {
+    try {
+        if (MessageQueue.length === 0) return;
+
+        let Message = "DESIGN ISSUES:\n"
+        MessageQueue.forEach((info, i) => {
+            Message += `${i + 1}) ${info.message} (Problematic node: "${info.node.name}")${i == 1 ? "" : "\n"}`
+        })
+
+        MessageQueue = [];
+
+        alert(Message)
+    } catch (e) {
+        alert(`FAILED to display design issues, got error "${e}"!`)
+    }
 }
 
 function Debounce(function_, wait = 100, options = {}) {
@@ -9925,6 +9963,11 @@ module.exports = {
     Flags,
     NotifyError,
     Notify,
+    NotifyImportantMessage,
+
+    AppendUnsupportedAction,
+    PushMessageQueue,
+
     Debounce
 }
 },{}],46:[function(require,module,exports){
@@ -9973,7 +10016,7 @@ module.exports = {
 */
 
 const Conversions = require('./Conversions.js');
-const { Flags, NotifyError, Notify } = require('./Utilities.js');
+const { Flags, NotifyError, Notify, PushMessageQueue } = require('./Utilities.js');
 const { GetNodeProperties, XMLTypes, Settings, UpdateImage, UpdateOperationId, GetImageFromOperation, IsDone, OnStart } = require('./Converters.js');
 const HighlightNodes = require("./Flags/HighlightNodes.js");
 
@@ -10103,8 +10146,11 @@ function LoopNodes(Nodes, ParentObject) {
             LocalLayoutOrder += 1;
         }
 
+        let IgnoreChildren;
+
         if (Node.type === "BOOLEAN_OPERATION") { // No ~Temp added as a NodeType & create as if a group
             figma.notify("Boolean Operations may give undesired results", {timeout: 1800})
+            IgnoreChildren = true
             // Booleans are treated as groups
             // FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
             // FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n" + LoopNodes(Node.children, Properties);
@@ -10270,7 +10316,7 @@ function LoopNodes(Nodes, ParentObject) {
                 New += LoopChildren(Properties.Children, ParentObject);
             }
             // Loop all Node Children
-            if ((Properties._hasExport || !Properties.Image) && Node.children) New += LoopNodes(Node.children, Properties);
+            if (!IgnoreChildren && (Properties._hasExport || !Properties.Image) && Node.children) New += LoopNodes(Node.children, Properties);
         //}
 
         const ConvertAnchorPoint = function(SizeX, SizeY) {
@@ -10500,6 +10546,8 @@ async function RunPlugin() { // this is technecally a codegen plugin?
         NotifyError("Figma to Roblox experienced an unexpected error, please make a bug report in discord https://discord.gg/DWCGss4vry; " + e.message);
     }
 
+    PushMessageQueue()
+
     if (Nodes) {
         try {
             const ImageOperations = Nodes.replaceAll(/{FTR_([0-9a-zA-Z -:]+)}/g, (_, Id) => {
@@ -10525,8 +10573,6 @@ async function RunPlugin() { // this is technecally a codegen plugin?
     setTimeout(() => {
         RunDebounce = false
     }, 2500)
-    //RunDebounce = false
-
 }
 
 figma.skipInvisibleInstanceChildren = true;
@@ -10543,9 +10589,9 @@ figma.ui.onmessage = msg => {
         case "run":
             RunPlugin();
             break;
-        case "UpdateOperationId":
-            UpdateOperationId(msg);
-            break;
+        // case "UpdateOperationId":
+        //     UpdateOperationId(msg);
+        //     break;
         case "ImageUploaded":
             UpdateImage(msg);
             break;
@@ -10562,7 +10608,7 @@ figma.ui.onmessage = msg => {
             });
             break;
         case "Notify":
-            if (msg.error) NotifyError(msg.message);
+            if (msg.error) NotifyError(msg.message, msg.error ? { timeout: msg.timeout, error: true } : undefined);
             else Notify(msg.message);
             break;
         case "SetAsync":
@@ -10650,11 +10696,6 @@ new Promise((resolve, reject) => {
         settings: StoredSettings
     })
 });
-
-// TODO: Visualise Buttons & Scrolling frames? I can't believe annotations are paid :(
-// figma.on("close", () => {
-//     Visualisers.forEach(Node => Node.remove())
-// })
 
 switch (figma.command) {
     case "export":

@@ -1,9 +1,7 @@
 <html>
     <body>
         <!-- Water CSS - Not required for the plugin to function -->
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/dark.css">
-        <!-- Axios - Required for Uploading Images, but can be omitted otherwise -->
-        <script src="https://unpkg.com/axios@1.4.0/dist/axios.min.js" integrity="sha384-I4Qw/vWb/sK/7VwepTtkaq636YLYClbEgEwKp3ueUCvjiLFrcoKUFAY5mOl40Fj3" crossorigin="anonymous" defer></script>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">
         <!-- JSZip - Required for Downloading(/saving a local copy of every) Images, though not required for typical use -->
         <script src="https://unpkg.com/jszip@3.7.1/dist/jszip.js" integrity="sha384-Lqk2um7o0W+Ke7IGh8Mk9EE7g2IrhepxXvttF/iw5hFqpMjFGKP4jcKYhNLAi/ZD" crossorigin="anonymous" defer></script>
         <!--<script type="module" src="./main.js"></script> -->
@@ -15,6 +13,10 @@
                 --button-base: var(--figma-color-bg-secondary) !important;
                 --button-hover: var(--figma-color-bg-tertiary) !important;
                 --text-main: var(--figma-color-text) !important;
+                --info-color:  rgb(124, 196, 248);
+                /* --info-color:  rgb(from #7cc4f8 calc(r + 40) calc(g + 40) b) !important; */
+                --info-icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 20 20"><path fill="rgb(12, 140, 233)" d="M7 4.75c0-.412.338-.75.75-.75h.5c.412 0 .75.338.75.75v.5c0 .412-.338.75-.75.75h-.5A.753.753 0 0 1 7 5.25zM10 12H6v-1h1V8H6V7h3v4h1z"/><path fill="rgb(12, 140, 233)" d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0m0 14.5a6.5 6.5 0 1 1 0-13a6.5 6.5 0 0 1 0 13"/></svg>');
+                /* color: rgb(var(--text-main)) !important; -- does not work?! */
             }
             input {
                 accent-color: var(--background) !important;
@@ -23,25 +25,61 @@
             summary {
                 width: 100%;
             }
-            notification {
-                position: fixed;
-                top: 0;
-                width: 100%;
-                height: 40px;
-                left: 0;
-                background-color: #000;
-                color: #fff;
-                border-bottom: 1px solid #333;
-                clear: both;
-                z-index: 999;
+
+            .info-marker {
+                /* content: var(--info-icon); */
+                position: absolute;
+                background-image: var(--info-icon);
+                /* background-color: var(--figma-color-text-brand); */
+                background-repeat: no-repeat;
+                background-size: 2rem;
+                height: 2rem;
+                width: 3rem;
+            }
+
+            textarea {
+                resize: none;
+                overflow: hidden;
+                field-sizing: content;
+            }
+
+            .tooltip {
+                position: relative;
+                display: inline;
+                cursor: pointer;
+                margin-left: .4rem;
+            }
+
+            .tooltip-hoverspan {
+                visibility: hidden;
+                width: 15rem;
+                background-color: black;
+                color: #ffffff;
+                text-align: center;
+                padding: 5px 5px;
+                border-radius: 6px;
+                position: absolute;
+                z-index: 1;
+                margin-left: 1rem;
+            }
+
+            .tooltip-text {
+                background-color: black;
+                color: #ffffff;
+                text-align: center;
+                border-color: transparent;
+            }
+
+            .tooltip:hover .tooltip-hoverspan {
+                visibility: visible;
             }
         </style>
 
-        <!-- <notification>Not uploading any images..</notification> -->
-        <!-- <div> -->
+        <div hidden id="upload_progress">
+            <span><b>WARNING: Using the public image proxy will result in longer wait times (upto 5 minutes), please be patient!</b></span>
             <pre id="upload_status"></pre>
-            <button hidden id="abortupload">Abort Upload</button>
-        <!-- </div> -->
+            <button id="abortupload">Abort Upload</button>
+        </div>
 
 
         <a id="download" href="#" download="export.rbxmx" style="display:none;">Download</a>
@@ -64,10 +102,22 @@
         <div>
             <input type="checkbox" id="HighlightNodes" name="Highlight Nodes" />
             <label for="HighlightNodes">Highlight Nodes (WIP)</label>
+            <div class="tooltip">
+                <svg class="info-marker" fill="var(--figma-color-text-brand)"></svg>
+                <div class="tooltip-hoverspan">
+                    <span class="tooltip-text">Highlights all nodes/elements that are exported with special properties (Images, Buttons, ScrollingFrames)</span>
+                </div>
+            </div>
             <div></div>
 
             <input type="checkbox" id="ApplyAspectRatio" name="Apply AspectRatio" />
             <label for="ApplyAspectRatio">Apply AspectRatio globally</label>
+            <div class="tooltip">
+                <svg class="info-marker"></svg>
+                <div class="tooltip-hoverspan">
+                    <span class="tooltip-text">Enable this if you want everything to be exported with an AspectRatioConstraint</span>
+                </div>
+            </div>
             <div></div>
 
             <input type="checkbox" id="ApplyPadding" name="Apply AspectRatio" />
@@ -76,11 +126,23 @@
 
             <input type="checkbox" id="ApplyLayoutOrder" name="Apply LayoutOrder" />
             <label for="ApplyLayoutOrder">Apply Local LayoutOrder</label>
+            <div class="tooltip">
+                <svg class="info-marker"></svg>
+                <div class="tooltip-hoverspan">
+                    <span class="tooltip-text">Enable this if you want LayoutOrders to be applied, in ascending order from top to bottom</span>
+                </div>
+            </div>
             <div></div>
 
             <label for="ConvertAutoLayouts">
                 <input type="checkbox" id="ConvertAutoLayouts" name="Convert AutoLayouts" />
                 Convert AutoLayouts to ScrollingFrames
+                <div class="tooltip">
+                    <svg class="info-marker"></svg>
+                    <div class="tooltip-hoverspan">
+                        <span class="tooltip-text">Enable this to automatically convert Frames with AutoLayouts enabled into ScrollingFrames</span>
+                    </div>
+                </div>
             </label>
 
             <label for="ApplyAnchorPoint">
@@ -97,23 +159,47 @@
                 <input type="checkbox" id="ConvertOffsetToScale" name="Convert to Scale" />
                 Convert to Scale
             </label>
+            <div class="tooltip">
+                <svg class="info-marker"></svg>
+                <div class="tooltip-hoverspan">
+                    <span class="tooltip-text">Will export all Elements with Scaled Position, rather than Offsetted Position (pixels)</span>
+                </div>
+            </div>
             <div></div>
 
             <label for="Recentre">
                 <input type="checkbox" id="Recentre" name="Recentre" />
                 Recentre
+                <div class="tooltip">
+                    <svg class="info-marker"></svg>
+                    <div class="tooltip-hoverspan">
+                        <span class="tooltip-text">Recentres the top-most Element to be at (0,0) when exported, rather than it's position within figma</span>
+                    </div>
+                </div>
             </label>
             <div></div>
 
             <label for="IgnoreInvisible">
                 <input type="checkbox" id="IgnoreInvisible" name="Ignore Invisible" />
                 Ignore Invisible Elements
+                <div class="tooltip">
+                    <svg class="info-marker"></svg>
+                    <div class="tooltip-hoverspan">
+                        <span class="tooltip-text">Will skip over Invisible Elements when exporting, so they will not be exported to Roblox</span>
+                    </div>
+                </div>
             </label>
             <div></div>
 
             <label for="ScaleScrollFramesDominantAxis">
-                <input type="checkbox" id="ScaleScrollFramesDominantAxis" name="Ignore Invisible" />
+                <input type="checkbox" id="ScaleScrollFramesDominantAxis" name="Only Scale Scroll Elements' Dominant Axis" />
                 Only Scale Scroll Elements' Dominant Axis
+                <div class="tooltip">
+                    <svg class="info-marker"></svg>
+                    <div class="tooltip-hoverspan">
+                        <span class="tooltip-text">Enable this if you want your exported ScrollingFrames to only scroll in one direction, that being the dominant axis (decided on a per-element basis)</span>
+                    </div>
+                </div>
             </label>
         </div>
 
@@ -122,6 +208,12 @@
 
             <input type="checkbox" id="uploadimages" name="Upload Images" />
             <label for="uploadimages">Upload Images</label>
+            <div class="tooltip">
+                <svg class="info-marker"></svg>
+                <div class="tooltip-hoverspan">
+                    <span class="tooltip-text">Enable this if you want any Images to be exported to Roblox</span>
+                </div>
+            </div>
             <div></div>
 
             <label for="alwaysexportimages"><input type="checkbox" id="alwaysexportimages" name="Export ImageLabels (applies if Uploading is disabled)"/> Export ImageLabels <small>(only applies if Uploading is disabled)</small></label>
@@ -129,20 +221,26 @@
             <label for="DownloadImages"><input type="checkbox" id="DownloadImages" name="Export Images as zip"/>Export Images as zip</label>
             <div></div>
 
-            <input type="checkbox" id="forcereupload" name="Force Reupload Images" />
+            <!-- <input type="checkbox" id="forcereupload" name="Force Reupload Images" />
             <label for="forcereupload">Force Reupload Images</label>
-            <div></div>
+            <div></div> -->
 
-            <input type="checkbox" id="reuploadstuck" name="Reupload Stuck Images" />
+            <!-- <input type="checkbox" id="reuploadstuck" name="Reupload Stuck Images" />
             <label for="reuploadstuck">Reupload Stuck Images</label>
-            <div></div>
+            <div></div> -->
 
-            <input type="checkbox" id="awaitmoderation" name="Await Moderation" />
+            <!-- <input type="checkbox" id="awaitmoderation" name="Await Moderation" />
             <label for="awaitmoderation">Await Moderation</label>
-            <div></div>
+            <div></div> -->
 
             <input type="checkbox" id="IgnoreImageStrokeExport" name="Export Image Strokes Separately" />
             <label for="IgnoreImageStrokeExport">Export Image Strokes Separately</label>
+            <div class="tooltip">
+                <svg class="info-marker"></svg>
+                <div class="tooltip-hoverspan">
+                    <span class="tooltip-text">Enable this if you want control over an Image's Stroke within Roblox (otherwise the stroke will be applied into the image)</span>
+                </div>
+            </div>
             <div></div>
 
             <input type="checkbox" id="uploadeffects" name="Upload effects" />
@@ -150,6 +248,14 @@
             <div></div>
 
             <label for="apikey">Cloud API Key</label>
+            <div class="tooltip">
+                <svg class="info-marker"></svg>
+                <div class="tooltip-hoverspan">
+                    <span class="hovertip-text">An API Key is required in order to upload images!</span>
+                    <a href="https://create.roblox.com/dashboard/credentials?activeTab=ApiKeysTab" target="_blank">Create an API Key here</a>
+                    <a href="https://img.lightshot.app/J5HoXWWaTjiTpOYMiStWAQ.png" target="_blank"><image src="https://img.lightshot.app/J5HoXWWaTjiTpOYMiStWAQ.png" /></a>
+                </div>
+            </div>
             <input type="text" id="apikey" placeholder="XXXXXXXXXXXXXXXXXXXXXXXXXXX" />
             <div></div>
 
@@ -162,6 +268,17 @@
                 <option value="user">User</option>
                 <option value="group">Group</option>
             </select>
+
+            <input type="checkbox" id="uselocalproxy" name="Use Localhost Proxy" />
+            <label for="uselocalproxy">Use Localhost Proxy</label>
+            <div class="tooltip">
+                <svg class="info-marker"></svg>
+                <div class="tooltip-hoverspan">
+                    <span class="tooltip-text">Enable this if you are using the locally hosted proxy from</span>
+                    <a href="https://github.com/NoTwistedHere/Figma-to-Roblox/tree/proxy" target="_blank">GitHub</a>
+                </div>
+            </div>
+            <div></div>
 
             <!-- <input type="checkbox" id="isgroup" name="Is Group" />
             <label for="isgroup">Upload To Group</label>
@@ -260,6 +377,11 @@
                     instantUpdate: true,
                 },
                 {
+                    name: "UseLocalProxy",
+                    id: "uselocalproxy",
+                    type: "checkbox"
+                },
+                {
                     name: "CloudApiKey",
                     id: "apikey",
                     type: "text",
@@ -336,6 +458,13 @@
             let NumImagesFinished = 0;
             let NumImagesPendingApproval = 0;
             let NumImagesFailed = 0;
+            let ImageUploadController;
+            let UploadDelay;
+            let PendingImageDataUploads = [];
+            let PendingImageOperations = [];
+            let PendingImageUploads = [];
+
+            const PLACEHOLDER_IMAGE = "rbxasset://textures/StudioSharedUI/TransparentWhiteImagePlaceholder.png";
 
             function PostMessage(Data) {
                 parent.postMessage({ pluginMessage: Data }, "*");
@@ -344,11 +473,11 @@
             const UploadStatus = document.getElementById("upload_status")
 
             function UpdateUploadStatus() {
-                UploadStatus.textContent = `Image status:\nUploading: ${NumImagesTotal}    In Moderation: ${NumImagesPendingApproval}\nFinished: ${NumImagesFinished}/${NumImagesTotal}    Failed: ${NumImagesFailed}\n`
+                UploadStatus.textContent = `\nImage status:\nUploading: ${NumImagesTotal}    In Moderation: ${NumImagesPendingApproval}\nFinished: ${NumImagesFinished}/${NumImagesTotal}    Failed: ${NumImagesFailed}\n`
             }
 
             function PostImageUploaded(id, UploadResponse, CheckOp) {
-                PostMessage({ type: "ImageUploaded", id: id, co: CheckOp, data: UploadResponse.response || UploadResponse.status || UploadResponse })
+                PostMessage({ type: "ImageUploaded", id: id, co: CheckOp, data: UploadResponse })
                 UpdateUploadStatus();
             }
 
@@ -460,6 +589,7 @@
                     }
                 });
 
+                StartedAt = Date.now();
                 NumImagesTotal = 0;
                 NumImagesFinished = 0;
                 NumImagesPendingApproval = 0;
@@ -471,7 +601,24 @@
                 PostMessage({ type: 'CreatePreset', preset: document.getElementById("presets").value });
             }
             document.getElementById("abortupload").onclick = () => {
+                if (!StartedAt) return;
+
+                const SecondsSince = (Date.now() - StartedAt) / 1000;
+                const MinWaitTime = 50;
+                if (SecondsSince < MinWaitTime) {
+                    PostMessage({ type: "Notify", error: true, timeout: 2000, message: `You must wait at least ${MinWaitTime} seconds before aborting, you can abort in: ${MinWaitTime - SecondsSince} seconds` });
+                    return;
+                }
+
                 AbortUpload = true;
+
+                if (UploadDelay) clearTimeout(UploadDelay);
+                if (ImageUploadController) ImageUploadController.abort();
+
+                UploadDelay = undefined;
+                ImageUploadController = undefined;
+                StartedAt = undefined;
+
                 PostMessage({ type: 'AbortUpload' });
             }
 
@@ -501,50 +648,179 @@
                 Images = [];
             }
 
-            async function CheckOperation(data, i) {
-                const UploadResponse = await (await fetch(`https://apis.roblox.com/assets/v1/operations/${data.operationId || data.Id}`, {
-                    method: "GET",
-                    //mode: "no-cors",
-                    headers: {
-                        ["Accept"]: "data/json",
-                        ["Content-Language"]: "en-US",
-                        ["x-api-key"]: Settings.CloudApiKey
-                    }
-                })).json();
+            function UploadImages() {
+                ImageUploadController = new AbortController();
+                UploadDelay = undefined;
 
-                if (UploadResponse.code == "PERMISSION_DENIED" || UploadResponse.message) {
-                    if (i === undefined) PostMessage({type: "UpdateOperationId", id: data.Id, co: true});
-                    PostImageUploaded(data.Id, {
-                        imageContent: "rbxasset://textures/StudioSharedUI/TransparentWhiteImagePlaceholder.png"
-                    });
-                    const StatusMessage = UploadResponse.message.match(/status: (.*)$/im);
-                    PostMessage({ type: "UploadError", message: StatusMessage ? StatusMessage[1] : UploadResponse.message || UploadResponse.code });
-                    return false;
-                } else if (UploadResponse.done == true) {
-                    if (!data.IsUploaded) {
-                        NumImagesPendingApproval += 1;
-                        UpdateUploadStatus();
-                        data.IsUploaded = true;
-                    }
+                try {
+                    // TODO: Select proxy based on IP's TimeZone (or allow user to select their region between America, Europe & Asia)
 
-                    if (Settings.AwaitModeration && !AbortUpload && UploadResponse.response && UploadResponse.response.moderationResult && UploadResponse.response.moderationResult.moderationState == "Reviewing") {
-                        // This should be ran every time the image is still for review
-                        //ModerationReviewing = true;
+                    fetch(Settings.UseLocalProxy ? "http://localhost:10582" : "https://figma-to-roblox-proxy.onrender.com", {
+                        method: "POST",
+                        signal: ImageUploadController.signal,
+                        headers: {
+                            ["p"]: Settings.UseLocalProxy ? "f1a8" : "f1a8",
+                            ["k"]: Settings.CloudApiKey,
+                            ["Content-Type"]: "application/json"
+                        },
+                        body: JSON.stringify([
+                            parseFloat(Settings.UploaderId),
+                            Settings.UploaderType === "user" ? 0 : 1,
+                            PendingImageDataUploads
+                        ])
+                    })
+                    .then(async res => {
+                        const Response = await res.text();
+                        const ImageUploadResults = Response.match(/([bes]:[^\n]+)/mg);
+                        NumImagesFinished = NumImagesTotal; // server can return a single error message for multiple uploads
 
-                        // Admit defeat (don't decrease NumImagesPendingApproval)
-                        if (i !== 80) return;
-                    }
+                        ImageUploadResults.forEach((RawUploadResponse, ImageIndex) => {
+                            const ImageUploadRequest = PendingImageUploads[ImageIndex];
+                            const [_, Type, UploadResponse] = RawUploadResponse.match(/([bes]):(.*)\n?/)
 
-                    const IsCheckOperation = i === undefined;
-                    if (IsCheckOperation) PostMessage({type: "UpdateOperationId", id: data.Id, data: UploadResponse, co: true})
-                    else {
-                        if (i !== 80) NumImagesPendingApproval -= 1;
+                            console.log(ImageUploadRequest, Type, UploadResponse)
+
+                            switch (Type) {
+                                case "b": // Success (body / asset id)
+                                    if (UploadResponse.match(/^op-/)) {
+                                        console.log("saving Upload Operation Id:", UploadResponse.match(/^op-(.*)/)[1])
+                                        PostMessage({type: "UpdateOperationId", id: ImageUploadRequest.Id, data: UploadResponse.match(/^op-(.*)/)[1], co: true});
+                                        // TODO: TEMPORARY, While Upload Operations aren't acted upon:
+                                        PostImageUploaded(ImageUploadRequest.Id, {
+                                            assetId: PLACEHOLDER_IMAGE
+                                        })
+                                    } else PostImageUploaded(ImageUploadRequest.Id, {
+                                        assetId: UploadResponse
+                                    })
+                                    break;
+                                case "s": // Issue (status code)
+                                    console.error(`Server returned an issue "${UploadResponse}"`);
+                                    PostMessage({ type: "UploadError", message: "Roblox error code: \"" + UploadResponse + "\"" });
+                                    PostImageUploaded(ImageUploadRequest.Id, {
+                                        imageContent: PLACEHOLDER_IMAGE
+                                    });
+                                    break;
+                                case "e": // Error (error)
+                                    console.error(`Server returned an error "${UploadResponse}"`);
+                                    PostMessage({ type: "UploadError", message: "Roblox error message: \"" + UploadResponse + "\""  });
+                                    PostImageUploaded(ImageUploadRequest.Id, {
+                                        imageContent: PLACEHOLDER_IMAGE
+                                    });
+                                    break;
+                            }
+                        })
+
+                        PendingImageUploads = [];
+                    })
+                    .catch(async res => {
+                        const Message = `"${res.statusText || res.message}"`;
+                        console.error(`Server returned unexpected response: ${Message}`);
+
                         NumImagesFinished += 1;
-                        PostImageUploaded(data.Id, UploadResponse, IsCheckOperation);
-                    }
-                    return true;
+                        PendingImageUploads = [];
+                        PostMessage({ type: "UploadError", message: Message || "Proxy server error" });
+                        PostImageUploaded(data.Id, {
+                            imageContent: PLACEHOLDER_IMAGE
+                        });
+                    })
+
+                    PendingImageDataUploads = [];
+                } catch (e) {
+                    console.error(`Server returned unexpected response: "${e}"`);
+
+                    NumImagesFinished += 1;
+                    PendingImageUploads = [];
+                    PostMessage({ type: "UploadError", message: (e && e.message) || "Proxy server error" });
+                    PostImageUploaded(data.Id, {
+                        imageContent: PLACEHOLDER_IMAGE
+                    });
                 }
             }
+
+            // async function CheckOperations(data, i) {
+            //     try {
+            //         // TODO: Select proxy based on IP's TimeZone (or allow user to select their region between America, Europe & Asia)
+
+            //         fetch(Settings.UseLocalProxy ? "http://localhost:10582" : "https://figma-to-roblox-proxy.onrender.com", {
+            //             method: "POST",
+            //             signal: ImageUploadController.signal,
+            //             headers: {
+            //                 ["p"]: Settings.UseLocalProxy ? "f1a8" : "f1a8",
+            //                 ["k"]: Settings.CloudApiKey,
+            //                 ["Content-Type"]: "application/json"
+            //             },
+            //             body: PendingImageOperations.join(",") // ik, not actually json - to save on bandwidth + easier to decode
+            //         })
+            //         .then(async res => {
+            //             const Response = await res.text();
+            //             const ImageUploadResults = Response.match(/([bes]:[^\n]+)/mg);
+            //             NumImagesFinished = NumImagesTotal; // server can return a single error message for multiple uploads
+
+            //             ImageUploadResults.forEach((RawUploadResponse, ImageIndex) => {
+            //                 const ImageUploadRequest = PendingImageUploads[ImageIndex];
+            //                 const [_, Type, UploadResponse] = RawUploadResponse.match(/([bes]):(.*)\n?/)
+
+            //                 console.log(ImageUploadRequest, Type, UploadResponse)
+
+            //                 switch (Type) {
+            //                     case "b": // Success (body / asset id)
+            //                         if (UploadResponse.match(/^op-/)) {
+            //                             console.log("saving Upload Operation Id:", UploadResponse.match(/^op-(.*)/)[1])
+            //                             PostMessage({type: "UpdateOperationId", id: ImageUploadRequest.Id, data: UploadResponse.match(/^op-(.*)/)[1], co: true});
+            //                         } else PostImageUploaded(ImageUploadRequest.Id, {
+            //                             assetId: UploadResponse
+            //                         })
+            //                         break;
+            //                     case "s": // Issue (status code)
+            //                         console.error(`Server returned an issue "${UploadResponse}"`);
+            //                         PostMessage({ type: "UploadError", message: "Roblox error code: \"" + UploadResponse + "\"" });
+            //                         PostImageUploaded(ImageUploadRequest.Id, {
+            //                             imageContent: PLACEHOLDER_IMAGE
+            //                         });
+            //                         break;
+            //                     case "e": // Error (error)
+            //                         console.error(`Server returned an error "${UploadResponse}"`);
+            //                         PostMessage({ type: "UploadError", message: "Roblox error message: \"" + UploadResponse + "\""  });
+            //                         PostImageUploaded(ImageUploadRequest.Id, {
+            //                             imageContent: PLACEHOLDER_IMAGE
+            //                         });
+            //                         break;
+            //                 }
+            //             })
+
+            //             // if (parseInt(Response)) {
+            //             //     PostImageUploaded(data.Id, {
+            //             //         assetId: Response
+            //             //     })
+            //             // } else {
+            //             //     console.error(`Server returned unexpected response: "${Response}"\nstatus: ${res.status}: "${res.statusText}"`);
+            //             //     PostMessage({ type: "UploadError", message: Response && Response != "" ? Response : "Error code: " + res.statusText });
+            //             //     PostImageUploaded(data.Id, {
+            //             //         imageContent: PLACEHOLDER_IMAGE
+            //             //     });
+            //             // }
+            //         })
+            //         .catch(async res => {
+            //             const Message = `"${res.statusText || res.message}"`;
+            //             console.error(`Server returned unexpected response: ${Message}`);
+
+            //             NumImagesFinished += 1;
+            //             PostMessage({ type: "UploadError", message: Message || "Proxy server error" });
+            //             PostImageUploaded(data.Id, {
+            //                 imageContent: PLACEHOLDER_IMAGE
+            //             });
+            //         })
+            //         PendingImageOperations = [];
+            //     } catch (e) {
+            //         console.error(`Server returned unexpected response: "${e}"`);
+
+            //         NumImagesFinished += 1;
+            //         PostMessage({ type: "UploadError", message: (e && e.message) || "Proxy server error" });
+            //         PostImageUploaded(data.Id, {
+            //             imageContent: PLACEHOLDER_IMAGE
+            //         });
+            //     }
+            // }
 
             onmessage = async (event) => {
                 const { type, data, wait } = event.data.pluginMessage;
@@ -562,23 +838,21 @@
 
                         setTimeout(() => {
                             if (NumImagesTotal === 0) {
-                                document.getElementById("abortupload").setAttribute("hidden", true);
+                                document.getElementById("upload_progress").setAttribute("hidden", true);
                                 UploadStatus.textContent = "";
                             }
                         }, 5000);
 
                         DownloadImages();
                         break;
-                    case "CheckOperation":
-                        for (var i = 0; i < 5; i++) {
-                            if (await CheckOperation(data, i) !== undefined) {
-                                break;
-                            }
+                    // case "CheckOperation":
+                    //     if (AbortUpload) return;
+                    //     PendingImageOperations.push(data.operationId || data.Id)
 
-                            Sleep((wait || 1250) * i);
-                        }
-
-                        break;
+                    //     if (!CheckOpsDelay) {
+                    //         CheckOpsDelay = setTimeout(UploadImages, 800)
+                    //     }
+                    //     break;
                     case "ExportImage":
                         if (Settings.DownloadImages) {
                             const blob = new Blob([data.Data.buffer], { type: "image/" + data.Format });
@@ -591,97 +865,43 @@
                         if (!Settings.UploadImages) {
                             console.warn("[Figma to Roblox] Tried exporting Image, but Upload Images is disabled")
                             PostImageUploaded(data.Id, {
-                                imageContent: "rbxasset://textures/StudioSharedUI/TransparentWhiteImagePlaceholder.png"
+                                imageContent: PLACEHOLDER_IMAGE
                             });
                             return;
-                        } else if (!Settings.CloudApiKey || !Settings.UploaderId || Settings.CloudApiKey == "" || Settings.UploaderId == "") {
+                        } else if (!Settings.CloudApiKey || !Settings.UploaderId || Settings.CloudApiKey.length !== 964 || Settings.UploaderId == "") {
                             console.warn("Cloud API Key is not set");
-                            PostMessage({ type: "UploadError", message: "Cloud API Key is not set" });
+                            PostMessage({ type: "UploadError", message: "Cloud API Key is not set, please create one at: https://create.roblox.com/dashboard/credentials?activeTab=ApiKeysTab\n" });
                             PostImageUploaded(data.Id, {
-                                imageContent: "rbxasset://textures/StudioSharedUI/TransparentWhiteImagePlaceholder.png"
+                                imageContent: PLACEHOLDER_IMAGE
                             });
                             return;
                         }
 
                         if (AbortUpload) return;
-
-                        document.getElementById("abortupload").removeAttribute("hidden");
                         NumImagesTotal += 1;
                         UpdateUploadStatus();
 
-                        const Form = new FormData();
                         const blob = new Blob([data.Data.buffer], { type: "image/" + data.Format });
 
+                        if (data.Name === "") data.Name = "ExportedImage";
                         if (Settings.DownloadImages) {
                             data.ImageBlob = blob;
                             Images.push(data);
                         }
 
-                        if (data.Name === "") data.Name = "ExportedImage";
+                        const bytes = [];
+                        data.Data.forEach(b => bytes.push(b))
 
-                        Form.append("request", JSON.stringify({
-                            assetType: "Image",
-                            displayName: data.Name,
-                            description: "Exported from Figma",
-                            creationContext: {
-                                creator: {
-                                    [Settings.UploaderType + "Id"]: parseFloat(Settings.UploaderId),
-                                }
-                            }
-                        }));
-                        Form.append("fileContent", blob, data.Name + "." + data.Format);
+                        PendingImageDataUploads.push([
+                            data.Name + "." + data.Format,
+                            bytes
+                        ])
+                        PendingImageUploads.push(data)
 
-                        fetch("https://apis.roblox.com/assets/v1/assets", {
-                            //mode: "no-cors",
-                            method: "POST",
-                            headers: {
-                                //["Content-Type"]: "multipart/form-data; boundary=-16300",
-                                //["Accept"]: "multipart/form-data",
-                                //["Accept"]: "data/json",
-                                //["Content-Language"]: "en-US",
-                                ["x-api-key"]: Settings.CloudApiKey,
-                            },
-                            body: Form
-                        }).then(res => res.json())
-                        .then(async InitialResponse => {
-                            // Check if already done, and if so return upload response
-                            if (InitialResponse.done == true) {
-                                NumImagesFinished += 1;
-                                PostImageUploaded(data.Id, UploadResponse);
-                                return;
-                            } else if (InitialResponse.errors || !InitialResponse.operationId || !InitialResponse.path) {
-                                NumImagesFailed += 1;
-                                // return placeholder as to not interrupt exporting
-                                PostImageUploaded(data.Id, {
-                                    imageContent: "rbxasset://textures/StudioSharedUI/TransparentWhiteImagePlaceholder.png"
-                                });
-
-                                if (InitialResponse.code && InitialResponse.message) {
-                                    InitialResponse.type = "UploadError";
-                                    PostMessage(InitialResponse);
-                                } else if (InitialResponse.status) console.error(`Image POST returned status ${InitialResponse.status}, "${InitialResponse.title}", errors:`, InitialResponse.errors[""] || InitialResponse.errors.map(err => err.message).join(", "))
-                                else {
-                                    PostMessage({ type: "UploadError", message: InitialResponse.errors[0].message });
-                                    console.error(`Image POST returned errors:`, InitialResponse.errors.map(err => err.message).join(", "));
-                                }
-                                return;
-                            }
-
-                            // Update the origin node so if we fail to finish it can be recovered from the node's plugin properties
-                            PostMessage({ type: "UpdateOperationId", id: data.Id, data: InitialResponse.operationId });
-
-                            if (AbortUpload) return;
-
-                            Sleep(1200);
-                            let IsUploading = true;
-                            data.operationId = InitialResponse.operationId;
-
-                            for (var i = 0; i < 80; i++) {
-                                if (await CheckOperation(data, i) !== undefined) break;
-
-                                Sleep((wait || 1000) * i);
-                            }
-                        });
+                        if (!UploadDelay) {
+                            document.getElementById("upload_progress").removeAttribute("hidden");
+                            UploadDelay = setTimeout(UploadImages, 800)
+                        }
 
                         break;
 
