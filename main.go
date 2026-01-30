@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/joho/godotenv/autoload"
 	"github.com/valyala/fasthttp"
 )
 
