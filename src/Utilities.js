@@ -22,6 +22,7 @@ var Flags = {
     ApplyPadding: false, // True: will offset to account for padding (requires ApplyAnchorPoint to be enabled)
     ConvertAutoLayoutsToScrollFrames: true, // True: will convert auto layouts to scrolling frames globally
     IgnoreImageStrokeExport: true, // When uploading an element as an image this will remove the stroke on the uploaded image
+    UseLocalProxy: false, // True: use localhost:10582, False: use a proxy in nearest region
 
     // Debugging
     ForceUploadImages: false, // Skips image matching (ignoring cached ids), upload is still overwritten by ImageUploadTesting
@@ -63,6 +64,37 @@ function Notify(Message, Options) {
     if (CurrentNotification) CurrentNotification.cancel();
 
     CurrentNotification = figma.notify(Message, Options || undefined);
+}
+
+function NotifyImportantMessage(Message) {
+    alert(Message)
+}
+
+let MessageQueue = [];
+
+function AppendUnsupportedAction(message, node) {
+    MessageQueue.push({
+        // type: "Unsupported",
+        message,
+        node
+    })
+}
+
+function PushMessageQueue() {
+    try {
+        if (MessageQueue.length === 0) return;
+
+        let Message = "DESIGN ISSUES:\n"
+        MessageQueue.forEach((info, i) => {
+            Message += `${i + 1}) ${info.message} (Problematic node: "${info.node.name}")${i == 1 ? "" : "\n"}`
+        })
+
+        MessageQueue = [];
+
+        alert(Message)
+    } catch (e) {
+        alert(`FAILED to display design issues, got error "${e}"!`)
+    }
 }
 
 function Debounce(function_, wait = 100, options = {}) {
@@ -171,5 +203,10 @@ module.exports = {
     Flags,
     NotifyError,
     Notify,
+    NotifyImportantMessage,
+
+    AppendUnsupportedAction,
+    PushMessageQueue,
+
     Debounce
 }

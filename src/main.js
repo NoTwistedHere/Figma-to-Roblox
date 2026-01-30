@@ -43,7 +43,7 @@
 */
 
 const Conversions = require('./Conversions.js');
-const { Flags, NotifyError, Notify } = require('./Utilities.js');
+const { Flags, NotifyError, Notify, PushMessageQueue } = require('./Utilities.js');
 const { GetNodeProperties, XMLTypes, Settings, UpdateImage, UpdateOperationId, GetImageFromOperation, IsDone, OnStart } = require('./Converters.js');
 const HighlightNodes = require("./Flags/HighlightNodes.js");
 
@@ -173,8 +173,11 @@ function LoopNodes(Nodes, ParentObject) {
             LocalLayoutOrder += 1;
         }
 
+        let IgnoreChildren;
+
         if (Node.type === "BOOLEAN_OPERATION") { // No ~Temp added as a NodeType & create as if a group
             figma.notify("Boolean Operations may give undesired results", {timeout: 1800})
+            IgnoreChildren = true
             // Booleans are treated as groups
             // FileContent += `<Item class="${Properties.Class}" referent="RBX0">\n<Properties>\n`
             // FileContent += ConvertObject(Properties, ParentObject) + "\n</Properties>\n" + LoopNodes(Node.children, Properties);
@@ -340,7 +343,7 @@ function LoopNodes(Nodes, ParentObject) {
                 New += LoopChildren(Properties.Children, ParentObject);
             }
             // Loop all Node Children
-            if ((Properties._hasExport || !Properties.Image) && Node.children) New += LoopNodes(Node.children, Properties);
+            if (!IgnoreChildren && (Properties._hasExport || !Properties.Image) && Node.children) New += LoopNodes(Node.children, Properties);
         //}
 
         const ConvertAnchorPoint = function(SizeX, SizeY) {
@@ -570,6 +573,8 @@ async function RunPlugin() { // this is technecally a codegen plugin?
         NotifyError("Figma to Roblox experienced an unexpected error, please make a bug report in discord https://discord.gg/DWCGss4vry; " + e.message);
     }
 
+    PushMessageQueue()
+
     if (Nodes) {
         try {
             const ImageOperations = Nodes.replaceAll(/{FTR_([0-9a-zA-Z -:]+)}/g, (_, Id) => {
@@ -595,8 +600,6 @@ async function RunPlugin() { // this is technecally a codegen plugin?
     setTimeout(() => {
         RunDebounce = false
     }, 2500)
-    //RunDebounce = false
-
 }
 
 figma.skipInvisibleInstanceChildren = true;
@@ -613,9 +616,9 @@ figma.ui.onmessage = msg => {
         case "run":
             RunPlugin();
             break;
-        case "UpdateOperationId":
-            UpdateOperationId(msg);
-            break;
+        // case "UpdateOperationId":
+        //     UpdateOperationId(msg);
+        //     break;
         case "ImageUploaded":
             UpdateImage(msg);
             break;
@@ -632,7 +635,7 @@ figma.ui.onmessage = msg => {
             });
             break;
         case "Notify":
-            if (msg.error) NotifyError(msg.message);
+            if (msg.error) NotifyError(msg.message, msg.error ? { timeout: msg.timeout, error: true } : undefined);
             else Notify(msg.message);
             break;
         case "SetAsync":
@@ -720,11 +723,6 @@ new Promise((resolve, reject) => {
         settings: StoredSettings
     })
 });
-
-// TODO: Visualise Buttons & Scrolling frames? I can't believe annotations are paid :(
-// figma.on("close", () => {
-//     Visualisers.forEach(Node => Node.remove())
-// })
 
 switch (figma.command) {
     case "export":

@@ -9,10 +9,13 @@
     "networkAccess": {
         "allowedDomains": [
             "https://apis.roblox.com/assets/v1/",
-            "https://cdn.jsdelivr.net/npm/water.css@2/out/dark.css",
-            "https://unpkg.com/axios@1.4.0/dist/axios.min.js",
-            "https://unpkg.com/jszip@3.7.1/dist/jszip.js"
-        ]
+            "https://cdn.jsdelivr.net/npm/water.css@2/out/water.css",
+            "https://unpkg.com/jszip@3.7.1/dist/jszip.js",
+            "https://img.lightshot.app",
+            "https://figma-to-roblox-proxy.onrender.com",
+            "http://localhost:10582"
+        ],
+        "reasoning": "Localhost is used to optionally allow for local hosting the proxy"
     },
     "documentAccess": "dynamic-page",
     "ui": "src/index.html",

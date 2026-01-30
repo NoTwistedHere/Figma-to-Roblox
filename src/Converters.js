@@ -1,5 +1,5 @@
 const Conversions = require("./Conversions");
-const { Flags, NotifyError, Notify } = require("./Utilities");
+const { Flags, NotifyError, NotifyImportantMessage, AppendUnsupportedAction } = require("./Utilities");
 const createHash = require("create-hash/browser");
 
 let AbortImageUpload = false;
@@ -83,7 +83,7 @@ function ConvertFill(Fill, Object) {
 
 function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout) {
     let AssetId = Node.getPluginData("AssetId");
-    const OperationId = Node.getPluginData("OperationId");
+    const OperationId = false; //Node.getPluginData("OperationId");
 
     if (AssetId && AssetId.match(/[0-9]+/)) AssetId = AssetId.match(/[0-9]+/)[0];
 
@@ -260,13 +260,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                         });
 
                         Properties.Image = `rbxassetid://${AssetId}`
-                        UpdateImage({id: UploadId, data: {
-                            "assetId": AssetId,
-                            "moderationResult": {
-                                "moderationState": "Approved"
-                            },
-                            "state": "Active"
-                        }});
+                        UpdateImage({id: UploadId, data: AssetId});
                         return;
                     } else if (AssetId) console.warn("Node's image has changed, uploading")
 
@@ -295,8 +289,8 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                 }
 
                 Node.setPluginData("ImageHash", _ImageHash);
-            } {
-                NotifyError(`FAILED to save image hash for Node "${Node.name}" (${Node.id}), this means it might be reuploaded every time`)
+            } else {
+                NotifyError(`FAILED to create an image hash for Node "${Node.name}" (${Node.id}), this means it might be reuploaded every time`)
                 console.warn("FAILED to create an ImageHash for Node", Node, Properties);
             }
         }
@@ -338,7 +332,7 @@ function UpdateImage(msg, abort) {
         console.warn(`Failed to find Image Node "${msg.id}":`, msg);
         ImagesRemaining -= 1;
         return;
-    } else if (typeof(msg.data) === "string") { // Image uploaded
+    } else if (typeof(msg.data) === "string") {
         //ImageInfo.Node.setPluginData("OperationId", "");
         //figma.notify(`Failed to upload Image Node "${msg.id}": ${msg.data}`);
         console.warn(`Failed to upload Image Node "${msg.id}":`, msg);
@@ -346,22 +340,22 @@ function UpdateImage(msg, abort) {
         return;
     }
 
-    let ModerationResult = msg.data.moderationResult
+    // let ModerationResult = msg.data.moderationResult
 
-    if (Flags.AwaitModeration && ModerationResult && (ModerationResult.moderationState != "Approved" && ModerationResult.moderationState != "MODERATION_STATE_APPROVED")) {
-        if (msg.co && Flags.ReuploadStuckImages) {
-            ExportImage(ImageInfo.Node, ImageInfo.Properties, false)
-            return;
-        }else if (ModerationResult.moderationState === "Reviewing") {
-            figma.notify(`Image Element ${msg.id} took too long to pass moderation, Image Id: ${msg.data.assetId || msg.data.path}`)
-            console.warn(`Image Element ${msg.id} took too long to pass moderation:`, ModerationResult, msg);
-        } else {
-            figma.notify(`Image Element ${msg.id} failed moderation (check console for more info); moderation state: ${ModerationResult.moderationState}`);
-            console.warn(`Image Element ${msg.id} failed moderation:`, ModerationResult, msg);
-        }
+    // if (Flags.AwaitModeration && ModerationResult && (ModerationResult.moderationState != "Approved" && ModerationResult.moderationState != "MODERATION_STATE_APPROVED")) {
+    //     if (msg.co && Flags.ReuploadStuckImages) {
+    //         ExportImage(ImageInfo.Node, ImageInfo.Properties, false)
+    //         return;
+    //     }else if (ModerationResult.moderationState === "Reviewing") {
+    //         figma.notify(`Image Element ${msg.id} took too long to pass moderation, Image Id: ${msg.data.assetId || msg.data.path}`)
+    //         console.warn(`Image Element ${msg.id} took too long to pass moderation:`, ModerationResult, msg);
+    //     } else {
+    //         figma.notify(`Image Element ${msg.id} failed moderation (check console for more info); moderation state: ${ModerationResult.moderationState}`);
+    //         console.warn(`Image Element ${msg.id} failed moderation:`, ModerationResult, msg);
+    //     }
 
-        //ImagesRemaining -= 1; return;
-    }
+    //     //ImagesRemaining -= 1; return;
+    // }
 
     const PreviousAssetId = ImageInfo.Node.getPluginData("AssetId");
     let Content = msg.data.imageContent || msg.data.assetId;
@@ -404,7 +398,7 @@ function GetImageFromOperation(OperationId) {
 
 function IsDone() {
     console.log("Checking IsDone, Images Remaning:", ImagesRemaining);
-    if (ImagesRemaining === 0) {
+    if (ImagesRemaining <= 0) {
         ImageUploads.splice(0, ImageUploads.length);
         ImageUploadsReady = 0;
         return true
@@ -434,6 +428,7 @@ const PropertyTypes = {// the only return value should be nothing or an object c
     },
     ["fills"]: (Value, Object, Node) => {
         if (/*Value.length > 1 ||*/ Value == figma.mixed) {
+            AppendUnsupportedAction("Frames can only support the following 'Fill' types: Solid Colour, Image, Linear Gradient - any other must be exproted as an image!", Node)
             return console.warn(`Frame ${Object.Name} cannot have more than 1 fill`);
         } else if (Value.length === 0 /*|| Object._hasExport*/) { // if the export is exported white, _hasExport should be false so we can recover the per-item colours:
             Object.BackgroundTransparency = 0;
@@ -486,8 +481,12 @@ const PropertyTypes = {// the only return value should be nothing or an object c
             Object.BackgroundTransparency = Transparency;
         }
     },
-    ["cornerRadius"]: (Value, Object) => {
-        if (Value !== 0 && Value !== figma.mixed && !Object._hasExport) {
+    ["cornerRadius"]: (Value, Object, Node) => {
+        if (Value == figma.mixed) {
+            AppendUnsupportedAction("CornerRadius must be the same for all corners!", Node)
+            return;
+        }
+        if (Value !== 0 && !Object._hasExport) {
             Object.Children.forEach((Stroke) => {
                 if (Stroke.Class === "UIStroke") Stroke.LineJoinMode = Conversions.LineJoinModes.indexOf("ROUND");
             })
@@ -550,12 +549,15 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         })
     },
     ["strokes"]: (Value, Object, Node) => {
-        if (Value.length > 1) return console.warn(`Frame ${Object.Name} cannot have more than 1 stroke`);
-        else if (Value.length === 0 || Object._ExportAsImage && !Object._ExportWithoutStroke) {
+        if (Value.length > 1) {
+            AppendUnsupportedAction("Maxiumum number of strokes on any given Node is 1!", Node)
+            return console.warn(`Frame ${Object.Name} cannot have more than 1 stroke`);
+        } else if (Value.length === 0 || Object._ExportAsImage && !Object._ExportWithoutStroke) {
+            return;
+        } else if (Node.strokeWeight == figma.mixed) {
+            AppendUnsupportedAction("Strokes can only be applied to ALL SIDES!", Node)
             return;
         }
-
-        var Stroke = Value[0];
 
         var StrokeObject = {
             Class: "UIStroke",
@@ -580,16 +582,6 @@ const PropertyTypes = {// the only return value should be nothing or an object c
             Children: [],
         }
 
-        const Alignment = Node.strokeAlign; // INSIDE, OUTSIDE, CENTER
-        const Weight = Node.strokeWeight * (Alignment === "INSIDE" ? 0 : Alignment === "CENTER" ? 0.5 : 1);
-
-        if (Weight > 0) {
-            if (Object.EffectRadius) {
-                Object.EffectRadius.X += Weight;
-                Object.EffectRadius.Y += Weight;
-            } else Object.EffectRadius = {X: Weight, Y: Weight}
-        }
-
         var [Colour, Transparency] = ConvertFill(Stroke, StrokeObject);
 
         StrokeObject.Color = Colour;
@@ -602,6 +594,16 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         } else {
             //Object._HasStroke = true;
             Object.Children.push(StrokeObject);
+        }
+
+        const Alignment = Node.strokeAlign; // INSIDE, OUTSIDE, CENTER
+        const Weight = Node.strokeWeight * (Alignment === "INSIDE" ? 0 : Alignment === "CENTER" ? 0.5 : 1);
+
+        if (Weight > 0) {
+            if (Object.EffectRadius) {
+                Object.EffectRadius.X += Weight;
+                Object.EffectRadius.Y += Weight;
+            } else Object.EffectRadius = {X: Weight, Y: Weight}
         }
     },
     ["characters"]: (Value, Object, Node) => {
@@ -1544,7 +1546,11 @@ function GetNodeProperties(Node, Settings, ParentObject) {
     // Loop Node properties
     Object.getOwnPropertyNames(Object.getPrototypeOf(Node)).forEach((i) => {
         if (PropertyTypes[i]) {
-            PropertyTypes[i](Node[i], Properties, Node, ParentObject);
+            try {
+                PropertyTypes[i](Node[i], Properties, Node, ParentObject);
+            } catch (e) {
+                NotifyImportantMessage(`Unhandled error while converting property "${i}" for Node "${i}", error: "${e}"\nPlease report this in #bug-reports OR #plugin-help in the discord server (https://discord.gg/DWCGss4vry)`)
+            }
         }
     });
 
