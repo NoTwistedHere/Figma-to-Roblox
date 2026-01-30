@@ -1,27 +1,8 @@
-#### name: FTR_UploadProxy
+### Host the Image Uploading Proxy yourself locally,
+How to use:
+1)  * Download the [latest release (for Windows)](https://github.com/NoTwistedHere/Figma-to-Roblox/releases)
+    * Build it from source
 
-## Hosting websites:
-
-### Render Free
-https://dashboard.render.com/
-<b>
-* Price: $0/mo
-* Bandwidth: 100 GB / month
-* EU/US/ASIA
-</b>
-
-### Corsfix Lite Package:
-https://corsfix.com/pricing
-
-Unlimited requests and data transfer for text contents (JSON, HTML, etc.) with max 1MB file size.
-
-RPM is shared across all visitors, unlike standard plans where RPM is per individual visitor IP.
-<b>
-* Price: $3.99/mo
-* Unlimited text requests
-* Unlimited data transfer
-* 600 RPM (shared)
-* EU
-</b>
-
-3) https://www.netlify.com/pricing/
+2) Go to the plugin within Figma, scroll down to the Image Uplading section and enable 'Use Localhost Proxy'
+3) Run the executable, wait until you see 'Attempting to listen on port'
+4) You are good to go, ensure you have your Cloud API Key set and hit 'Convert Selection'
