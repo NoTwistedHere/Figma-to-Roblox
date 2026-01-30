@@ -1,0 +1,6 @@
+services:
+ - type: web
+   name: figma-to-roblox-proxy
+   env: go
+   buildCommand: go build app
+   startCommand: ./app
