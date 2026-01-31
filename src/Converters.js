@@ -559,6 +559,8 @@ const PropertyTypes = {// the only return value should be nothing or an object c
             return;
         }
 
+        const Stroke = Value[0]
+
         var StrokeObject = {
             Class: "UIStroke",
             Name: "UIStroke",
