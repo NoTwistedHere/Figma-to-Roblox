@@ -590,6 +590,7 @@
                 NumImagesPendingApproval = 0;
                 NumImagesFailed = 0;
                 AbortUpload = false;
+                ImageUploadRequest = [];
                 PostMessage({ type: 'run' });
             }
             document.getElementById("createpreset").onclick = () => {
@@ -613,6 +614,7 @@
                 UploadDelay = undefined;
                 ImageUploadController = undefined;
                 StartedAt = undefined;
+                ImageUploadRequest = [];
 
                 PostMessage({ type: 'AbortUpload' });
             }
@@ -671,6 +673,7 @@
 
                         ImageUploadResults.forEach((RawUploadResponse, ImageIndex) => {
                             const ImageUploadRequest = PendingImageUploads[ImageIndex];
+                            if (!ImageUploadRequest || !ImageUploadRequest.Id) return console.error("Image Upload has no 'Id' property!", ImageUploadRequest)
                             const [_, Type, UploadResponse] = RawUploadResponse.match(/([bes]):(.*)\n?/)
 
                             console.log(ImageUploadRequest, Type, UploadResponse)
@@ -715,6 +718,7 @@
                         PostMessage({ type: "UploadError", message: Message || "Proxy server error" });
 
                         PendingImageUploads.forEach(data => {
+                            if (!data || !data.Id) return console.error("Image Upload has no 'Id' property!", ImageUploadRequest)
                             PostImageUploaded(data.Id, {
                                 imageContent: PLACEHOLDER_IMAGE
                             });

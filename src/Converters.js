@@ -428,6 +428,8 @@ const PropertyTypes = {// the only return value should be nothing or an object c
     },
     ["fills"]: (Value, Object, Node) => {
         if (/*Value.length > 1 ||*/ Value == figma.mixed) {
+            if (Node.type !== "TEXT") return;
+
             AppendUnsupportedAction("Frames can only support the following 'Fill' types: Solid Colour, Image, Linear Gradient - any other must be exproted as an image!", Node)
             return console.warn(`Frame ${Object.Name} cannot have more than 1 fill`);
         } else if (Value.length === 0 /*|| Object._hasExport*/) { // if the export is exported white, _hasExport should be false so we can recover the per-item colours:
