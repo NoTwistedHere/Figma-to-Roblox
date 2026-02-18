@@ -524,8 +524,13 @@
                 for (var [key, value] of Object.entries(Settings)) {
                     switch (key) {
                         case "ImageUploadTestData":
-                        case "CloudApiKey":
                         case "DefaultExport":
+                            break;
+                        case "CloudApiKey":
+                            TempSanitisedSettings[key] = value.length === 964 ? "VALID" : "INVALID"
+                            break;
+                        case "UploaderId":
+                            TempSanitisedSettings[key] = ("#").repeat(value.length)
                             break;
                         default:
                             if (typeof(value) !== "string" || value.substr(0, 2) !== "n+") TempSanitisedSettings[key] = value;
