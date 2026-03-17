@@ -527,7 +527,7 @@
                         case "DefaultExport":
                             break;
                         case "CloudApiKey":
-                            TempSanitisedSettings[key] = value.length === 964 ? "VALID" : "INVALID"
+                            TempSanitisedSettings[key] = (value.length > 960 && value.length < 970) ? "VALID" : "INVALID"
                             break;
                         case "UploaderId":
                             TempSanitisedSettings[key] = ("#").repeat(value.length)
@@ -876,7 +876,7 @@
                                 imageContent: PLACEHOLDER_IMAGE
                             });
                             return;
-                        } else if (!Settings.CloudApiKey || !Settings.UploaderId || Settings.CloudApiKey.length !== 964 || Settings.UploaderId == "") {
+                        } else if (!Settings.CloudApiKey || !Settings.UploaderId || !(Settings.CloudApiKey.length > 960 && Settings.CloudApiKey.length < 970) || Settings.UploaderId == "") {
                             console.warn("Cloud API Key is not set");
                             PostMessage({ type: "UploadError", message: "Cloud API Key is not set, please create one at: https://create.roblox.com/dashboard/credentials?activeTab=ApiKeysTab\n" });
                             PostImageUploaded(data.Id, {
