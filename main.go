@@ -16,6 +16,9 @@ import (
 
 var client *fasthttp.Client
 
+const MAX_REQUEST_SIZE = 500 * 1024 * 1024
+const MAX_REQUEST_BODY_SIZE = MAX_REQUEST_SIZE
+
 func main() {
 	client = &fasthttp.Client{
 		MaxIdleConnDuration:      60 * time.Second,
@@ -23,8 +26,10 @@ func main() {
 	}
 
 	server := fasthttp.Server{
-		Handler:          requestHandler,
-		DisableKeepalive: true,
+		Handler:            requestHandler,
+		DisableKeepalive:   true,
+		MaxRequestBodySize: MAX_REQUEST_BODY_SIZE,
+		ReadBufferSize:     MAX_REQUEST_SIZE,
 	}
 
 	port := "10582" // DO NOT CHANGE!
