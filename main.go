@@ -19,6 +19,10 @@ var client *fasthttp.Client
 const MAX_REQUEST_SIZE = 500 * 1024 * 1024
 const MAX_REQUEST_BODY_SIZE = MAX_REQUEST_SIZE
 
+func LogError(msg string, err error) {
+	log.Printf("%s%s%s%s %s%s", TerminalColours["BgRed"], msg, TerminalColours["Default"], TerminalColours["FgRed"], err, TerminalColours["Default"])
+}
+
 func main() {
 	client = &fasthttp.Client{
 		MaxIdleConnDuration:      60 * time.Second,
@@ -34,11 +38,12 @@ func main() {
 
 	port := "10582" // DO NOT CHANGE!
 
-	log.Printf("Attempting to listen on port %s (localhost:%s)", port, port)
+	log.Printf("%sAttempting to listen on port %s (localhost:%s)%s", TerminalColours["FgGreen"], port, port, TerminalColours["Default"])
 
 	if err := server.ListenAndServe(":" + port); err != nil {
-		log.Fatalf("Error in ListenAndServe: %s", err)
+		log.Fatalf("%sError in ListenAndServe: %s%s", TerminalColours["BgRed"], "aaaa", TerminalColours["Default"])
 	}
+
 }
 
 func setCORSHeaders(ctx *fasthttp.RequestCtx) {
@@ -70,10 +75,11 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 	var data RequestBody
 
 	if err := json.Unmarshal(ctx.Request.Body(), &data); err != nil {
-		log.Printf("Error in Decode: %s", err)
+		LogError("Error in Decode:", err)
 		ctx.SetStatusCode(fasthttp.StatusBadRequest)
 		return
 	} else if len(data.Files) == 0 {
+		log.Printf("%sNo Files were passed..%s", TerminalColours["FgRed"], TerminalColours["Default"])
 		ctx.SetStatusCode(fasthttp.StatusBadRequest)
 		return
 	}
@@ -89,6 +95,9 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 
 	var wg sync.WaitGroup
 	var imageResults = ""
+	var AbortUpload bool = false
+
+	log.Printf("Num Files: %d", len(data.Files))
 
 	for i, fileData := range data.Files {
 		name := fileData.Name
@@ -101,51 +110,52 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 		// add req
 		var fw1 io.Writer
 		if fw1, err = w.CreateFormField("request"); err != nil {
-			log.Printf("Error in CreateFormField: %s", err)
+			LogError("Error in CreateFormField:", err)
 			return
 		}
 
 		if _, err = fw1.Write([]byte(finalFormRequest)); err != nil {
-			log.Printf("Error in WriteFormField: %s", err)
+			LogError("Error in WriteFormField:", err)
 			return
 		}
 
 		// add file
 		var fw io.Writer
 		if fw, err = w.CreateFormFile("fileContent", name); err != nil {
-			log.Printf("Error in CreateFormFile: %s", err)
+			LogError("Error in CreateFormField:", err)
 			return
 		}
 
 		if _, err = fw.Write(fileData.Body); err != nil {
-			log.Printf("Error in WriteFormFile: %s", err)
+			LogError("Error in WriteFormField:", err)
 			return
 		}
 
 		// end
 		contentType := w.FormDataContentType()
 		if err := w.Close(); err != nil {
-			log.Printf("Error in Close FormData: %s", err)
+			LogError("Error in Close FormData:", err)
+			return
 		}
-		wg.Add(1)
 
-		if i == 1 {
-			response, err := TryUpload(ApiKey, b, contentType)
+		log.Printf("%sUploading image: %s (%d) %s", TerminalColours["FgCyan"], fileData.Name, i, TerminalColours["Default"])
+
+		wg.Go(func() {
+			if i != 0 {
+				time.Sleep(time.Duration(i*18) * time.Second)
+				if AbortUpload {
+					return
+				}
+			}
+
+			response, isErr := TryUpload(ApiKey, b, contentType)
 			imageResults += response
 
-			wg.Done()
-			if err == false {
-				break
+			if i == 0 && isErr {
+				AbortUpload = true
+				log.Printf("%sInitial Image Upload failed, aborting..%s", TerminalColours["BgRed"], TerminalColours["Default"])
 			}
-		} else {
-			go func() {
-				time.Sleep(time.Duration(i*20) * time.Second)
-				response, _ := TryUpload(ApiKey, b, contentType)
-				imageResults += response
-
-				wg.Done()
-			}()
-		}
+		})
 	}
 
 	wg.Wait()
@@ -160,13 +170,13 @@ func TryUpload(ApiKey string, b bytes.Buffer, contentType string) (string, bool)
 func FormatUploadResponse(uploadBody string, uploadStatus int, uploadErr error) (string, bool) {
 	var result = "b:" + uploadBody
 	if uploadErr != nil {
-		log.Printf("Error in makePOSTRequest: %s", uploadErr.Error())
+		LogError("Error in makePOSTRequest:", uploadErr)
 		result = "e:" + uploadErr.Error()
 	} else if uploadBody == "" {
 		result = "s:" + fmt.Sprint(uploadStatus)
 	}
 
-	return result + "\n", uploadErr == nil
+	return result + "\n", uploadErr != nil
 }
 
 func makePOSTRequest(ApiKey string, Body []byte, ContentType string) (response string, status int, error error) {
@@ -185,7 +195,14 @@ func makePOSTRequest(ApiKey string, Body []byte, ContentType string) (response s
 	requestErr := client.Do(req, resp)
 
 	if requestErr != nil {
-		log.Printf("Error making request to \"%s\": %s", req.URI(), requestErr)
+		log.Printf("%sError making request%s to \"%s%s%s\", got error:%s %s %s",
+			TerminalColours["BgRed"], TerminalColours["Default"], TerminalColours["FgCyan"],
+			req.URI(),
+			TerminalColours["Default"],
+			TerminalColours["FgRed"],
+			requestErr,
+			TerminalColours["Default"],
+		)
 		return "", fasthttp.StatusInternalServerError, requestErr
 	}
 
@@ -194,7 +211,13 @@ func makePOSTRequest(ApiKey string, Body []byte, ContentType string) (response s
 	err := json.Unmarshal(body, &uploadResponse)
 
 	if err != nil {
-		log.Printf("Error unmarshalling data: %s, data: %s", err, string(body))
+		log.Printf("%sError unmarshalling data:%s%s %s%s, data:%s %s %s",
+			TerminalColours["BgRed"], TerminalColours["Default"], TerminalColours["FgRed"],
+			err,
+			TerminalColours["Default"], TerminalColours["FgCyan"],
+			string(body),
+			TerminalColours["Default"],
+		)
 		return "", fasthttp.StatusInternalServerError, errors.New("Error while uploading data")
 	}
 
@@ -205,7 +228,7 @@ func makePOSTRequest(ApiKey string, Body []byte, ContentType string) (response s
 
 	opBody, opStatus, opErr := initiateAwaitUpload(uploadResponse, ApiKey)
 
-	log.Printf("body: %s", opBody)
+	log.Printf("%sbody: %s %s", TerminalColours["FgCyan"], opBody, TerminalColours["Default"])
 
 	return opBody, opStatus, opErr
 }

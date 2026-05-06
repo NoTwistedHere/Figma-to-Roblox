@@ -48,7 +48,7 @@ func awaitUploadOperation(req *fasthttp.Request, attempts int) (response string,
 		return "", fasthttp.StatusInternalServerError, jsonErr
 	}
 
-	log.Printf("Response from \"%s\": %s", req.URI(), string(resp.Body()))
+	log.Printf("Response from \"%s%s%s\":%s %s %s", TerminalColours["FgCyan"], req.URI(), TerminalColours["Default"], TerminalColours["FgYellow"], string(resp.Body()), TerminalColours["Default"])
 
 	if data.Response != nil { // Likely Success
 		defer fasthttp.ReleaseRequest(req)

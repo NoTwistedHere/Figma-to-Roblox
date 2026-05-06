@@ -5,6 +5,37 @@ import (
 	"fmt"
 )
 
+var TerminalColours = map[string]string{
+	"Default":   "\033[0m",
+	"FgDefault": "\033[30m",
+	"BgDefault": "\033[49m",
+
+	"FgBlack":  "\033[30m",
+	"FgRed":    "\033[31m",
+	"FgGreen":  "\033[32m",
+	"FgYellow": "\033[33m",
+	"FgBlue":   "\033[34m",
+	"FgCyan":   "\033[36m",
+
+	"FgBrRed":    "\033[91m",
+	"FgBrGreen":  "\033[92m",
+	"FgBrYellow": "\033[93m",
+	"FgBrBlue":   "\033[94m",
+	"FgBrCyan":   "\033[96m",
+
+	"BgRed":    "\033[41m",
+	"BgGreen":  "\033[42m",
+	"BgYellow": "\033[43m",
+	"BgBlue":   "\033[44m",
+	"BgCyan":   "\033[46m",
+
+	"BgBrRed":    "\033101m",
+	"BgBrGreen":  "\033102m",
+	"BgBrYellow": "\033103m",
+	"BgBrBlue":   "\033104m",
+	"BgBrCyan":   "\033106m",
+}
+
 type UploadModerationResult struct {
 	ModerationState string `json:"moderation_state"` // Approved, Reviewing, Denied
 }
