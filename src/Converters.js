@@ -3,6 +3,7 @@ const { Flags, NotifyError, NotifyImportantMessage, AppendUnsupportedAction } = 
 const createHash = require("create-hash/browser");
 
 let AbortImageUpload = false;
+let ImageUploadTimeoutId;
 let ImagesRemaining = 0;
 let ImageUploadsReady = 0;
 const ImageExports = {};
@@ -204,16 +205,43 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
         }
     }
 
+    if (!UploadId) {
+        console.warn(`UploadId is undefned for node "${Node.name}" (${Node.id})! Generating a random number..`)
+
+        while (!UploadId || ImageUploads.find((id) => id === UploadId)) {
+            UploadId = Math.random() * 1024;
+        }
+    }
+
     //Properties.UploadId = UploadId;
     Properties.Image = `{FTR_${UploadId}}`
 
+    let IncrementImageCount = true;
+
     if (ImageUploads.find((id) => id === UploadId)) {
         if (NodeWasCloned) ExportNode.remove();
-        return UploadId;
+
+        const OtherNode = ImageExports[UploadId].Node;
+
+        if (OtherNode.width * OtherNode.height >= Node.width * Node.height) {
+            return UploadId;
+        }
+
+        IncrementImageCount = false;
+        console.warn(`[Image Export] Overwriting Node "${OtherNode.name}" with a larger version, "${Node.name}"`)
     }
     ImageUploads.push(UploadId);
-    ImagesRemaining += 1;
+    if (IncrementImageCount) ImagesRemaining += 1;
     if (Properties._ImageHash) Node.setPluginData("ImageHash", Properties._ImageHash);
+
+    ImageExports[UploadId] = { // Used as a placeholder
+        Node: Node,
+        Properties: Properties,
+        Bytes: undefined, // Uint8Array
+        UploadId: UploadId
+    }
+
+    if (ImageUploadTimeoutId) clearTimeout(ImageUploadTimeoutId);
 
     ExportNode.exportAsync(CustomExport || Settings.DefaultExport).then(Bytes => {
         if (NodeWasCloned) ExportNode.remove();
@@ -229,16 +257,8 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
             };
         }
 
-        if (!ImageExports[UploadId]) {
-            ImageExports[UploadId] = {
-                Node: Node,
-                Properties: Properties,
-                Bytes: Bytes, // Uint8Array
-                UploadId: UploadId
-            }
-        }
-
-        ImageUploadsReady += 1;
+        ImageExports[UploadId].Bytes = Bytes; // Uint8Array
+        if (IncrementImageCount) ImageUploadsReady += 1;
 
         if (!Properties._ImageHash) {
             const _ImageHash = createHash("sha256").update(Bytes).digest("hex");
@@ -300,9 +320,20 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
         // Test post image upload with template data
         if (Flags.ImageUploadTesting) UpdateImage({id: UploadId, data: Flags.ImageUploadBoilerplate});
         // Upload Image
-        else setTimeout(() => {
+        else {
+            if (ImageUploadsReady === ImagesRemaining) {
+                if (ImageUploadTimeoutId) clearTimeout(ImageUploadTimeoutId);
+
+                ImageUploadTimeoutId = setTimeout(() => {
+                    figma.ui.postMessage({
+                        type: "UploadImages"
+                    });
+                    ImageUploadTimeoutId = null;
+                }, 450)
+            }
+
             figma.ui.postMessage({
-                type: "UploadImage",
+                type: "AddImageToUpload",
                 wait: ImageUploadsReady > 5 ? 6500 : ImageUploadsReady > 2 ? 3200 : 2150,
                 data: {
                     Data: Bytes,
@@ -311,7 +342,7 @@ function ExportImage(Node, Properties, CustomExport, ForceReupload, FullWhiteout
                     Format: (CustomExport ? CustomExport.format : "PNG").toLowerCase()
                 }
             })
-        }, ImageUploadsReady > 3 ? (ImageUploadsReady / 5) * 1000 : 0)
+        }
     });
 
     return UploadId
@@ -357,7 +388,6 @@ function UpdateImage(msg, abort) {
     //     //ImagesRemaining -= 1; return;
     // }
 
-    const PreviousAssetId = ImageInfo.Node.getPluginData("AssetId");
     let Content = msg.data.imageContent || msg.data.assetId;
 
     if (ImageInfo.Properties._ReplacedBy) {
@@ -373,7 +403,15 @@ function UpdateImage(msg, abort) {
         }
 
         ImageInfo.Properties.Image = Content
-    } else ImageInfo.Properties.Image = PreviousAssetId || Content
+    } else {
+        let PreviousAssetId = ImageInfo.Node.getPluginData("AssetId");
+
+        if (PreviousAssetId && !PreviousAssetId.match(/rbxasset/)) {
+            PreviousAssetId = "rbxassetid://" + PreviousAssetId;
+        }
+
+        ImageInfo.Properties.Image = PreviousAssetId || Content;
+    }
 
     ImagesRemaining -= 1;
 }

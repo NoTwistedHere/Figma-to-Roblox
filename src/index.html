@@ -70,8 +70,8 @@
             }
         </style>
 
-        <div hidden id="upload_progress">
-            <span><b>WARNING: Using the public image proxy will result in longer wait times (upto 5 minutes), please be patient!</b></span>
+        <div id="upload_progress" hidden>
+            <span id="public_proxy_warning"><b>WARNING: Using the public image proxy will result in longer wait times (upto 5 minutes), please be patient!</b></span>
             <pre id="upload_status"></pre>
             <button id="abortupload">Abort Upload</button>
         </div>
@@ -216,9 +216,9 @@
             <label for="DownloadImages"><input type="checkbox" id="DownloadImages" name="Export Images as zip"/>Export Images as zip</label>
             <div></div>
 
-            <!-- <input type="checkbox" id="forcereupload" name="Force Reupload Images" />
+            <input type="checkbox" id="forcereupload" name="Force Reupload Images" />
             <label for="forcereupload">Force Reupload Images</label>
-            <div></div> -->
+            <div></div>
 
             <!-- <input type="checkbox" id="reuploadstuck" name="Reupload Stuck Images" />
             <label for="reuploadstuck">Reupload Stuck Images</label>
@@ -374,7 +374,10 @@
                 {
                     name: "UseLocalProxy",
                     id: "uselocalproxy",
-                    type: "checkbox"
+                    type: "checkbox",
+                    onChanged: (Value) => {
+                        document.getElementById("public_proxy_warning")[Value ? "setAttribute" : "removeAttribute"]("hidden", Value);
+                    }
                 },
                 {
                     name: "CloudApiKey",
@@ -468,7 +471,7 @@
             const UploadStatus = document.getElementById("upload_status")
 
             function UpdateUploadStatus() {
-                UploadStatus.textContent = `\nImage status:\nUploading: ${NumImagesTotal}    In Moderation: ${NumImagesPendingApproval}\nFinished: ${NumImagesFinished}/${NumImagesTotal}    Failed: ${NumImagesFailed}\n`
+                UploadStatus.textContent = `Image status:\nUploading: ${NumImagesTotal}    In Moderation: ${NumImagesPendingApproval}\nFinished: ${NumImagesFinished}/${NumImagesTotal}    Failed: ${NumImagesFailed}\n`
             }
 
             function PostImageUploaded(id, UploadResponse, CheckOp) {
@@ -483,7 +486,7 @@
             Options.forEach(Option => {
                 const Element = document.getElementById(Option.id);
 
-                if (Element && Option.instantUpdate) {
+                if (Element && (Option.instantUpdate || Option.onChanged)) {
                     Element.onclick = () => {
                         // ik I could use switch but is it really needed?
                         if (Option.type === "text") Value = Element.value
@@ -493,15 +496,19 @@
                             if (Option.flipped) Value = !Value
                         };
 
-                        if (Value !== undefined && Settings[Option.name] !== Value) {
-                            Settings[Option.name] = Value;
-                            PostMessage({
-                                type: "SetAsync",
-                                key: Option.name,
-                                value: Value,
-                                no_save: Option.no_save,
-                            });
+                        if (Option.instantUpdate) {
+                            if (Value !== undefined && Settings[Option.name] !== Value) {
+                                Settings[Option.name] = Value;
+                                PostMessage({
+                                    type: "SetAsync",
+                                    key: Option.name,
+                                    value: Value,
+                                    no_save: Option.no_save,
+                                });
+                            }
                         }
+
+                        if (Option.onChanged) Option.onChanged(Value, Option);
                     };
                 }
             });
@@ -587,6 +594,8 @@
                             Element.checked = false;
                         }
                     }
+
+                    if (Option.onChanged) Option.onChanged(Value, Option);
                 });
 
                 StartedAt = Date.now();
@@ -604,13 +613,16 @@
             document.getElementById("abortupload").onclick = () => {
                 if (!StartedAt) return;
 
-                const SecondsSince = (Date.now() - StartedAt) / 1000;
-                const MinWaitTime = 50;
-                if (SecondsSince < MinWaitTime) {
-                    PostMessage({ type: "Notify", error: true, timeout: 2000, message: `You must wait at least ${MinWaitTime} seconds before aborting, you can abort in: ${MinWaitTime - SecondsSince} seconds` });
-                    return;
+                if (!Settings.UseLocalProxy) {
+                    const SecondsSince = (Date.now() - StartedAt) / 1000;
+                    const MinWaitTime = 20;
+                    if (SecondsSince < MinWaitTime) {
+                        PostMessage({ type: "Notify", error: true, timeout: 2000, message: `You must wait at least ${MinWaitTime} seconds before aborting, you can abort in: ${MinWaitTime - SecondsSince} seconds` });
+                        return;
+                    }
                 }
 
+                console.warn("Figma to Roblox ABORT IMAGE UPLOAD")
                 AbortUpload = true;
 
                 if (UploadDelay) clearTimeout(UploadDelay);
@@ -655,7 +667,7 @@
                 UploadDelay = undefined;
 
                 try {
-                    // TODO: Select proxy based on IP's TimeZone (or allow user to select their region between America, Europe & Asia)
+                    console.log("PendingImageDataUploads:", PendingImageDataUploads)
 
                     fetch(Settings.UseLocalProxy ? "http://localhost:10582" : "https://figma-to-roblox-proxy.onrender.com", {
                         method: "POST",
@@ -674,17 +686,26 @@
                     .then(async res => {
                         const Response = await res.text();
                         const ImageUploadResults = Response.match(/([bes]:[^\n]+)/mg);
-                        NumImagesFinished = NumImagesTotal; // server can return a single error message for multiple uploads
+
+                        console.warn("upload response:", Response)
+
+                        if (Response === "") {
+                            throw new Error("Proxy returned an empty response")
+                            return;
+                        }
 
                         ImageUploadResults.forEach((RawUploadResponse, ImageIndex) => {
+                            console.log(PendingImageUploads[ImageIndex], RawUploadResponse)
+
                             const ImageUploadRequest = PendingImageUploads[ImageIndex];
-                            if (!ImageUploadRequest || !ImageUploadRequest.Id) return console.error("Image Upload has no 'Id' property!", ImageUploadRequest)
+                            if (!ImageUploadRequest || !ImageUploadRequest.Id) return console.error("Image Upload has no 'Id' property!", ImageUploadRequest, PendingImageUploads, "ImageIndex:", ImageIndex);
                             const [_, Type, UploadResponse] = RawUploadResponse.match(/([bes]):(.*)\n?/)
 
-                            console.log(ImageUploadRequest, Type, UploadResponse)
+                            PendingImageUploads[ImageIndex] = false;
 
                             switch (Type) {
                                 case "b": // Success (body / asset id)
+                                    NumImagesFinished += 1;
                                     if (UploadResponse.match(/^op-/)) {
                                         console.log("saving Upload Operation Id:", UploadResponse.match(/^op-(.*)/)[1])
                                         PostMessage({type: "UpdateOperationId", id: ImageUploadRequest.Id, data: UploadResponse.match(/^op-(.*)/)[1], co: true});
@@ -713,14 +734,30 @@
                             }
                         })
 
+                        if (NumImagesFinished !== NumImagesTotal) {
+                            PendingImageUploads.forEach((data) => {
+                                if (data) {
+                                    PostImageUploaded(data.Id, {
+                                        imageContent: PLACEHOLDER_IMAGE
+                                    })
+                                }
+                            })
+                        }
+
                         PendingImageUploads = [];
+                        PendingImageDataUploads = [];
+                        ImageUploadController = undefined;
                     })
                     .catch(async res => {
-                        const Message = `"${res.statusText || res.message}"`;
+                        NumImagesFinished += 1;
+
+                        let Message = `"${res.statusText || res.message}"`;
                         console.error(`Server returned unexpected response: ${Message}`);
 
-                        NumImagesFinished += 1;
-                        PostMessage({ type: "UploadError", message: Message || "Proxy server error" });
+                        if (Settings.UseLocalProxy && Message === "\"Failed to fetch\"") {
+                            PostMessage({ type: "UploadError", message: "FAILED to upload images, the Locally Hosted Proxy is not running! Please ensure it is running before continuing,", raw: true, includeHelp: true });
+                        } else PostMessage({ type: "UploadError", message: Message || "Proxy server error" });
+
 
                         PendingImageUploads.forEach(data => {
                             if (!data || !data.Id) return console.error("Image Upload has no 'Id' property!", ImageUploadRequest)
@@ -730,15 +767,22 @@
                         })
 
                         PendingImageUploads = [];
+                        PendingImageDataUploads = [];
+                        ImageUploadController = undefined;
                     })
-
-                    PendingImageDataUploads = [];
                 } catch (e) {
                     console.error(`Server returned unexpected response: "${e}"`);
 
+                    let Message = (e && e.message)
+                    if (Settings.UseLocalProxy && Message === "Failed to fetch") {
+                        Message = "Locally hosted proxy is not running!"
+                    }
+
                     NumImagesFinished += 1;
                     PendingImageUploads = [];
-                    PostMessage({ type: "UploadError", message: (e && e.message) || "Proxy server error" });
+                    PendingImageDataUploads = [];
+                    ImageUploadController = undefined;
+                    PostMessage({ type: "UploadError", message: Message || "Proxy server error" });
                     PostImageUploaded(data.Id, {
                         imageContent: PLACEHOLDER_IMAGE
                     });
@@ -869,7 +913,7 @@
                             Images.push(data);
                         }
                         break;
-                    case "UploadImage":
+                    case "AddImageToUpload":
                         if (!Settings.UploadImages) {
                             console.warn("[Figma to Roblox] Tried exporting Image, but Upload Images is disabled")
                             PostImageUploaded(data.Id, {
@@ -883,11 +927,25 @@
                                 imageContent: PLACEHOLDER_IMAGE
                             });
                             return;
+                        } else if (!data.Id) {
+                            return console.error(`Tried uploading an image with an invalid 'Id': ${data.Id}`)
                         }
 
                         if (AbortUpload) return;
-                        NumImagesTotal += 1;
-                        UpdateUploadStatus();
+
+                        let IndexToOverwrite;
+                        if (PendingImageUploads.find((UploadData, Index) => {
+                            if (UploadData.Id === data.Id) {
+                                IndexToOverwrite = Index;
+                                return true;
+                            }
+                        })) {
+                            PendingImageDataUploads.splice(IndexToOverwrite, 1);
+                            PendingImageUploads.splice(IndexToOverwrite, 1);
+                        } else {
+                            NumImagesTotal += 1;
+                            UpdateUploadStatus();
+                        }
 
                         const blob = new Blob([data.Data.buffer], { type: "image/" + data.Format });
 
@@ -906,13 +964,14 @@
                         ])
                         PendingImageUploads.push(data)
 
-                        if (!UploadDelay) {
-                            document.getElementById("upload_progress").removeAttribute("hidden");
-                            UploadDelay = setTimeout(UploadImages, 800)
-                        }
+                        console.log("request image upload", NumImagesTotal, PendingImageDataUploads)
 
                         break;
+                    case "UploadImages":
+                        document.getElementById("upload_progress").removeAttribute("hidden");
+                        setTimeout(UploadImages, 100);
 
+                        break;
                     case "LoadSettings":
                         Settings = event.data.pluginMessage.settings;
 
@@ -927,8 +986,10 @@
                                 else if (Option.type === "checkbox") {
                                     Element.checked = Value || false;
 
-                                    if (Option.flipped) Element.checked = !Element.checked
+                                    if (Option.flipped) Element.checked = !Element.checked;
                                 };
+
+                                if (Option.onChanged) Option.onChanged(Value, Option);
                             }
                         });
 

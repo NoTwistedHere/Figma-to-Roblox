@@ -567,7 +567,7 @@ async function RunPlugin() { // this is technecally a codegen plugin?
                 else setTimeout(Timeout, 1200);
             }
 
-            Timeout()
+            Timeout();
         })
     } catch (e) {
         NotifyError("Figma to Roblox experienced an unexpected error, please make a bug report in discord https://discord.gg/DWCGss4vry; " + e.message);
@@ -627,12 +627,21 @@ figma.ui.onmessage = msg => {
             break;
         case "UploadError":
             const Suggestion = ImageUploadErrorSuggestions[msg.code];
-            const ErrorMsg = msg.code ? msg.code + ': ' + msg.message : msg.message;
+            let ErrorMsg = msg.code ? msg.code + ': ' + msg.message : msg.message;
 
-            NotifyError(`FAILED to upload image, got error ${ErrorMsg}${Suggestion ? ",\r\n" + Suggestion : ""}. Help can found in discord server https://discord.gg/DWCGss4vry`, false, {
-                timeout: 5000,
-                error: true,
-            });
+            if (msg.raw) {
+                if (msg.includeHelp) ErrorMsg += ' Help can found in the discord server https://discord.gg/DWCGss4vry';
+
+                NotifyError(ErrorMsg, false, {
+                    timeout: 5000,
+                    error: true,
+                });
+            } else {
+                NotifyError(`FAILED to upload image, got error ${ErrorMsg}${Suggestion ? ",\r\n" + Suggestion : ""}. Help can found in the discord server https://discord.gg/DWCGss4vry`, false, {
+                    timeout: 5000,
+                    error: true,
+                });
+            }
             break;
         case "Notify":
             if (msg.error) NotifyError(msg.message, msg.error ? { timeout: msg.timeout, error: true } : undefined);
