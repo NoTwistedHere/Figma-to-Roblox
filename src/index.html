@@ -151,13 +151,23 @@
             <div></div>
 
             <label for="ConvertOffsetToScale">
-                <input type="checkbox" id="ConvertOffsetToScale" name="Convert to Scale" />
-                Convert to Scale
+                <input type="checkbox" id="ConvertOffsetToScale" name="Scale Position & Size" />
+                Scale Position & Size
             </label>
             <div class="tooltip">
                 <svg class="info-marker"></svg>
                 <div class="tooltip-hoverspan">
-                    <span class="tooltip-text">Will export all Elements with Scaled Position, rather than Offsetted Position (pixels)</span>
+                    <span class="tooltip-text">Will export all Elements' Position & Size with Scale, rather than Offsett (pixels)</span>
+                </div>
+            </div>
+            <label for="ConvertCornerRadiusToScale">
+                <input type="checkbox" id="ConvertCornerRadiusToScale" name="Scale Corner Radiuses" />
+                Scale Corner Radiuses
+            </label>
+            <div class="tooltip">
+                <svg class="info-marker"></svg>
+                <div class="tooltip-hoverspan">
+                    <span class="tooltip-text">Will export all Corner Radiuses with Scale, rather than Offsett (pixels)</span>
                 </div>
             </div>
             <div></div>
@@ -423,6 +433,11 @@
                     name: "ConvertOffsetToScale",
                     id: "ConvertOffsetToScale",
                     type: "checkbox",
+                },
+                {
+                    name: "ConvertCornerRadiusToScale",
+                    id: "ConvertCornerRadiusToScale",
+                    type: "checkbox"
                 },
                 {
                     name: "ApplyAnchorPoint",

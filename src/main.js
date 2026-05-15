@@ -93,7 +93,7 @@ function ConvertObject(Properties, ParentObject) {
             case "ImageTransparency":
                 // Should always be parented to a group as only groups and sections allow children
                 if (typeof(Value) == "number") {
-                    Value = Properties._Transparency * Value;
+                    Value = (Properties._Transparency || 1) * Value;
                     XML += XMLTypes.number(Key, 1 - Value, false, 10000);
                     break;
                 } else if (Value[0] && Value[0].Transparency !== undefined) {

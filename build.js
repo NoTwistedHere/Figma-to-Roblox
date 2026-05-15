@@ -8421,44 +8421,56 @@ const PropertyTypes = {// the only return value should be nothing or an object c
         }
     },
     ["cornerRadius"]: (Value, Object, Node) => {
-        if (Value == figma.mixed) {
-            AppendUnsupportedAction("CornerRadius must be the same for all corners!", Node)
-            return;
+        if (Object._hasExport || Value === 0) return;
+
+        const CornerRadius = {
+            Class: "UICorner",
+            Type: "UICorner",
         }
-        if (Value !== 0 && !Object._hasExport) {
-            Object.Children.forEach((Stroke) => {
-                if (Stroke.Class === "UIStroke") Stroke.LineJoinMode = Conversions.LineJoinModes.indexOf("ROUND");
+
+        const ShortestDimensionHalved = (Node.width < Node.height ? Node.width : Node.height) / 2;
+        if (Value == figma.mixed) {
+            const PropertyNames = [
+                "TopLeftRadius",
+                "TopRightRadius",
+                "BottomLeftRadius",
+                "BottomRightRadius",
+            ]
+            let CheckIsSizeClamped = true;
+
+            PropertyNames.forEach(Name => {
+                const OffsetValue = Node[Name.charAt(0).toLowerCase() + Name.substring(1)];
+
+                if (CheckIsSizeClamped && OffsetValue > ShortestDimensionHalved) {
+                    CheckIsSizeClamped = false;
+                    AppendUnsupportedAction(`CornerRadius is larger than the Frame's shortest dimension divided by two, got ${OffsetValue}px for ${Name}, max: ${ShortestDimensionHalved}px! Roblox will clamp this.`, Node)
+                }
+
+                CornerRadius[Name] = {
+                    S: Flags.ConvertCornerRadiusToScale ? OffsetValue / ShortestDimensionHalved : 0,
+                    O: Flags.ConvertCornerRadiusToScale ? 0 : OffsetValue,
+                };
             })
 
-            Object._HasCorners = true;
-            Object.Children.push({
-                Class: "UICorner",
-                Type: "UICorner",
-                CornerRadius: {
-                    S: 0,
-                    O: Value,
-                }
-            });
+
+            CornerRadius
+        } else {
+            CornerRadius.CornerRadius = {
+                S: Flags.ConvertCornerRadiusToScale ? Value : 0,
+                O: Flags.ConvertCornerRadiusToScale ? 0 : Value,
+            };
         }
+
+        Object.Children.forEach((Stroke) => {
+            if (Stroke.Class === "UIStroke") Stroke.LineJoinMode = Conversions.LineJoinModes.indexOf("ROUND");
+        })
+
+        Object._HasCorners = true;
+        Object.Children.push(CornerRadius);
     },
     ["effects"]: (Value, Object, Node) => {
         Value.forEach(Effect => {
             switch (Effect.type) {
-                /*case "DROP_SHADOW":
-                    // do something
-                    //
-                    // IDEA:
-                    //      Create a Clone with of the same Size, Offset by some px / AnchorPoint
-                    //      ^ Would have to be an ImageLabel for the same effect, however I haven't thought of attemtping it
-                    //      and it's probably still better to export/upload Rectangles as an image, but Groups and Frames could work
-
-                    // Object.Children.push({
-                    //     Class: "ImageLabel",
-                    //     Name: "DropShadow",
-                    //     BackgroundTransparency:
-                    // })
-
-                    break;*/
                 case "INNER_SHADOW":
                 case "NOISE":
                 case "BACKGROUND_BLUR":
@@ -9490,7 +9502,7 @@ function GetNodeProperties(Node, Settings, ParentObject) {
             try {
                 PropertyTypes[i](Node[i], Properties, Node, ParentObject);
             } catch (e) {
-                NotifyImportantMessage(`Unhandled error while converting property "${i}" for Node "${i}", error: "${e}"\nPlease report this in #bug-reports OR #plugin-help in the discord server (https://discord.gg/DWCGss4vry)`)
+                NotifyImportantMessage(`Unhandled error while converting property "${i}" for Node "${Node.name}", error: "${e}"\nPlease report this in #bug-reports OR #plugin-help in the discord server (https://discord.gg/DWCGss4vry)`)
             }
         }
     });
@@ -9807,6 +9819,7 @@ var Flags = {
     ExportVectors: false, // True: Attempts to export vectors (not for release)
     ExportVectorsAsImage: true, // True: Exports vectors as an image
     ConvertOffsetToScale: true, // True: Converts Position Offset of all Child elements to Scale
+    ConvertCornerRadiusToScale: true, // True: Converts Corner Radii to Scale
     UseSelectionPositionRelativeToScene: true, // True: Will use the (x,y) position of the Upmost Group(s) (should be no.1); False: Set the Upmost Group(s) Position to (0,0) !! note: named "Recentre" !!
     ScrollFrame_ScaleDominantAxis: true, // True: Only scales the dominant axis for elements of scrolling frames (in a list, only the Y axis will be scaled, X will remain using offset)
     TextSizeAdjustment: 1.05, // True: Adjusts the text size (of exported text) to be more accurately match what is seen in figma - why is this even needed, but if you do find yourself needing to adjust/remove I would love to know why & your use case
@@ -10108,7 +10121,7 @@ function ConvertObject(Properties, ParentObject) {
             case "ImageTransparency":
                 // Should always be parented to a group as only groups and sections allow children
                 if (typeof(Value) == "number") {
-                    Value = Properties._Transparency * Value;
+                    Value = (Properties._Transparency || 1) * Value;
                     XML += XMLTypes.number(Key, 1 - Value, false, 10000);
                     break;
                 } else if (Value[0] && Value[0].Transparency !== undefined) {

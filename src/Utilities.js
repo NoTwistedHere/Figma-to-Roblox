@@ -5,6 +5,7 @@ var Flags = {
     ExportVectors: false, // True: Attempts to export vectors (not for release)
     ExportVectorsAsImage: true, // True: Exports vectors as an image
     ConvertOffsetToScale: true, // True: Converts Position Offset of all Child elements to Scale
+    ConvertCornerRadiusToScale: true, // True: Converts Corner Radii to Scale
     UseSelectionPositionRelativeToScene: true, // True: Will use the (x,y) position of the Upmost Group(s) (should be no.1); False: Set the Upmost Group(s) Position to (0,0) !! note: named "Recentre" !!
     ScrollFrame_ScaleDominantAxis: true, // True: Only scales the dominant axis for elements of scrolling frames (in a list, only the Y axis will be scaled, X will remain using offset)
     TextSizeAdjustment: 1.05, // True: Adjusts the text size (of exported text) to be more accurately match what is seen in figma - why is this even needed, but if you do find yourself needing to adjust/remove I would love to know why & your use case
