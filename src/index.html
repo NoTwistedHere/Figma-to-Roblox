@@ -549,7 +549,7 @@
                         case "DefaultExport":
                             break;
                         case "CloudApiKey":
-                            TempSanitisedSettings[key] = (typeof value === "string" && value.length > 0) ? "SET" : "NOT SET"
+                            TempSanitisedSettings[key] = (typeof value === "string" && value.length > 10) ? "SET" : "NOT SET"
                             break;
                         case "UploaderId":
                             TempSanitisedSettings[key] = ("#").repeat(value.length)
@@ -935,9 +935,16 @@
                                 imageContent: PLACEHOLDER_IMAGE
                             });
                             return;
-                        } else if (!Settings.CloudApiKey || !Settings.UploaderId || Settings.UploaderId == "") {
-                            console.warn("Cloud API Key or UploaderId is not set");
-                            PostMessage({ type: "UploadError", message: "Cloud API Key or UploaderId is not set, please create one at: https://create.roblox.com/dashboard/credentials?activeTab=ApiKeysTab\n" });
+                        } else if (!Settings.CloudApiKey || Settings.CloudApiKey.length < 10) {
+                            console.warn("Cloud API Key is not set");
+                            PostMessage({ type: "UploadError", message: "Cloud API Key is not set, please create one at: https://create.roblox.com/dashboard/credentials?activeTab=ApiKeysTab\n" });
+                            PostImageUploaded(data.Id, {
+                                imageContent: PLACEHOLDER_IMAGE
+                            });
+                            return;
+                        } else if (!Settings.UploaderId || Settings.UploaderId == "") {
+                            console.warn("Image UploaderId is not set");
+                            PostMessage({ type: "UploadError", message: "Image Uploader Id is not set, enter your User or Group Id in the image options section.\n" });
                             PostImageUploaded(data.Id, {
                                 imageContent: PLACEHOLDER_IMAGE
                             });
