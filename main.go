@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"mime/multipart"
+	"os"
 	"sync"
 	"time"
 
@@ -15,7 +16,9 @@ import (
 )
 
 var client *fasthttp.Client
+var DebugLogs bool
 
+const PROXY_VERSION = "1"
 const MAX_REQUEST_SIZE = 500 * 1024 * 1024
 const MAX_REQUEST_BODY_SIZE = MAX_REQUEST_SIZE
 
@@ -37,6 +40,7 @@ func main() {
 	}
 
 	port := "10582" // DO NOT CHANGE!
+	DebugLogs = len(os.Args) > 1 && (os.Args[1] == "-d" || os.Args[1] == "--debug")
 
 	log.Printf("%sAttempting to listen on port %s (localhost:%s)%s", TerminalColours["FgGreen"], port, port, TerminalColours["Default"])
 
@@ -57,6 +61,7 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 	setCORSHeaders(ctx)
 
 	if ctx.IsOptions() {
+		ctx.Response.Header.Set("v", PROXY_VERSION)
 		return
 	} else if !ctx.IsPost() {
 		ctx.SetStatusCode(fasthttp.StatusBadRequest)
@@ -210,6 +215,10 @@ func makePOSTRequest(ApiKey string, Body []byte, ContentType string) (response s
 	uploadResponse := UploadOperation{}
 	err := json.Unmarshal(body, &uploadResponse)
 
+	if DebugLogs {
+		log.Println("upload response:", string(body))
+	}
+
 	if err != nil {
 		log.Printf("%sError unmarshalling data:%s%s %s%s, data:%s %s %s",
 			TerminalColours["BgRed"], TerminalColours["Default"], TerminalColours["FgRed"],
@@ -224,6 +233,33 @@ func makePOSTRequest(ApiKey string, Body []byte, ContentType string) (response s
 	if uploadResponse.Errors != nil {
 		defer fasthttp.ReleaseRequest(req)
 		return "", fasthttp.StatusInternalServerError, errors.New("Failed to upload: " + (*uploadResponse.Errors)[0].Message)
+	}
+
+	if uploadResponse.Code != nil || uploadResponse.Message != nil {
+		defer fasthttp.ReleaseRequest(req)
+
+		var ErrorMessage string = "Failed to upload"
+
+		if uploadResponse.Code != nil {
+			ErrorMessage += ", got code: " + (*uploadResponse.Code)
+		}
+		if uploadResponse.Message != nil {
+			var Message string = (*uploadResponse.Message)
+
+			ErrorMessage += ", got message: " + Message
+
+			switch Message {
+			case "User not authenticated":
+				ErrorMessage += "; Ensure your ApiKey and UserId are set correctly."
+			}
+		}
+
+		return "", fasthttp.StatusInternalServerError, errors.New(ErrorMessage)
+	}
+
+	if uploadResponse.Path == nil || uploadResponse.OperationId == nil {
+		defer fasthttp.ReleaseRequest(req)
+		return "", fasthttp.StatusInternalServerError, errors.New("Unknown error in upload: " + string(body))
 	}
 
 	opBody, opStatus, opErr := initiateAwaitUpload(uploadResponse, ApiKey)
